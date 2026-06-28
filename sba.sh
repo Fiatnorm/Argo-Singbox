@@ -125,7 +125,7 @@ write_sing_box_config() {
       "tag": "vmess",
       "listen": "127.0.0.1",
       "listen_port": ${VMESS_PORT},
-      "users": [{"uuid": "${UUID}", "alter_id": 0}],
+      "users": [{"uuid": "${UUID}", "alterId": 0}],
       "transport": {"type": "ws", "path": "/sba-vm"}
     },
     {
