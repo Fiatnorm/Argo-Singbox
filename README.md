@@ -1,4 +1,4 @@
-# SBA 轻量版
+# Argo-Singbox v2.2.0
 
 这是一个仅面向固定 Argo Token 隧道的中文安装脚本，只保留：
 
@@ -30,9 +30,9 @@ sudo ./sba.sh
 
 - Argo Public Hostname
 - UUID
-- Cloudflare 优选域名/IP
+- Cloudflare 优选域名/IP 及端口
 
-连接逻辑与上游 SBA 一致：节点连接 `SERVER:443`，WebSocket Host 和 TLS SNI 使用 `ARGO_DOMAIN`。默认优选域名为上游列表首项 `skk.moe`。如填写其他优选 IP/域名，它必须能够以 Argo 域名作为 SNI 完成 TLS 握手；不能填写普通 VPS IP。
+连接逻辑与上游 SBA 一致：节点连接 `SERVER:SERVER_PORT`，WebSocket Host 和 TLS SNI 使用 `ARGO_DOMAIN`。默认优选入口为 `skk.moe:443`。如填写其他优选 IP/域名及端口，它必须能够以 Argo 域名作为 SNI 完成 TLS 握手。
 
 cloudflared 启动后，脚本会从 Token 下发的 ingress 配置读取实际 Public Hostname。如果它与手工输入不一致，将自动以 Token 中的真实域名重写节点，避免 Host/SNI 指向错误域名。
 
@@ -55,19 +55,28 @@ cloudflared 启动后，脚本会从 Token 下发的 ingress 配置读取实际 
 
 对该规则跳过 Managed Rules、Browser Integrity Check、Security Level 和其他 Challenge 规则；如果账号启用了无法被 Skip 规则绕过的 Bot Fight Mode，需要关闭它。节点客户端无法像浏览器一样完成人机挑战。
 
-安装后 `sb` 固定链接到 `/etc/sba/sb.sh`，不会重新下载 GitHub 脚本。安装器会检查 Nginx、sing-box、cloudflared、本地监听端口和公网 WebSocket 握手；检查不通过时不会再提示“核心链路正常”。
+安装后使用项目专属快捷命令 `asb`，它固定链接到 `/etc/sba/argo-singbox.sh`，不会重新下载 GitHub 脚本。旧的 `/usr/local/bin/sb` 和 `/usr/local/bin/argo-singbox` 会被清理。安装器会检查 Nginx、sing-box、cloudflared、本地监听端口和公网 WebSocket 握手；检查不通过时不会再提示“核心链路正常”。
+
+再次执行“安装 / 更新”时，脚本会先保留当前安装器副本，再重建 `/etc/sba`，因此从已安装的 `asb` 命令更新不会因删除自身而中断。修改 Token 后也会重新同步实际 Argo 域名、节点文件并执行完整链路检查。
 
 ## 菜单
 
 ```text
-1. 安装 / 更新 SBA
-2. 修改 Argo Token
-3. 查看运行状态
-4. 查看节点文件
-5. 重启服务
-6. 卸载 SBA
+1. 查看节点信息 (asb -n)
+2. 开启/关闭 Argo (asb -a)
+3. 开启/关闭 Sing-box (asb -s)
+4. 更换 Argo 隧道 Token (asb -t)
+5. 更换优选域名、IP 或端口 (asb -d)
+6. 同步 Argo 和 Sing-box 至最新版本 (asb -v)
+7. 升级内核、安装 BBR 等 (asb -b)
+8. 卸载 (asb -u)
+9. 安装 / 更新 Argo-Singbox
+10. 查看运行状态
+11. 重启服务
 0. 退出
 ```
+
+`-a` 和 `-s` 与原版 SBA 一样按当前状态切换服务：运行时执行会关闭，停止时执行会开启。`-v` 与原版一样更新两个核心：cloudflared 使用 GitHub latest；sing-box 优先采用原版的 `force_version`，否则从 releases 选择最新版本，API 不可用时回退到原版预设的 `1.13.0-rc.4`。安装 / 更新也使用同一套版本选择逻辑。`-b` 与原版一样启动 `ylx2016/Linux-NetSpeed` 的内核与 BBR 管理脚本；该功能会执行远程脚本并可能要求重启系统。
 
 ## 输出和检查
 
