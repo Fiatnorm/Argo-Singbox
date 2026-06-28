@@ -11,8 +11,7 @@ LOCAL_SCRIPT="${WORK_DIR}/sb.sh"
 
 DEFAULT_UUID="102a8c7b-8360-44ed-85c8-b1da1aecd363"
 DEFAULT_DOMAIN="sb.fiatnorm.us.kg"
-DEFAULT_EDGE_HOST=""
-DEFAULT_EDGE_PORT="443"
+DEFAULT_SERVER="skk.moe"
 
 VLESS_PORT=3011
 VMESS_PORT=3012
@@ -37,8 +36,7 @@ load_env() {
   fi
   UUID="${UUID:-$DEFAULT_UUID}"
   ARGO_DOMAIN="${ARGO_DOMAIN:-$DEFAULT_DOMAIN}"
-  EDGE_HOST="${EDGE_HOST:-${DEFAULT_EDGE_HOST:-$ARGO_DOMAIN}}"
-  EDGE_PORT="${EDGE_PORT:-$DEFAULT_EDGE_PORT}"
+  SERVER="${SERVER:-$DEFAULT_SERVER}"
   ARGO_TOKEN="${ARGO_TOKEN:-}"
 }
 
@@ -48,8 +46,7 @@ save_env() {
   cat >"$ENV_FILE" <<EOF
 UUID='${UUID}'
 ARGO_DOMAIN='${ARGO_DOMAIN}'
-EDGE_HOST='${EDGE_HOST}'
-EDGE_PORT='${EDGE_PORT}'
+SERVER='${SERVER}'
 ARGO_TOKEN='${ARGO_TOKEN}'
 EOF
 }
@@ -112,7 +109,8 @@ write_sing_box_config() {
         "path": "/sba-vl",
         "max_early_data": 2560,
         "early_data_header_name": "Sec-WebSocket-Protocol"
-      }
+      },
+      "multiplex": {"enabled": true, "padding": true}
     },
     {
       "type": "vless",
@@ -125,7 +123,8 @@ write_sing_box_config() {
         "path": "/sba-vl2",
         "max_early_data": 2560,
         "early_data_header_name": "Sec-WebSocket-Protocol"
-      }
+      },
+      "multiplex": {"enabled": true, "padding": true}
     },
     {
       "type": "vmess",
@@ -138,7 +137,8 @@ write_sing_box_config() {
         "path": "/sba-vm",
         "max_early_data": 2560,
         "early_data_header_name": "Sec-WebSocket-Protocol"
-      }
+      },
+      "multiplex": {"enabled": true, "padding": true}
     },
     {
       "type": "trojan",
@@ -151,7 +151,8 @@ write_sing_box_config() {
         "path": "/sba-tr",
         "max_early_data": 2560,
         "early_data_header_name": "Sec-WebSocket-Protocol"
-      }
+      },
+      "multiplex": {"enabled": true, "padding": true}
     }
   ],
   "outbounds": [{"type": "direct", "tag": "direct"}]
@@ -259,16 +260,15 @@ EOF
 
 generate_nodes() {
   local vmess_json vmess_link
-  printf -v vmess_json '{\r\n  "v": "2",\r\n  "ps": "GreenCloud-Vm",\r\n  "add": "%s",\r\n  "port": "%s",\r\n  "id": "%s",\r\n  "aid": "0",\r\n  "scy": "auto",\r\n  "net": "ws",\r\n  "type": "none",\r\n  "host": "%s",\r\n  "path": "/sba-vm?ed=2560",\r\n  "tls": "tls",\r\n  "sni": "%s",\r\n  "alpn": "",\r\n  "fp": "",\r\n  "insecure": "0",\r\n  "vcn": "",\r\n  "pcs": ""\r\n}' \
-    "$EDGE_HOST" "$EDGE_PORT" "$UUID" "$ARGO_DOMAIN" "$ARGO_DOMAIN"
+  vmess_json="{ \"v\": \"2\", \"ps\": \"GreenCloud-Vm\", \"add\": \"${SERVER}\", \"port\": \"443\", \"id\": \"${UUID}\", \"aid\": \"0\", \"scy\": \"auto\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"${ARGO_DOMAIN}\", \"path\": \"/sba-vm?ed=2560\", \"tls\": \"tls\", \"sni\": \"${ARGO_DOMAIN}\", \"alpn\": \"\" }"
   vmess_link="$(printf '%s' "$vmess_json" | base64 -w 0)"
 
   umask 077
   cat >"$NODES_FILE" <<EOF
-vless://${UUID}@${EDGE_HOST}:${EDGE_PORT}?encryption=none&security=tls&sni=${ARGO_DOMAIN}&insecure=0&allowInsecure=0&type=ws&host=${ARGO_DOMAIN}&path=%2Fsba-vl2%3Fed%3D2560#GreenCloud-Vl-Path2
+vless://${UUID}@${SERVER}:443?encryption=none&security=tls&sni=${ARGO_DOMAIN}&type=ws&host=${ARGO_DOMAIN}&path=%2Fsba-vl2%3Fed%3D2560#GreenCloud-Vl-Path2
 vmess://${vmess_link}
-trojan://${UUID}@${EDGE_HOST}:${EDGE_PORT}?security=tls&sni=${ARGO_DOMAIN}&insecure=0&allowInsecure=0&type=ws&host=${ARGO_DOMAIN}&path=%2Fsba-tr%3Fed%3D2560#GreenCloud-Tr
-vless://${UUID}@${EDGE_HOST}:${EDGE_PORT}?encryption=none&security=tls&sni=${ARGO_DOMAIN}&insecure=0&allowInsecure=0&type=ws&host=${ARGO_DOMAIN}&path=%2Fsba-vl%3Fed%3D2560#GreenCloud-Vl-Path1
+trojan://${UUID}@${SERVER}:443?security=tls&sni=${ARGO_DOMAIN}&type=ws&host=${ARGO_DOMAIN}&path=%2Fsba-tr%3Fed%3D2560#GreenCloud-Tr
+vless://${UUID}@${SERVER}:443?encryption=none&security=tls&sni=${ARGO_DOMAIN}&type=ws&host=${ARGO_DOMAIN}&path=%2Fsba-vl%3Fed%3D2560#GreenCloud-Vl-Path1
 EOF
   chmod 600 "$NODES_FILE"
 }
@@ -279,8 +279,27 @@ create_local_command() {
   ln -sfn "$LOCAL_SCRIPT" /usr/local/bin/sb
 }
 
+sync_argo_domain() {
+  local actual_domain attempt
+  for attempt in {1..10}; do
+    actual_domain="$(journalctl -u cloudflared -n 100 --no-pager -o cat 2>/dev/null |
+      sed -n 's/.*hostname[^A-Za-z0-9.-]*\([A-Za-z0-9.-]\+\).*/\1/p' | tail -n1)"
+    [[ -n "$actual_domain" ]] && break
+    sleep 1
+  done
+  if [[ -n "$actual_domain" && "$actual_domain" != "$ARGO_DOMAIN" ]]; then
+    yellow "检测到 Token 实际域名为 ${actual_domain}，已替换输入域名 ${ARGO_DOMAIN}。"
+    ARGO_DOMAIN="$actual_domain"
+    save_env
+    write_nginx_config
+    systemctl reload nginx
+  elif [[ -z "$actual_domain" ]]; then
+    yellow "未能从 cloudflared 日志读取实际域名，请确认输入域名与 Tunnel Public Hostname 完全一致。"
+  fi
+}
+
 health_check() {
-  local failed=0 public_code port
+  local failed=0 public_code public_headers port
   for service in nginx sing-box cloudflared; do
     if systemctl is-active --quiet "$service"; then
       green "${service}：运行正常"
@@ -298,19 +317,23 @@ health_check() {
     fi
   done
 
-  public_code="$(curl -ksS --http1.1 --max-time 8 -o /dev/null -w '%{http_code}' \
-    --connect-to "${ARGO_DOMAIN}:${EDGE_PORT}:${EDGE_HOST}:${EDGE_PORT}" \
-    -H "Host: ${ARGO_DOMAIN}" \
+  public_headers="$(curl -ksS --http1.1 --max-time 5 -D - -o /dev/null \
+    --connect-to "${ARGO_DOMAIN}:443:${SERVER}:443" \
     -H "Connection: Upgrade" \
     -H "Upgrade: websocket" \
     -H "Sec-WebSocket-Version: 13" \
     -H "Sec-WebSocket-Key: SGVsbG9Xb3JsZDEyMzQ1Ng==" \
-    "https://${ARGO_DOMAIN}:${EDGE_PORT}/sba-vl?ed=2560" || true)"
-  if [[ "$public_code" == "101" ]]; then
-    green "公网 WSS 链路：握手正常"
+    "https://${ARGO_DOMAIN}/sba-vl" || true)"
+  public_code="$(awk '/^HTTP/{code=$2} END{print code}' <<<"$public_headers")"
+  if grep -qi '^cf-mitigated: *challenge' <<<"$public_headers"; then
+    red "Cloudflare 正在返回人机挑战（HTTP ${public_code:-403}），代理客户端无法连接。"
+    yellow "请为 ${ARGO_DOMAIN} 的 /sba-vl、/sba-vl2、/sba-vm、/sba-tr 路径关闭或跳过 Challenge/WAF/Bot 防护。"
+    failed=1
+  elif [[ "$public_code" == "101" ]]; then
+    green "公网 WebSocket 链路：握手正常"
   else
-    yellow "公网 WSS 链路未通过（HTTP ${public_code:-000}）。"
-    yellow "请确认 Cloudflare Public Hostname 为 ${ARGO_DOMAIN} → http://localhost:${ORIGIN_PORT}，DNS 已代理且入口 ${EDGE_HOST}:${EDGE_PORT} 可用。"
+    yellow "公网 WebSocket 握手未通过（HTTP ${public_code:-000}）。"
+    yellow "请确认 Public Hostname 为 ${ARGO_DOMAIN} → http://localhost:${ORIGIN_PORT}，优选入口 ${SERVER}:443 可用。"
     failed=1
   fi
 
@@ -327,12 +350,8 @@ prompt_install_values() {
   read -rp "请输入 UUID [${UUID}]: " value
   UUID="${value:-$UUID}"
   [[ "$UUID" =~ ^[0-9a-fA-F-]{36}$ ]] || die "UUID 格式不正确。"
-  read -rp "请输入 Cloudflare 优选域名或 IP [${EDGE_HOST}]: " value
-  EDGE_HOST="${value:-$EDGE_HOST}"
-  read -rp "请输入 Cloudflare TLS 端口 [${EDGE_PORT}]: " value
-  EDGE_PORT="${value:-$EDGE_PORT}"
-  [[ "$EDGE_PORT" =~ ^(443|2053|2083|2087|2096|8443)$ ]] ||
-    die "端口必须是 Cloudflare 支持的 HTTPS 端口：443、2053、2083、2087、2096 或 8443。"
+  read -rp "请输入 Cloudflare 优选域名或 IP [${SERVER}]: " value
+  SERVER="${value:-$SERVER}"
 }
 
 install_sba() {
@@ -349,10 +368,12 @@ install_sba() {
   write_sing_box_config
   write_nginx_config
   write_services
-  generate_nodes
   create_local_command
   systemctl daemon-reload
-  systemctl enable --now nginx sing-box cloudflared
+  systemctl enable nginx sing-box cloudflared
+  systemctl restart nginx sing-box cloudflared
+  sync_argo_domain
+  generate_nodes
   if health_check; then
     green "SBA 安装 / 更新完成，核心链路检查通过。节点文件：${NODES_FILE}"
   else
@@ -423,13 +444,15 @@ EOF
   done
 }
 
-case "${1:-}" in
-  install) install_sba ;;
-  token) change_token ;;
-  status) show_status ;;
-  nodes) [[ -f "$NODES_FILE" ]] && cat "$NODES_FILE" || die "节点文件不存在。" ;;
-  restart) restart_services ;;
-  uninstall) uninstall_sba ;;
-  "") menu ;;
-  *) die "未知参数。可用参数：install、token、status、nodes、restart、uninstall。" ;;
-esac
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  case "${1:-}" in
+    install) install_sba ;;
+    token) change_token ;;
+    status) show_status ;;
+    nodes) [[ -f "$NODES_FILE" ]] && cat "$NODES_FILE" || die "节点文件不存在。" ;;
+    restart) restart_services ;;
+    uninstall) uninstall_sba ;;
+    "") menu ;;
+    *) die "未知参数。可用参数：install、token、status、nodes、restart、uninstall。" ;;
+  esac
+fi

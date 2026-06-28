@@ -30,10 +30,30 @@ sudo ./sba.sh
 
 - Argo Public Hostname
 - UUID
-- Cloudflare 边缘入口域名/IP
-- Cloudflare HTTPS 端口
+- Cloudflare 优选域名/IP
 
-边缘入口默认使用 Argo Public Hostname，端口默认 `443`。如使用优选 IP/域名，它必须能够以 Argo 域名作为 SNI 完成 TLS 握手；不能填写普通 VPS IP。
+连接逻辑与上游 SBA 一致：节点连接 `SERVER:443`，WebSocket Host 和 TLS SNI 使用 `ARGO_DOMAIN`。默认优选域名为上游列表首项 `skk.moe`。如填写其他优选 IP/域名，它必须能够以 Argo 域名作为 SNI 完成 TLS 握手；不能填写普通 VPS IP。
+
+cloudflared 启动后，脚本会从 Token 下发的 ingress 配置读取实际 Public Hostname。如果它与手工输入不一致，将自动以 Token 中的真实域名重写节点，避免 Host/SNI 指向错误域名。
+
+## Cloudflare 安全规则
+
+代理 WebSocket 路径不能被 Cloudflare Managed Challenge、JS Challenge 或 Bot Fight Mode 拦截。若检查结果包含 `CF-MITIGATED: challenge`，请在 Cloudflare 为以下路径建立 Skip 规则：
+
+```text
+/sba-vl
+/sba-vl2
+/sba-vm
+/sba-tr
+```
+
+规则表达式示例：
+
+```text
+(http.host eq "sb.fiatnorm.pp.ua" and starts_with(http.request.uri.path, "/sba-"))
+```
+
+对该规则跳过 Managed Rules、Browser Integrity Check、Security Level 和其他 Challenge 规则；如果账号启用了无法被 Skip 规则绕过的 Bot Fight Mode，需要关闭它。节点客户端无法像浏览器一样完成人机挑战。
 
 安装后 `sb` 固定链接到 `/etc/sba/sb.sh`，不会重新下载 GitHub 脚本。安装器会检查 Nginx、sing-box、cloudflared、本地监听端口和公网 WebSocket 握手；检查不通过时不会再提示“核心链路正常”。
 
