@@ -6,11 +6,16 @@
 - VMess + WS + TLS：`/sba-vm`
 - Trojan + WS + TLS：`/sba-tr`
 
-TLS 由 Cloudflare 边缘终止；VPS 本机的 Nginx 和 sing-box 仅监听回环地址。固定隧道在 Cloudflare Zero Trust 中的 Public Hostname 服务地址应设置为：
+TLS 由 Cloudflare 边缘终止；VPS 本机的 Nginx 和 sing-box 仅监听回环地址。脚本保留了上游 SBA 的 WebSocket Early Data 配置（`ed=2560`）。
+
+固定隧道必须在 Cloudflare Zero Trust 中添加 Public Hostname：
 
 ```text
-http://localhost:3010
+Hostname: sb.fiatnorm.us.kg
+Service:  http://localhost:3010
 ```
+
+应让 Zero Trust 自动创建并代理该 Hostname 的 DNS 记录。不要把 Hostname 手工解析到 VPS IP，否则客户端不会经过 Argo Tunnel。
 
 ## 安装
 
@@ -21,7 +26,16 @@ chmod +x sba.sh
 sudo ./sba.sh
 ```
 
-安装过程仅要求输入 Argo Token，并允许确认 Argo 域名和 UUID。安装后 `sb` 固定链接到 `/etc/sba/sb.sh`，不会重新下载 GitHub 脚本。
+安装过程要求输入 Argo Token，并允许确认：
+
+- Argo Public Hostname
+- UUID
+- Cloudflare 边缘入口域名/IP
+- Cloudflare HTTPS 端口
+
+边缘入口默认使用 Argo Public Hostname，端口默认 `443`。如使用优选 IP/域名，它必须能够以 Argo 域名作为 SNI 完成 TLS 握手；不能填写普通 VPS IP。
+
+安装后 `sb` 固定链接到 `/etc/sba/sb.sh`，不会重新下载 GitHub 脚本。安装器会检查 Nginx、sing-box、cloudflared、本地监听端口和公网 WebSocket 握手；检查不通过时不会再提示“核心链路正常”。
 
 ## 菜单
 
@@ -44,6 +58,14 @@ systemctl status sing-box
 systemctl status cloudflared
 ss -tulnp
 cat /root/sba_nodes.txt
+```
+
+进一步诊断：
+
+```bash
+journalctl -u sing-box -n 100 --no-pager
+journalctl -u cloudflared -n 100 --no-pager
+curl -vk https://sb.fiatnorm.us.kg/
 ```
 
 ## 支持范围
