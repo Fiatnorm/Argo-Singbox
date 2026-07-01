@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.8.1"
+VERSION="2.8.2"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
 WORK_DIR="/etc/asb"
@@ -683,6 +683,53 @@ wait_for_node_ports_free() {
   return 1
 }
 
+service_belongs_to_project() {
+  local service="$1" unit_file exec_start
+  unit_file="$(systemctl show "$service" -p FragmentPath --value 2>/dev/null || true)"
+  exec_start="$(systemctl show "$service" -p ExecStart --value 2>/dev/null || true)"
+  is_project_service "$unit_file" ||
+    [[ "$exec_start" == *"${WORK_DIR}/"* || "$exec_start" == *"${LEGACY_WORK_DIR}/"* ]]
+}
+
+stop_conflicting_sing_box_services() {
+  local service
+  systemctl stop "$SING_SERVICE" 2>/dev/null || true
+  for service in "$LEGACY_SING_SERVICE" sba-singbox sing-box; do
+    systemctl list-unit-files "${service}.service" --no-legend 2>/dev/null |
+      grep -q "^${service}.service" || continue
+    if service_belongs_to_project "$service"; then
+      systemctl disable --now "$service" 2>/dev/null || true
+      info "已停止占用节点端口的旧项目服务：${service}.service"
+    fi
+  done
+}
+
+stop_orphan_project_listeners() {
+  local port line pid exe found=0
+  while IFS='|' read -r _ _ _ port _; do
+    while IFS= read -r line; do
+      pid="$(sed -n 's/.*pid=\([0-9]\+\).*/\1/p' <<<"$line")"
+      [[ -n "$pid" ]] || continue
+      exe="$(readlink -f "/proc/${pid}/exe" 2>/dev/null || true)"
+      case "$exe" in
+        "${BIN_DIR}/sing-box"|"${LEGACY_WORK_DIR}/bin/sing-box"|"${LEGACY_WORK_DIR}/sing-box")
+          kill "$pid" 2>/dev/null || true
+          info "已停止遗留 sing-box 进程 PID ${pid}（端口 ${port}）。"
+          found=1
+          ;;
+      esac
+    done < <(ss -lntpH "sport = :${port}" 2>/dev/null || true)
+  done <"$NODES_CONFIG"
+  ((found == 0)) || sleep 1
+}
+
+report_node_port_owners() {
+  local port
+  while IFS='|' read -r _ _ _ port _; do
+    ss -lntpH "sport = :${port}" 2>/dev/null || true
+  done <"$NODES_CONFIG"
+}
+
 install_project() {
   local installer_source work_backup="" sing_stage argo_stage file
   require_root
@@ -729,10 +776,11 @@ install_project() {
   rm -f "$installer_source"
   systemctl daemon-reload
   systemctl enable nginx "$SING_SERVICE" "$ARGO_SERVICE"
-  if ((LEGACY_MIGRATED)); then
-    systemctl stop "$LEGACY_SING_SERVICE" "$LEGACY_ARGO_SERVICE" 2>/dev/null || true
-    wait_for_node_ports_free ||
-      die "旧 sing-box 停止后节点端口仍被占用，请运行 ss -lntp 检查占用进程。"
+  stop_conflicting_sing_box_services
+  stop_orphan_project_listeners
+  if ! wait_for_node_ports_free; then
+    report_node_port_owners >&2
+    die "节点端口仍被未知进程占用。为避免终止第三方服务，安装已停止。"
   fi
   systemctl restart nginx "$SING_SERVICE" "$ARGO_SERVICE"
   if wait_for_services; then
