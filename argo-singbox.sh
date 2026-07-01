@@ -1135,6 +1135,7 @@ uninstall_project() {
   local legacy_link target
   require_root
   [[ -f "$MANAGED_FILE" ]] || die "缺少项目所有权标记，拒绝自动卸载；请人工核对 ${WORK_DIR}。"
+  [[ "$WORK_DIR" == "/etc/asb" ]] || die "卸载目录异常，拒绝删除：${WORK_DIR}"
   systemctl disable --now "$SING_SERVICE" "$ARGO_SERVICE" 2>/dev/null || true
   rm -f "/etc/systemd/system/${SING_SERVICE}.service" "/etc/systemd/system/${ARGO_SERVICE}.service"
   rm -f "$NGINX_CONFIG" "$LEGACY_NGINX_CONFIG" "/usr/local/bin/${COMMAND_NAME}" \
@@ -1144,12 +1145,11 @@ uninstall_project() {
     target="$(readlink -f "$legacy_link" 2>/dev/null || true)"
     [[ "$target" == "$LOCAL_SCRIPT" ]] && rm -f "$legacy_link"
   done
-  rm -f "$ENV_FILE" "$NODES_CONFIG" "$SING_BOX_CONFIG" "$LOCAL_SCRIPT" "$MANAGED_FILE" \
-    "$SUB_FILE" "$SUB_BASE64_FILE" "$BIN_DIR/sing-box" "$BIN_DIR/cloudflared"
-  rmdir "$BIN_DIR" "$BACKUP_DIR" "$WORK_DIR" 2>/dev/null || true
+  remove_legacy_symlink
+  rm -rf -- "$WORK_DIR"
   systemctl daemon-reload
   systemctl restart nginx 2>/dev/null || true
-  green "${PROJECT_NAME} 已卸载。"
+  green "${PROJECT_NAME} 已彻底卸载，项目文件已删除。"
 }
 
 menu() {
