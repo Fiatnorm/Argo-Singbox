@@ -1,4 +1,4 @@
-# Argo-Singbox v2.8.0
+# Argo-Singbox v2.8.1
 
 面向固定 Argo Token 隧道的中文轻量安装脚本，提供：
 
@@ -32,6 +32,8 @@ sudo ./argo-singbox.sh
 服务使用 `asb-sing-box.service` 和 `asb-cloudflared.service`，不会覆盖系统已有的通用 `sing-box.service` 或 `cloudflared.service`。仅在覆盖现有项目配置时创建一个 `config-previous` 必要备份，不累计时间戳备份，也不为全新安装建立空备份目录；脚本只重建项目管理的文件。
 
 从旧版升级时，脚本仅在 `/etc/sba/managed` 所有权标记有效且 `/etc/asb` 不存在时，将旧目录迁移为 `/etc/asb`、把 `sba.env` 改名为 `asb.env`，并临时保留指向新目录的兼容链接；新服务验证通过后才移除属于本项目的旧 `sba-*` 服务和兼容链接，失败则尝试恢复旧服务。两个真实目录同时存在或旧目录没有所有权标记时会停止并要求人工核对。
+
+迁移会先停止旧服务并等待节点端口释放，再启动新服务；若新服务启动失败，会先停用新服务再恢复旧服务，避免两套 sing-box 同时抢占节点端口。重新执行 v2.8.1 安装可修复 v2.8.0 迁移失败后形成的新旧服务端口冲突。
 
 下载具有总超时、重试、GitHub 代理回退和 GitHub Release SHA256 digest 校验；二进制还会执行基本版本检查。sing-box 版本优先采用上游 `force_version`，不可用时回退到 GitHub releases，再失败才使用脚本预设版本。
 

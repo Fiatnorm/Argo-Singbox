@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.8.0"
+VERSION="2.8.1"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
 WORK_DIR="/etc/asb"
@@ -310,9 +310,10 @@ write_sing_box_config() {
     case "$protocol" in
       trojan) printf '"users":[{"password":"%s"}],' "$UUID" >>"$SING_BOX_CONFIG" ;;
       vmess) printf '"users":[{"uuid":"%s","alterId":0}],' "$UUID" >>"$SING_BOX_CONFIG" ;;
-      vless) printf '"users":[{"uuid":"%s"}],' "$UUID" >>"$SING_BOX_CONFIG" ;;
+      vless) printf '"users":[{"uuid":"%s","flow":""}],' "$UUID" >>"$SING_BOX_CONFIG" ;;
     esac
-    printf '"transport":{"type":"ws","path":"%s","max_early_data":2560,"early_data_header_name":"Sec-WebSocket-Protocol"},"multiplex":{"enabled":true,"padding":true}}' "$path" >>"$SING_BOX_CONFIG"
+    printf '"transport":{"type":"ws","path":"%s","max_early_data":2560,"early_data_header_name":"Sec-WebSocket-Protocol"},' "$path" >>"$SING_BOX_CONFIG"
+    printf '"multiplex":{"enabled":true,"padding":true,"brutal":{"enabled":false,"up_mbps":1000,"down_mbps":1000}}}' >>"$SING_BOX_CONFIG"
   done <"$NODES_CONFIG"
   printf '\n],"outbounds":[{"type":"direct","tag":"direct"}' >>"$SING_BOX_CONFIG"
   if [[ "$WARP_ENABLED" == "1" ]]; then
@@ -515,6 +516,7 @@ health_check() {
     else
       red "${service}：运行失败"
       systemctl --no-pager --full status "$service" || true
+      journalctl -u "$service" -n 20 --no-pager -o cat 2>/dev/null || true
       failed=1
     fi
   done
@@ -668,6 +670,19 @@ remove_legacy_symlink() {
   [[ "$target" == "$WORK_DIR" ]] && rm -f "$LEGACY_WORK_DIR"
 }
 
+wait_for_node_ports_free() {
+  local attempt port busy
+  for attempt in {1..10}; do
+    busy=0
+    while IFS='|' read -r _ _ _ port _; do
+      ss -lntH "sport = :${port}" 2>/dev/null | grep -q . && busy=1
+    done <"$NODES_CONFIG"
+    ((busy == 0)) && return 0
+    sleep 1
+  done
+  return 1
+}
+
 install_project() {
   local installer_source work_backup="" sing_stage argo_stage file
   require_root
@@ -716,6 +731,8 @@ install_project() {
   systemctl enable nginx "$SING_SERVICE" "$ARGO_SERVICE"
   if ((LEGACY_MIGRATED)); then
     systemctl stop "$LEGACY_SING_SERVICE" "$LEGACY_ARGO_SERVICE" 2>/dev/null || true
+    wait_for_node_ports_free ||
+      die "旧 sing-box 停止后节点端口仍被占用，请运行 ss -lntp 检查占用进程。"
   fi
   systemctl restart nginx "$SING_SERVICE" "$ARGO_SERVICE"
   if wait_for_services; then
@@ -724,7 +741,9 @@ install_project() {
   else
     yellow "新服务尚未全部启动，已保留旧服务文件以便排查。"
     if ((LEGACY_MIGRATED)); then
+      systemctl disable --now "$SING_SERVICE" "$ARGO_SERVICE" 2>/dev/null || true
       systemctl restart "$LEGACY_SING_SERVICE" "$LEGACY_ARGO_SERVICE" 2>/dev/null || true
+      yellow "已先停用新服务再恢复旧服务，避免新旧 sing-box 同时抢占节点端口。"
     fi
   fi
   systemctl daemon-reload
