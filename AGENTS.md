@@ -17,6 +17,7 @@
 - `/etc/sba/bin/sing-box`
 - `/etc/sba/bin/cloudflared`
 - `/etc/sba/sba.env`
+- `/etc/sba/nodes.conf`
 - `/usr/local/bin/asb`
 
 ## 产品边界
@@ -26,7 +27,9 @@
 - 仅支持 Debian/Ubuntu + systemd。
 - 仅支持 amd64 和 arm64。
 - 仅支持固定 Argo Token，不加入临时隧道、Argo JSON 或 Cloudflare API 建隧道。
-- 保留 VLESS 双路径、VMess、Trojan 四个 WS 节点。
+- 默认保留 VLESS 双路径、VMess、Trojan 四个 WS 节点，并允许通过 `asb config` 动态添加、修改或删除这三种协议的 WS 节点。
+- 允许节点按 inbound tag 与 WS 路径绑定独立 SOCKS5 出站。
+- 允许用户指定目标网址优先通过 Cloudflare 官方 WARP 客户端的本地 SOCKS5 proxy 出站；未命中时仍遵循节点 SOCKS5 或 direct。
 - 保持中文交互，不加入英文模式。
 - 日常管理必须使用 VPS 本地安装脚本，不得改成每次执行都从 GitHub 拉取仓库脚本。
 - BBR 不是项目内置能力，只能作为明确标注的第三方外部工具保留。
@@ -54,15 +57,21 @@
 - 下载必须包含连接超时、总超时、重试、GitHub 代理回退和 SHA256 校验。
 - 更新流程必须遵循：下载到临时文件 → 校验可执行性 → `sing-box check` → 备份 → 原子替换 → 重启验证 → 失败回滚。
 - 不得在脚本或示例文件中加入固定公共 UUID、Token 或项目公共域名。
+- 不得嵌入公共 WARP WireGuard 私钥、固定 WARP 账户或非官方 WARP 注册凭据；WARP 使用用户 VPS 上安装的 Cloudflare 官方客户端。
 - Argo 域名必须由用户输入；首次安装 UUID 应自动随机生成。
 
 ## 交互和运行语义
 
 - 优选入口使用单行 `域名/IP:端口` 输入；IPv6 使用 `[地址]:端口`。
-- `asb -n` 必须输出四条原始节点、二维码、原始订阅和 Base64 订阅地址。
+- `asb -n` 必须输出当前全部动态节点、二维码、原始订阅和 Base64 订阅地址。
 - 节点连接地址使用优选入口，WebSocket Host 与 TLS SNI 使用 Argo 域名。
 - 修改 Token 或优选入口后，应重新生成节点并执行健康检查。
-- 健康检查必须分别测试 `/sba-vl`、`/sba-vl2`、`/sba-vm`、`/sba-tr`，不能只检查一个路径。
+- 健康检查必须测试 `/etc/sba/nodes.conf` 中的全部 WS 路径，默认包括 `/sba-vl`、`/sba-vl2`、`/sba-vm`、`/sba-tr`。
+- `asb config` 必须集中管理 Token、Argo 域名、优选入口、本地端口、UUID、动态节点、节点 SOCKS5 出站和 WARP 目标网址。
+- WARP 域名规则必须位于节点 SOCKS5 规则之前，保持 `目标网址 WARP → 节点 SOCKS5 → direct` 的优先级。
+- `asb doctor` 必须检查配置、Token、服务、动态端口、全部公网 WS 路径、核心版本、WARP（启用时）和最近日志。
+- `asb backup/restore` 必须校验 `/etc/sba/managed`；恢复失败必须自动回滚。
+- 终端配色必须在非 TTY、`TERM=dumb` 或 `NO_COLOR` 环境自动关闭，不得向日志和管道写入 ANSI 控制符。
 - 状态诊断保持简洁，并包含公网 IP、脚本/核心版本、内存、systemd 状态、监听端口和最近错误。
 - 普通启停、查看节点、修改配置和卸载不得执行 `git pull` 或重新下载仓库脚本。
 
