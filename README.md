@@ -1,4 +1,4 @@
-# Argo-Singbox v2.6.1
+# Argo-Singbox v2.7.0
 
 面向固定 Argo Token 隧道的中文轻量安装脚本，提供：
 
@@ -53,24 +53,21 @@ sudo ./argo-singbox.sh
 1. 查看节点信息 (asb -n)
 2. 开启/关闭 Argo (asb -a)
 3. 开启/关闭 Sing-box (asb -s)
-4. 更换 Argo 隧道 Token (asb -t)
-5. 更换优选域名、IP 或端口 (asb -d)
-6. 检查并更新两个核心 (asb -v)
-7. 升级内核、安装 BBR、DD 脚本 (asb -b)
-8. 卸载 (asb -u)
-9. 安装 / 更新 Argo-Singbox
-10. 查看简洁诊断
-11. 重启服务
-12. 集中配置 (asb config)
-13. 完整诊断 (asb doctor)
-14. 备份 /etc/sba (asb backup)
-15. 恢复 /etc/sba (asb restore)
+4. 集中配置 (asb -c)
+5. 重启全部服务 (asb -r)
+6. 完整诊断 (asb -x)
+7. 安装 / 更新 Argo-Singbox (asb -i)
+8. 更新 Argo / Sing-box 核心 (asb -v)
+9. 备份 /etc/sba (asb -k)
+10. 恢复 /etc/sba (asb -l)
+11. 第三方 BBR / DD 工具 (asb -b)
+12. 卸载 Argo-Singbox (asb -u)
 0. 退出
 ```
 
 ## 集中配置与分流
 
-`asb config` 集中修改 Token、Argo 域名、优选入口、Nginx 本地入口端口和全局 UUID，也可以添加、修改或删除 VLESS、VMess、Trojan 的 WS + TLS 节点。每个节点使用唯一的标签、WS 路径和本地监听端口，定义保存在 `/etc/sba/nodes.conf`。
+`asb -c` 集中修改 Token、Argo 域名、优选入口、Argo Tunnel 回源端口和全局 UUID，也可以添加、修改或删除 VLESS、VMess、Trojan 的 WS + TLS 节点。修改 Tunnel 回源端口时，节点监听端口从“回源端口 + 1”开始依次顺延；添加节点时默认使用当前最大监听端口的下一个端口。配置保存在 `/etc/sba/nodes.conf`。修改后还必须在 Cloudflare Public Hostname 中把 Service 同步为新的 `http://localhost:端口`。
 
 添加节点时可留空使用直连，也可输入 SOCKS5 出站：
 
@@ -82,7 +79,7 @@ sudo ./argo-singbox.sh
 
 ### 按网址优先使用 WARP
 
-`asb config` 的 WARP 入口使用 Cloudflare 官方 Linux 客户端的本地 SOCKS5 proxy 模式。启用前需按 [Cloudflare 官方文档](https://developers.cloudflare.com/warp-client/get-started/linux/) 安装 `cloudflare-warp`。输入以逗号分隔的网址或域名，例如：
+`asb -c` 的 WARP 入口使用 Cloudflare 官方 Linux 客户端的本地 SOCKS5 proxy 模式。启用前需按 [Cloudflare 官方文档](https://developers.cloudflare.com/warp-client/get-started/linux/) 安装 `cloudflare-warp`。输入以逗号分隔的网址或域名，例如：
 
 ```text
 https://chatgpt.com,api.openai.com,example.com
@@ -96,33 +93,33 @@ https://chatgpt.com,api.openai.com,example.com
 没有节点 SOCKS5 → direct
 ```
 
-WARP 只覆盖匹配的网址，不会替换其他节点的 SOCKS5 配置。`asb doctor` 会检查 `warp-svc`、本地代理端口，并通过 WARP 访问第一个目标域名。WARP 不提供匿名保证，也不保证指定国家或地区的落地 IP。
+WARP 只覆盖匹配的网址，不会替换其他节点的 SOCKS5 配置。`asb -x` 会检查 `warp-svc`、本地代理端口，并通过 WARP 访问第一个目标域名。WARP 不提供匿名保证，也不保证指定国家或地区的落地 IP。
 
-终端输出使用统一的标题、信息、成功、警告和错误配色；重定向输出、`TERM=dumb` 或设置 `NO_COLOR=1` 时自动关闭颜色。
+终端输出使用高亮蓝色分区标题、青色序号、白色功能名、淡色命令提示，以及高亮青/绿/黄/红色的信息、成功、警告和错误状态；重定向输出、`TERM=dumb` 或设置 `NO_COLOR=1` 时自动关闭颜色。
 
 ## 诊断、备份与恢复
 
-- `asb doctor`：检查配置与 Token 同步、三个服务、全部动态监听端口、每条公网 WS 路径、核心版本，并输出最近 30 条项目日志。
-- `asb backup [文件.tar.gz]`：备份 `/etc/sba`；省略路径时写入 `/root/asb-backup-时间.tar.gz`。
-- `asb restore [文件.tar.gz]`：验证备份中的项目所有权标记和核心文件后恢复 `/etc/sba`，重新生成 Nginx 与 systemd 配置并验证服务；失败自动回滚。
+- `asb -x`：检查配置与 Token 同步、三个服务、全部动态监听端口、每条公网 WS 路径、核心版本，并输出最近 30 条项目日志。
+- `asb -k [文件.tar.gz]`：备份 `/etc/sba`；省略路径时写入 `/root/asb-backup-时间.tar.gz`。
+- `asb -l [文件.tar.gz]`：验证备份中的项目所有权标记和核心文件后恢复 `/etc/sba`，重新生成 Nginx 与 systemd 配置并验证服务；失败自动回滚。
 
 `asb -v` 会先比较本地和远端版本并请求确认，然后下载到临时文件、校验 SHA256/可执行性、执行 `sing-box check`、备份旧核心、原子替换并重启验证。验证失败会自动恢复两个旧核心。
 
 核心更新的备份只用于本次回滚，验证成功后立即删除；失败时保留，便于核对和恢复。
 
-`asb -b` 与原版 SBA 一致，调用 `ylx2016/Linux-NetSpeed` 外部远程脚本，提供内核升级、BBR 和 DD 系统入口。该工具不属于本项目，执行前会明确提示。
+`asb -b` 调用 `ylx2016/Linux-NetSpeed` 外部远程脚本，提供内核升级、BBR 和 DD 系统入口。该工具不属于本项目，执行前会明确提示。
 
 ## 节点、订阅和检查
 
 `asb -n` 输出全部原始节点链接、终端二维码、原始订阅、Base64 订阅和兼容的 UUID 订阅地址：
 
 ```text
-https://你的域名/sba-sub
-https://你的域名/sba-sub-base64
+https://你的域名/asb-sub
+https://你的域名/asb-sub-base64
 https://你的域名/你的UUID
 ```
 
-原始节点仍保存在 `/root/sba_nodes.txt`。安装或配置修改后，会检查三个服务、Nginx 入口及全部节点端口，并对 `/etc/sba/nodes.conf` 中每条路径执行公网 WebSocket 握手。`asb status` 额外显示公网 IP、核心版本、内存、systemd 健康状态、端口列表和最近错误。
+原始节点保存在 `/root/argo-singbox_nodes.txt`。安装或配置修改后，会检查三个服务、Nginx 入口及全部节点端口，并对 `/etc/sba/nodes.conf` 中每条路径执行公网 WebSocket 握手。`asb -x` 还会显示核心版本、WARP 状态和最近日志。
 
 如 Cloudflare 返回 Challenge/WAF，需为全部动态代理路径和订阅路径建立适当的 Skip 规则。不要把 Public Hostname 手工解析到 VPS IP；应让流量经过 Argo Tunnel。
 
