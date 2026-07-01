@@ -1,10 +1,10 @@
-# Argo-Singbox v2.7.0
+# Argo-Singbox v2.8.0
 
 面向固定 Argo Token 隧道的中文轻量安装脚本，提供：
 
-- VLESS + WS + TLS：`/sba-vl`
-- VMess + WS + TLS：`/sba-vm`
-- Trojan + WS + TLS：`/sba-tr`
+- VLESS + WS + TLS：`/argo-vl`
+- VMess + WS + TLS：`/argo-vm`
+- Trojan + WS + TLS：`/argo-tr`
 - 原始节点、二维码、原始订阅与 Base64 通用订阅
 
 TLS 由 Cloudflare 边缘终止；VPS 本机 Nginx 和 sing-box 仅监听回环地址。固定隧道必须在 Cloudflare Zero Trust 添加 Public Hostname，Service 指向 `http://localhost:3010`。Public Hostname 域名必须由安装者输入，项目不再提供公共默认域名。
@@ -25,17 +25,19 @@ sudo ./argo-singbox.sh
 核心安装在项目私有目录：
 
 ```text
-/etc/sba/bin/sing-box
-/etc/sba/bin/cloudflared
+/etc/asb/bin/sing-box
+/etc/asb/bin/cloudflared
 ```
 
-服务使用 `sba-sing-box.service` 和 `sba-cloudflared.service`，不会覆盖系统已有的通用 `sing-box.service` 或 `cloudflared.service`。仅在覆盖现有项目配置时创建一个 `config-previous` 必要备份，不累计时间戳备份，也不为全新安装建立空备份目录；脚本只重建项目管理的文件。
+服务使用 `asb-sing-box.service` 和 `asb-cloudflared.service`，不会覆盖系统已有的通用 `sing-box.service` 或 `cloudflared.service`。仅在覆盖现有项目配置时创建一个 `config-previous` 必要备份，不累计时间戳备份，也不为全新安装建立空备份目录；脚本只重建项目管理的文件。
+
+从旧版升级时，脚本仅在 `/etc/sba/managed` 所有权标记有效且 `/etc/asb` 不存在时，将旧目录迁移为 `/etc/asb`、把 `sba.env` 改名为 `asb.env`，并临时保留指向新目录的兼容链接；新服务验证通过后才移除属于本项目的旧 `sba-*` 服务和兼容链接，失败则尝试恢复旧服务。两个真实目录同时存在或旧目录没有所有权标记时会停止并要求人工核对。
 
 下载具有总超时、重试、GitHub 代理回退和 GitHub Release SHA256 digest 校验；二进制还会执行基本版本检查。sing-box 版本优先采用上游 `force_version`，不可用时回退到 GitHub releases，再失败才使用脚本预设版本。
 
 ## 是否需要反复拉取 GitHub
 
-仓库只需在首次部署或需要取得新版安装脚本时拉取一次。安装完成后，脚本会复制到 `/etc/sba/argo-singbox.sh`，并建立本地命令 `/usr/local/bin/asb`。查看节点、修改 Token/优选入口、启停或重启服务、查看状态和卸载都直接使用 VPS 上的本地文件，不会重新拉取本仓库。
+仓库只需在首次部署或需要取得新版安装脚本时拉取一次。安装完成后，脚本会复制到 `/etc/asb/argo-singbox.sh`，并建立本地命令 `/usr/local/bin/asb`。查看节点、修改 Token/优选入口、启停或重启服务、查看状态和卸载都直接使用 VPS 上的本地文件，不会重新拉取本仓库。
 
 以下操作仍会主动访问网络：
 
@@ -58,8 +60,8 @@ sudo ./argo-singbox.sh
 6. 完整诊断 (asb -x)
 7. 安装 / 更新 Argo-Singbox (asb -i)
 8. 更新 Argo / Sing-box 核心 (asb -v)
-9. 备份 /etc/sba (asb -k)
-10. 恢复 /etc/sba (asb -l)
+9. 备份 /etc/asb (asb -k)
+10. 恢复 /etc/asb (asb -l)
 11. 第三方 BBR / DD 工具 (asb -b)
 12. 卸载 Argo-Singbox (asb -u)
 0. 退出
@@ -67,7 +69,7 @@ sudo ./argo-singbox.sh
 
 ## 集中配置与分流
 
-`asb -c` 集中修改 Token、Argo 域名、优选入口、Argo Tunnel 回源端口和全局 UUID，也可以添加、修改或删除 VLESS、VMess、Trojan 的 WS + TLS 节点。修改 Tunnel 回源端口时，节点监听端口从“回源端口 + 1”开始依次顺延；添加节点时默认使用当前最大监听端口的下一个端口。配置保存在 `/etc/sba/nodes.conf`。修改后还必须在 Cloudflare Public Hostname 中把 Service 同步为新的 `http://localhost:端口`。
+`asb -c` 集中修改 Token、Argo 域名、优选入口、Argo Tunnel 回源端口和全局 UUID，也可以添加、修改或删除 VLESS、VMess、Trojan 的 WS + TLS 节点。修改 Tunnel 回源端口时，节点监听端口从“回源端口 + 1”开始依次顺延；添加节点时默认使用当前最大监听端口的下一个端口。配置保存在 `/etc/asb/nodes.conf`。修改后还必须在 Cloudflare Public Hostname 中把 Service 同步为新的 `http://localhost:端口`。
 
 添加节点时可留空使用直连，也可输入 SOCKS5 出站：
 
@@ -100,8 +102,8 @@ WARP 只覆盖匹配的网址，不会替换其他节点的 SOCKS5 配置。`asb
 ## 诊断、备份与恢复
 
 - `asb -x`：检查配置与 Token 同步、三个服务、全部动态监听端口、每条公网 WS 路径、核心版本，并输出最近 30 条项目日志。
-- `asb -k [文件.tar.gz]`：备份 `/etc/sba`；省略路径时写入 `/root/asb-backup-时间.tar.gz`。
-- `asb -l [文件.tar.gz]`：验证备份中的项目所有权标记和核心文件后恢复 `/etc/sba`，重新生成 Nginx 与 systemd 配置并验证服务；失败自动回滚。
+- `asb -k [文件.tar.gz]`：备份 `/etc/asb`；省略路径时写入 `/root/asb-backup-时间.tar.gz`。
+- `asb -l [文件.tar.gz]`：验证备份中的项目所有权标记和核心文件后恢复 `/etc/asb`，重新生成 Nginx 与 systemd 配置并验证服务；失败自动回滚。
 
 `asb -v` 会先比较本地和远端版本并请求确认，然后下载到临时文件、校验 SHA256/可执行性、执行 `sing-box check`、备份旧核心、原子替换并重启验证。验证失败会自动恢复两个旧核心。
 
@@ -119,12 +121,12 @@ https://你的域名/asb-sub-base64
 https://你的域名/你的UUID
 ```
 
-原始节点保存在 `/root/argo-singbox_nodes.txt`。安装或配置修改后，会检查三个服务、Nginx 入口及全部节点端口，并对 `/etc/sba/nodes.conf` 中每条路径执行公网 WebSocket 握手。`asb -x` 还会显示核心版本、WARP 状态和最近日志。
+原始节点保存在 `/root/argo-singbox_nodes.txt`。安装或配置修改后，会检查三个服务、Nginx 入口及全部节点端口，并对 `/etc/asb/nodes.conf` 中每条路径执行公网 WebSocket 握手。`asb -x` 还会显示核心版本、WARP 状态和最近日志。
 
 如 Cloudflare 返回 Challenge/WAF，需为全部动态代理路径和订阅路径建立适当的 Skip 规则。不要把 Public Hostname 手工解析到 VPS IP；应让流量经过 Argo Tunnel。
 
 ## 卸载边界
 
-卸载要求 `/etc/sba/managed` 所有权标记存在。确认所有权后只删除项目管理的核心、配置、服务、Nginx 配置、`asb` 链接和节点文件；如果 `/etc/sba` 中仍有其他文件则保留目录，不会删除 `/usr/local/bin/sing-box`、`/usr/local/bin/cloudflared` 或其他软件的服务。
+卸载要求 `/etc/asb/managed` 所有权标记存在。确认所有权后只删除项目管理的核心、配置、服务、Nginx 配置、`asb` 链接和节点文件；如果 `/etc/asb` 中仍有其他文件则保留目录，不会删除 `/usr/local/bin/sing-box`、`/usr/local/bin/cloudflared` 或其他软件的服务。
 
 本项目不包含 Reality、临时隧道、Argo Json、Cloudflare API 建隧道、英文界面或其他协议脚本。

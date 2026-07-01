@@ -13,11 +13,11 @@
 
 安装后的主要文件：
 
-- `/etc/sba/argo-singbox.sh`
-- `/etc/sba/bin/sing-box`
-- `/etc/sba/bin/cloudflared`
-- `/etc/sba/sba.env`
-- `/etc/sba/nodes.conf`
+- `/etc/asb/argo-singbox.sh`
+- `/etc/asb/bin/sing-box`
+- `/etc/asb/bin/cloudflared`
+- `/etc/asb/asb.env`
+- `/etc/asb/nodes.conf`
 - `/usr/local/bin/asb`
 
 ## 产品边界
@@ -27,7 +27,7 @@
 - 仅支持 Debian/Ubuntu + systemd。
 - 仅支持 amd64 和 arm64。
 - 仅支持固定 Argo Token，不加入临时隧道、Argo JSON 或 Cloudflare API 建隧道。
-- 默认保留 VLESS、VMess、Trojan 各一个 WS 节点，并允许通过 `asb config` 动态添加、修改或删除这三种协议的 WS 节点。
+- 默认保留 VLESS、VMess、Trojan 各一个 WS 节点，并允许通过 `asb -c` 动态添加、修改或删除这三种协议的 WS 节点。
 - 允许节点按 inbound tag 与 WS 路径绑定独立 SOCKS5 出站。
 - 允许用户指定目标网址优先通过 Cloudflare 官方 WARP 客户端的本地 SOCKS5 proxy 出站；未命中时仍遵循节点 SOCKS5 或 direct。
 - 保持中文交互，不加入英文模式。
@@ -40,18 +40,18 @@
 
 - 仓库入口必须使用 `argo-singbox.sh`，不要重新创建 `sba.sh`。
 - 管理命令保持为 `asb`。
-- systemd 服务保持为 `sba-sing-box.service` 和 `sba-cloudflared.service`。
-- 核心二进制必须放在 `/etc/sba/bin/`，不得写入或删除 `/usr/local/bin/sing-box`、`/usr/local/bin/cloudflared`。
+- systemd 服务保持为 `asb-sing-box.service` 和 `asb-cloudflared.service`。
+- 核心二进制必须放在 `/etc/asb/bin/`，不得写入或删除 `/usr/local/bin/sing-box`、`/usr/local/bin/cloudflared`。
 - 新增项目文件优先使用 `argo-singbox` 或 `asb` 前缀，避免与原版 SBA 文件混淆。
 
 ## 安全约束
 
 安装、更新和卸载修改必须满足：
 
-- 不得无条件删除整个 `/etc/sba`。
+- 不得无条件删除整个 `/etc/asb`。
 - 修改已有配置前必须保留备份，仅重建本项目管理的文件。
-- 不得覆盖第三方同名 systemd 服务。只有带本项目 `Description=SBA ...` 标记的旧服务可以迁移。
-- 卸载必须检查 `/etc/sba/managed` 所有权标记。
+- 不得覆盖第三方同名 systemd 服务。只有带本项目 `Description=SBA ...` 或 `Description=Argo-Singbox ...` 标记的旧服务可以迁移。
+- 卸载必须检查 `/etc/asb/managed` 所有权标记。
 - 卸载只删除本项目私有核心、服务、Nginx 配置、`asb` 链接和节点文件。
 - 核心更新必须先比较版本并请求确认。
 - 下载必须包含连接超时、总超时、重试、GitHub 代理回退和 SHA256 校验。
@@ -66,11 +66,11 @@
 - `asb -n` 必须输出当前全部动态节点、二维码、原始订阅和 Base64 订阅地址。
 - 节点连接地址使用优选入口，WebSocket Host 与 TLS SNI 使用 Argo 域名。
 - 修改 Token 或优选入口后，应重新生成节点并执行健康检查。
-- 健康检查必须测试 `/etc/sba/nodes.conf` 中的全部 WS 路径，默认包括 `/sba-vl`、`/sba-vm`、`/sba-tr`。
-- `asb config` 必须集中管理 Token、Argo 域名、优选入口、本地端口、UUID、动态节点、节点 SOCKS5 出站和 WARP 目标网址。
+- 健康检查必须测试 `/etc/asb/nodes.conf` 中的全部 WS 路径，默认包括 `/argo-vl`、`/argo-vm`、`/argo-tr`。
+- `asb -c` 必须集中管理 Token、Argo 域名、优选入口、本地端口、UUID、动态节点、节点 SOCKS5 出站和 WARP 目标网址。
 - WARP 域名规则必须位于节点 SOCKS5 规则之前，保持 `目标网址 WARP → 节点 SOCKS5 → direct` 的优先级。
-- `asb doctor` 必须检查配置、Token、服务、动态端口、全部公网 WS 路径、核心版本、WARP（启用时）和最近日志。
-- `asb backup/restore` 必须校验 `/etc/sba/managed`；恢复失败必须自动回滚。
+- `asb -x` 必须检查配置、Token、服务、动态端口、全部公网 WS 路径、核心版本、WARP（启用时）和最近日志。
+- `asb -k/-l` 必须校验 `/etc/asb/managed`；恢复失败必须自动回滚。
 - 终端配色必须在非 TTY、`TERM=dumb` 或 `NO_COLOR` 环境自动关闭，不得向日志和管道写入 ANSI 控制符。
 - 状态诊断保持简洁，并包含公网 IP、脚本/核心版本、内存、systemd 状态、监听端口和最近错误。
 - 普通启停、查看节点、修改配置和卸载不得执行 `git pull` 或重新下载仓库脚本。
@@ -98,10 +98,10 @@ git diff --check
 
 ```bash
 nginx -t
-/etc/sba/bin/sing-box check -c /etc/sba/sing-box.json
-systemctl is-active nginx sba-sing-box sba-cloudflared
+/etc/asb/bin/sing-box check -c /etc/asb/sing-box.json
+systemctl is-active nginx asb-sing-box asb-cloudflared
 ss -lnt
-journalctl -u sba-sing-box -u sba-cloudflared -n 100 --no-pager
+journalctl -u asb-sing-box -u asb-cloudflared -n 100 --no-pager
 ```
 
 如果没有 VPS 环境，应明确列出未完成的运行时验证，不得用静态检查替代运行证明。

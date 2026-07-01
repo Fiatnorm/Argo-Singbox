@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.7.0"
+VERSION="2.8.0"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
-WORK_DIR="/etc/sba"
-ENV_FILE="${WORK_DIR}/sba.env"
+WORK_DIR="/etc/asb"
+WORK_DIR_NAME="${WORK_DIR##*/}"
+LEGACY_WORK_DIR="/etc/sba"
+ENV_FILE="${WORK_DIR}/asb.env"
 SING_BOX_CONFIG="${WORK_DIR}/sing-box.json"
 NGINX_CONFIG="/etc/nginx/conf.d/argo-singbox.conf"
 LEGACY_NGINX_CONFIG="/etc/nginx/conf.d/sba.conf"
@@ -18,8 +20,11 @@ MANAGED_FILE="${WORK_DIR}/managed"
 NODES_CONFIG="${WORK_DIR}/nodes.conf"
 SUB_FILE="${WORK_DIR}/subscription.txt"
 SUB_BASE64_FILE="${WORK_DIR}/subscription.base64"
-SING_SERVICE="sba-sing-box"
-ARGO_SERVICE="sba-cloudflared"
+SING_SERVICE="asb-sing-box"
+ARGO_SERVICE="asb-cloudflared"
+LEGACY_SING_SERVICE="sba-sing-box"
+LEGACY_ARGO_SERVICE="sba-cloudflared"
+LEGACY_MIGRATED=0
 
 DEFAULT_SERVER="skk.moe"
 DEFAULT_SERVER_PORT="443"
@@ -144,9 +149,9 @@ parse_socks5() {
 ensure_nodes_config() {
   [[ -f "$NODES_CONFIG" ]] && return
   cat >"$NODES_CONFIG" <<EOF
-vless-1|vless|/sba-vl|$((ORIGIN_PORT + 1))|
-vmess-1|vmess|/sba-vm|$((ORIGIN_PORT + 2))|
-trojan-1|trojan|/sba-tr|$((ORIGIN_PORT + 3))|
+vless-1|vless|/argo-vl|$((ORIGIN_PORT + 1))|
+vmess-1|vmess|/argo-vm|$((ORIGIN_PORT + 2))|
+trojan-1|trojan|/argo-tr|$((ORIGIN_PORT + 3))|
 EOF
   chmod 600 "$NODES_CONFIG"
 }
@@ -600,9 +605,73 @@ assert_service_names_available() {
   done
 }
 
+is_project_service() {
+  local unit_file="$1"
+  [[ -f "$unit_file" ]] &&
+    grep -Eq '^Description=(SBA|Argo-Singbox) ' "$unit_file"
+}
+
+migrate_legacy_install() {
+  local migration_backup temp legacy_target
+  [[ -d "$LEGACY_WORK_DIR" ]] || return 0
+  if [[ -L "$LEGACY_WORK_DIR" ]]; then
+    legacy_target="$(readlink -f "$LEGACY_WORK_DIR" 2>/dev/null || true)"
+    if [[ "$legacy_target" == "$WORK_DIR" && -f "$MANAGED_FILE" ]]; then
+      LEGACY_MIGRATED=1
+      return 0
+    fi
+    die "检测到未知旧目录符号链接 ${LEGACY_WORK_DIR}，拒绝自动迁移。"
+  fi
+  [[ -f "${LEGACY_WORK_DIR}/managed" ]] ||
+    die "检测到 ${LEGACY_WORK_DIR} 但缺少项目所有权标记，拒绝自动迁移。"
+  [[ ! -e "$WORK_DIR" ]] ||
+    die "${WORK_DIR} 与旧目录 ${LEGACY_WORK_DIR} 同时存在，请先人工核对，拒绝自动覆盖。"
+  mv "$LEGACY_WORK_DIR" "$WORK_DIR"
+  ln -s "$WORK_DIR" "$LEGACY_WORK_DIR"
+  migration_backup="${WORK_DIR}/backup/pre-asb-namespace"
+  install -d -m 700 "$migration_backup"
+  [[ -f "${WORK_DIR}/sba.env" ]] && cp -a "${WORK_DIR}/sba.env" "$migration_backup/"
+  [[ -f "$NODES_CONFIG" ]] && cp -a "$NODES_CONFIG" "$migration_backup/"
+  if [[ -f "${WORK_DIR}/sba.env" ]]; then
+    mv "${WORK_DIR}/sba.env" "$ENV_FILE"
+  fi
+  if [[ -f "$NODES_CONFIG" ]]; then
+    temp="$(mktemp)"
+    sed -e 's#|/sba-vl|#|/argo-vl|#g' \
+      -e 's#|/sba-vm|#|/argo-vm|#g' \
+      -e 's#|/sba-tr|#|/argo-tr|#g' "$NODES_CONFIG" >"$temp"
+    install -m 600 "$temp" "$NODES_CONFIG"
+    rm -f "$temp"
+  fi
+  LEGACY_MIGRATED=1
+  green "已将旧安装目录迁移为 ${WORK_DIR}。"
+}
+
+remove_legacy_services() {
+  local service unit_file
+  for service in "$LEGACY_SING_SERVICE" "$LEGACY_ARGO_SERVICE"; do
+    unit_file="/etc/systemd/system/${service}.service"
+    [[ -e "$unit_file" ]] || continue
+    if is_project_service "$unit_file"; then
+      systemctl disable --now "$service" 2>/dev/null || true
+      rm -f "$unit_file"
+    else
+      yellow "保留非本项目旧服务：${service}.service"
+    fi
+  done
+}
+
+remove_legacy_symlink() {
+  local target
+  [[ -L "$LEGACY_WORK_DIR" ]] || return 0
+  target="$(readlink -f "$LEGACY_WORK_DIR" 2>/dev/null || true)"
+  [[ "$target" == "$WORK_DIR" ]] && rm -f "$LEGACY_WORK_DIR"
+}
+
 install_project() {
   local installer_source work_backup="" sing_stage argo_stage file
   require_root
+  migrate_legacy_install
   load_env
   prompt_install_values
   installer_source="$(mktemp)"
@@ -645,8 +714,20 @@ install_project() {
   rm -f "$installer_source"
   systemctl daemon-reload
   systemctl enable nginx "$SING_SERVICE" "$ARGO_SERVICE"
+  if ((LEGACY_MIGRATED)); then
+    systemctl stop "$LEGACY_SING_SERVICE" "$LEGACY_ARGO_SERVICE" 2>/dev/null || true
+  fi
   systemctl restart nginx "$SING_SERVICE" "$ARGO_SERVICE"
-  wait_for_services || true
+  if wait_for_services; then
+    remove_legacy_services
+    remove_legacy_symlink
+  else
+    yellow "新服务尚未全部启动，已保留旧服务文件以便排查。"
+    if ((LEGACY_MIGRATED)); then
+      systemctl restart "$LEGACY_SING_SERVICE" "$LEGACY_ARGO_SERVICE" 2>/dev/null || true
+    fi
+  fi
+  systemctl daemon-reload
   sync_argo_domain
   generate_nodes
   rm -f "$LEGACY_NODES_FILE"
@@ -677,7 +758,7 @@ apply_runtime_config() {
     return 0
   fi
   red "新配置验证失败，正在恢复。"
-  [[ -f "$snapshot/sba.env" ]] && install -m 600 "$snapshot/sba.env" "$ENV_FILE"
+  [[ -f "$snapshot/asb.env" ]] && install -m 600 "$snapshot/asb.env" "$ENV_FILE"
   [[ -f "$snapshot/nodes.conf" ]] && install -m 600 "$snapshot/nodes.conf" "$NODES_CONFIG"
   [[ -f "$snapshot/sing-box.json" ]] && install -m 600 "$snapshot/sing-box.json" "$SING_BOX_CONFIG"
   [[ -f "$snapshot/argo-singbox.conf" ]] && install -m 644 "$snapshot/argo-singbox.conf" "$NGINX_CONFIG"
@@ -864,7 +945,7 @@ backup_project() {
   require_root
   [[ -f "$MANAGED_FILE" ]] || die "缺少项目所有权标记，拒绝备份。"
   [[ "$output" == *.tar.gz ]] || die "备份文件必须以 .tar.gz 结尾。"
-  tar -C /etc -czf "${output}.tmp" sba
+  tar -C "$(dirname "$WORK_DIR")" -czf "${output}.tmp" "$WORK_DIR_NAME"
   mv -f "${output}.tmp" "$output"
   chmod 600 "$output"
   green "备份完成：${output}"
@@ -875,16 +956,16 @@ restore_project() {
   require_root
   [[ -n "$archive" ]] || read -rp "请输入备份文件路径: " archive
   [[ -f "$archive" ]] || die "备份文件不存在：${archive}"
-  [[ -f "$MANAGED_FILE" ]] || die "当前 /etc/sba 缺少项目所有权标记，拒绝覆盖。"
+  [[ -f "$MANAGED_FILE" ]] || die "当前 ${WORK_DIR} 缺少项目所有权标记，拒绝覆盖。"
   stage="$(mktemp -d)"
   tar -xzf "$archive" -C "$stage"
-  [[ -f "$stage/sba/managed" && -f "$stage/sba/sba.env" &&
-    -x "$stage/sba/bin/sing-box" && -x "$stage/sba/bin/cloudflared" ]] ||
+  [[ -f "$stage/${WORK_DIR_NAME}/managed" && -f "$stage/${WORK_DIR_NAME}/asb.env" &&
+    -x "$stage/${WORK_DIR_NAME}/bin/sing-box" && -x "$stage/${WORK_DIR_NAME}/bin/cloudflared" ]] ||
     { rm -rf "$stage"; die "备份结构或所有权标记无效。"; }
-  old_dir="/etc/sba.restore-old-$(date +%Y%m%d-%H%M%S)"
+  old_dir="${WORK_DIR}.restore-old-$(date +%Y%m%d-%H%M%S)"
   systemctl stop "$SING_SERVICE" "$ARGO_SERVICE" 2>/dev/null || true
   mv "$WORK_DIR" "$old_dir"
-  if mv "$stage/sba" "$WORK_DIR"; then
+  if mv "$stage/${WORK_DIR_NAME}" "$WORK_DIR"; then
     rm -rf "$stage"
     load_env
     ensure_nodes_config
@@ -1084,8 +1165,8 @@ menu() {
     section "维护工具"
     menu_item 7 "安装 / 更新 ${PROJECT_NAME}" "${COMMAND_NAME} -i"
     menu_item 8 "更新 Argo / Sing-box 核心" "${COMMAND_NAME} -v"
-    menu_item 9 "备份 /etc/sba" "${COMMAND_NAME} -k"
-    menu_item 10 "恢复 /etc/sba" "${COMMAND_NAME} -l"
+    menu_item 9 "备份 ${WORK_DIR}" "${COMMAND_NAME} -k"
+    menu_item 10 "恢复 ${WORK_DIR}" "${COMMAND_NAME} -l"
     menu_item 11 "第三方 BBR / DD 工具" "${COMMAND_NAME} -b"
     menu_item 12 "卸载 ${PROJECT_NAME}" "${COMMAND_NAME} -u"
     menu_item 0 "退出"
