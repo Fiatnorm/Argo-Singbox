@@ -27,7 +27,7 @@
 - 仅支持 Debian/Ubuntu + systemd。
 - 仅支持 amd64 和 arm64。
 - 仅支持固定 Argo Token，不加入临时隧道、Argo JSON 或 Cloudflare API 建隧道。
-- 默认保留 VLESS 双路径、VMess、Trojan 四个 WS 节点，并允许通过 `asb config` 动态添加、修改或删除这三种协议的 WS 节点。
+- 默认保留 VLESS、VMess、Trojan 各一个 WS 节点，并允许通过 `asb config` 动态添加、修改或删除这三种协议的 WS 节点。
 - 允许节点按 inbound tag 与 WS 路径绑定独立 SOCKS5 出站。
 - 允许用户指定目标网址优先通过 Cloudflare 官方 WARP 客户端的本地 SOCKS5 proxy 出站；未命中时仍遵循节点 SOCKS5 或 direct。
 - 保持中文交互，不加入英文模式。
@@ -66,7 +66,7 @@
 - `asb -n` 必须输出当前全部动态节点、二维码、原始订阅和 Base64 订阅地址。
 - 节点连接地址使用优选入口，WebSocket Host 与 TLS SNI 使用 Argo 域名。
 - 修改 Token 或优选入口后，应重新生成节点并执行健康检查。
-- 健康检查必须测试 `/etc/sba/nodes.conf` 中的全部 WS 路径，默认包括 `/sba-vl`、`/sba-vl2`、`/sba-vm`、`/sba-tr`。
+- 健康检查必须测试 `/etc/sba/nodes.conf` 中的全部 WS 路径，默认包括 `/sba-vl`、`/sba-vm`、`/sba-tr`。
 - `asb config` 必须集中管理 Token、Argo 域名、优选入口、本地端口、UUID、动态节点、节点 SOCKS5 出站和 WARP 目标网址。
 - WARP 域名规则必须位于节点 SOCKS5 规则之前，保持 `目标网址 WARP → 节点 SOCKS5 → direct` 的优先级。
 - `asb doctor` 必须检查配置、Token、服务、动态端口、全部公网 WS 路径、核心版本、WARP（启用时）和最近日志。

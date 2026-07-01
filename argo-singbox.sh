@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.6.0"
+VERSION="2.7.0"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
 WORK_DIR="/etc/sba"
 ENV_FILE="${WORK_DIR}/sba.env"
 SING_BOX_CONFIG="${WORK_DIR}/sing-box.json"
-NGINX_CONFIG="/etc/nginx/conf.d/sba.conf"
-NODES_FILE="/root/sba_nodes.txt"
+NGINX_CONFIG="/etc/nginx/conf.d/argo-singbox.conf"
+LEGACY_NGINX_CONFIG="/etc/nginx/conf.d/sba.conf"
+NODES_FILE="/root/argo-singbox_nodes.txt"
+LEGACY_NODES_FILE="/root/sba_nodes.txt"
 LOCAL_SCRIPT="${WORK_DIR}/argo-singbox.sh"
 BIN_DIR="${WORK_DIR}/bin"
 BACKUP_DIR="${WORK_DIR}/backup"
@@ -24,29 +26,29 @@ DEFAULT_SERVER_PORT="443"
 DEFAULT_SING_BOX_VERSION="1.13.0-rc.4"
 SING_BOX_FORCE_VERSION_URL="https://raw.githubusercontent.com/fscarmen/sing-box/refs/heads/main/force_version"
 
-VLESS_PORT=3011
-VMESS_PORT=3012
-TROJAN_PORT=3013
-VLESS2_PORT=3015
-ORIGIN_PORT=3010
+DEFAULT_ORIGIN_PORT=3010
+ORIGIN_PORT="$DEFAULT_ORIGIN_PORT"
 
 if [[ -t 1 && -z "${NO_COLOR:-}" && "${TERM:-dumb}" != "dumb" ]]; then
-  C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'; C_DIM=$'\033[2m'
+  C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'; C_DIM=$'\033[2m'; C_UNDERLINE=$'\033[4m'
   C_RED=$'\033[31m'; C_GREEN=$'\033[32m'; C_YELLOW=$'\033[33m'
-  C_BLUE=$'\033[34m'; C_MAGENTA=$'\033[35m'; C_CYAN=$'\033[36m'
+  C_BLUE=$'\033[34m'; C_MAGENTA=$'\033[35m'; C_CYAN=$'\033[36m'; C_WHITE=$'\033[37m'
+  C_BRIGHT_RED=$'\033[91m'; C_BRIGHT_GREEN=$'\033[92m'; C_BRIGHT_YELLOW=$'\033[93m'
+  C_BRIGHT_BLUE=$'\033[94m'; C_BRIGHT_MAGENTA=$'\033[95m'; C_BRIGHT_CYAN=$'\033[96m'
 else
-  C_RESET=""; C_BOLD=""; C_DIM=""; C_RED=""; C_GREEN=""; C_YELLOW=""
-  C_BLUE=""; C_MAGENTA=""; C_CYAN=""
+  C_RESET=""; C_BOLD=""; C_DIM=""; C_UNDERLINE=""; C_RED=""; C_GREEN=""; C_YELLOW=""
+  C_BLUE=""; C_MAGENTA=""; C_CYAN=""; C_WHITE=""; C_BRIGHT_RED=""; C_BRIGHT_GREEN=""
+  C_BRIGHT_YELLOW=""; C_BRIGHT_BLUE=""; C_BRIGHT_MAGENTA=""; C_BRIGHT_CYAN=""
 fi
-green() { printf '%s✓ %s%s\n' "$C_GREEN" "$*" "$C_RESET"; }
-yellow() { printf '%s! %s%s\n' "$C_YELLOW" "$*" "$C_RESET"; }
-red() { printf '%s✗ %s%s\n' "$C_RED" "$*" "$C_RESET" >&2; }
-info() { printf '%s• %s%s\n' "$C_CYAN" "$*" "$C_RESET"; }
-section() { printf '\n%s%s%s%s\n' "$C_BOLD" "$C_BLUE" "$*" "$C_RESET"; }
-prompt() { printf '%s› %s%s' "$C_MAGENTA" "$*" "$C_RESET"; }
+green() { printf '%s✓ %s%s\n' "$C_BRIGHT_GREEN" "$*" "$C_RESET"; }
+yellow() { printf '%s! %s%s\n' "$C_BRIGHT_YELLOW" "$*" "$C_RESET"; }
+red() { printf '%s✗ %s%s\n' "$C_BRIGHT_RED" "$*" "$C_RESET" >&2; }
+info() { printf '%s• %s%s\n' "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
+section() { printf '\n%s%s%s%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET"; }
+prompt() { printf '%s› %s%s' "$C_BRIGHT_MAGENTA" "$*" "$C_RESET"; }
 menu_item() {
-  printf '%s%2s%s  %s%s%s%s%s%s\n' "$C_CYAN" "$1" "$C_RESET" "$C_BOLD" "$2" \
-    "$C_RESET" "$C_DIM" "${3:+  ($3)}" "$C_RESET"
+  printf '%s%2s%s  %s%s%s%s%s%s\n' "$C_BRIGHT_CYAN" "$1" "$C_RESET" "$C_WHITE" "$2" \
+    "$C_RESET" "$C_DIM" "${3:+  [$3]}" "$C_RESET"
 }
 die() { red "$*"; exit 1; }
 
@@ -70,7 +72,7 @@ load_env() {
   SERVER="${SERVER:-$DEFAULT_SERVER}"
   SERVER_PORT="${SERVER_PORT:-$DEFAULT_SERVER_PORT}"
   ARGO_TOKEN="${ARGO_TOKEN:-}"
-  ORIGIN_PORT="${ORIGIN_PORT:-3010}"
+  ORIGIN_PORT="${ORIGIN_PORT:-$DEFAULT_ORIGIN_PORT}"
   WARP_ENABLED="${WARP_ENABLED:-0}"
   WARP_PROXY_PORT="${WARP_PROXY_PORT:-40000}"
   WARP_DOMAINS="${WARP_DOMAINS:-}"
@@ -142,12 +144,20 @@ parse_socks5() {
 ensure_nodes_config() {
   [[ -f "$NODES_CONFIG" ]] && return
   cat >"$NODES_CONFIG" <<EOF
-vless-1|vless|/sba-vl|${VLESS_PORT}|
-vless-2|vless|/sba-vl2|${VLESS2_PORT}|
-vmess-1|vmess|/sba-vm|${VMESS_PORT}|
-trojan-1|trojan|/sba-tr|${TROJAN_PORT}|
+vless-1|vless|/sba-vl|$((ORIGIN_PORT + 1))|
+vmess-1|vmess|/sba-vm|$((ORIGIN_PORT + 2))|
+trojan-1|trojan|/sba-tr|$((ORIGIN_PORT + 3))|
 EOF
   chmod 600 "$NODES_CONFIG"
+}
+
+next_node_port() {
+  local highest="$ORIGIN_PORT" port
+  while IFS='|' read -r _ _ _ port _; do
+    valid_port "$port" && ((10#$port > 10#$highest)) && highest="$port"
+  done <"$NODES_CONFIG"
+  ((10#$highest < 65535)) || die "没有可用的后续节点端口。"
+  printf '%s\n' "$((10#$highest + 1))"
 }
 
 validate_nodes_config() {
@@ -364,11 +374,11 @@ EOF
         default_type text/plain;
         alias ${SUB_BASE64_FILE};
     }
-    location = /sba-sub {
+    location = /asb-sub {
         default_type text/plain;
         alias ${SUB_FILE};
     }
-    location = /sba-sub-base64 {
+    location = /asb-sub-base64 {
         default_type text/plain;
         alias ${SUB_BASE64_FILE};
     }
@@ -381,7 +391,7 @@ EOF
 write_services() {
   cat >"/etc/systemd/system/${SING_SERVICE}.service" <<EOF
 [Unit]
-Description=SBA sing-box
+Description=Argo-Singbox sing-box
 After=network-online.target
 Wants=network-online.target
 
@@ -402,7 +412,7 @@ EOF
 
   cat >"/etc/systemd/system/${ARGO_SERVICE}.service" <<EOF
 [Unit]
-Description=SBA Cloudflare 固定隧道
+Description=Argo-Singbox Cloudflare 固定隧道
 After=network-online.target nginx.service
 Wants=network-online.target
 
@@ -573,14 +583,14 @@ assert_service_names_available() {
   local unit marker
   for unit in "$SING_SERVICE" "$ARGO_SERVICE"; do
     marker="/etc/systemd/system/${unit}.service"
-    if [[ -e "$marker" ]] && ! grep -q "^Description=SBA " "$marker"; then
+    if [[ -e "$marker" ]] && ! grep -Eq "^Description=(SBA|Argo-Singbox) " "$marker"; then
       die "检测到非本项目服务 ${unit}.service，安装已停止，未覆盖现有服务。"
     fi
   done
   for unit in sing-box cloudflared; do
     marker="/etc/systemd/system/${unit}.service"
     [[ -e "$marker" ]] || continue
-    if grep -q "^Description=SBA " "$marker"; then
+    if grep -Eq "^Description=(SBA|Argo-Singbox) " "$marker"; then
       yellow "检测到本项目旧版 ${unit}.service，将迁移为项目专属服务名。"
       systemctl disable --now "$unit" 2>/dev/null || true
       rm -f "$marker"
@@ -590,7 +600,7 @@ assert_service_names_available() {
   done
 }
 
-install_sba() {
+install_project() {
   local installer_source work_backup="" sing_stage argo_stage file
   require_root
   load_env
@@ -602,7 +612,8 @@ install_sba() {
   assert_service_names_available
   install -d -m 755 "$WORK_DIR" "$BIN_DIR"
   install -d -m 700 "$BACKUP_DIR"
-  for file in "$ENV_FILE" "$NODES_CONFIG" "$SING_BOX_CONFIG" "$LOCAL_SCRIPT"; do
+  for file in "$ENV_FILE" "$NODES_CONFIG" "$SING_BOX_CONFIG" "$NGINX_CONFIG" \
+    "$LEGACY_NGINX_CONFIG" "$LOCAL_SCRIPT"; do
     if [[ -f "$file" ]]; then
       if [[ -z "$work_backup" ]]; then
         work_backup="${BACKUP_DIR}/config-previous"
@@ -623,6 +634,11 @@ install_sba() {
   printf 'version=%s\n' "$VERSION" >"$MANAGED_FILE"
   save_env
   write_sing_box_config
+  if [[ -f "$LEGACY_NGINX_CONFIG" ]] &&
+    grep -q '/etc/sba/' "$LEGACY_NGINX_CONFIG" &&
+    grep -qE '(/sba-sub|/sba-vl|/sba-vm|/sba-tr)' "$LEGACY_NGINX_CONFIG"; then
+    rm -f "$LEGACY_NGINX_CONFIG"
+  fi
   write_nginx_config
   write_services
   create_local_command "$installer_source"
@@ -633,49 +649,13 @@ install_sba() {
   wait_for_services || true
   sync_argo_domain
   generate_nodes
+  rm -f "$LEGACY_NODES_FILE"
   if health_check; then
-    green "SBA 安装 / 更新完成，核心链路检查通过。节点文件：${NODES_FILE}"
+    green "${PROJECT_NAME} 安装 / 更新完成，核心链路检查通过。节点文件：${NODES_FILE}"
   else
-    yellow "SBA 文件已安装，但健康检查未全部通过；请先处理上述错误再使用节点。"
+    yellow "${PROJECT_NAME} 文件已安装，但健康检查未全部通过；请先处理上述错误再使用节点。"
   fi
   cat "$NODES_FILE"
-}
-
-change_token() {
-  require_root
-  load_env
-  [[ -f "$ENV_FILE" ]] || die "SBA 尚未安装。"
-  read -rp "请输入新的 Argo Token: " ARGO_TOKEN
-  [[ -n "$ARGO_TOKEN" ]] || die "Argo Token 不能为空。"
-  save_env
-  write_services
-  systemctl daemon-reload
-  systemctl restart "$ARGO_SERVICE"
-  wait_for_services || true
-  sync_argo_domain
-  generate_nodes
-  if health_check; then
-    green "Argo Token 已更新，节点与运行状态已同步。"
-  else
-    yellow "Argo Token 已更新，但链路检查未全部通过。"
-  fi
-}
-
-change_server() {
-  local endpoint
-  require_root
-  load_env
-  [[ -f "$ENV_FILE" ]] || die "SBA 尚未安装。"
-  read -rp "请输入新的 Cloudflare 优选入口 域名/IP:端口 [${SERVER}:${SERVER_PORT}]: " endpoint
-  [[ -z "$endpoint" ]] && return 0
-  parse_endpoint "$endpoint"
-  save_env
-  generate_nodes
-  if health_check; then
-    green "Cloudflare 优选入口已更新，节点与运行状态已同步。"
-  else
-    yellow "Cloudflare 优选入口已更新，但链路检查未全部通过。"
-  fi
 }
 
 begin_config_change() {
@@ -700,7 +680,7 @@ apply_runtime_config() {
   [[ -f "$snapshot/sba.env" ]] && install -m 600 "$snapshot/sba.env" "$ENV_FILE"
   [[ -f "$snapshot/nodes.conf" ]] && install -m 600 "$snapshot/nodes.conf" "$NODES_CONFIG"
   [[ -f "$snapshot/sing-box.json" ]] && install -m 600 "$snapshot/sing-box.json" "$SING_BOX_CONFIG"
-  [[ -f "$snapshot/sba.conf" ]] && install -m 644 "$snapshot/sba.conf" "$NGINX_CONFIG"
+  [[ -f "$snapshot/argo-singbox.conf" ]] && install -m 644 "$snapshot/argo-singbox.conf" "$NGINX_CONFIG"
   [[ -f "$snapshot/${SING_SERVICE}.service" ]] && install -m 644 "$snapshot/${SING_SERVICE}.service" "/etc/systemd/system/${SING_SERVICE}.service"
   [[ -f "$snapshot/${ARGO_SERVICE}.service" ]] && install -m 644 "$snapshot/${ARGO_SERVICE}.service" "/etc/systemd/system/${ARGO_SERVICE}.service"
   rm -rf "$snapshot"
@@ -718,13 +698,15 @@ list_node_profiles() {
 }
 
 add_node_profile() {
-  local tag protocol path port socks
+  local tag protocol path port socks default_port
   begin_config_change
+  default_port="$(next_node_port)"
   read -rp "节点标签（字母/数字/_/-）: " tag
   read -rp "协议（vless/vmess/trojan）: " protocol
   protocol="${protocol,,}"
   read -rp "WS 路径（以 / 开头）: " path
-  read -rp "本地监听端口: " port
+  read -rp "本地监听端口 [${default_port}]: " port
+  port="${port:-$default_port}"
   read -rp "SOCKS5 出站（主机:端口:用户名:密码，留空为直连）: " socks
   [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || die "节点标签格式错误。"
   [[ "$protocol" =~ ^(vless|vmess|trojan)$ ]] || die "协议不受支持。"
@@ -737,6 +719,24 @@ add_node_profile() {
   printf '%s|%s|%s|%s|%s\n' "$tag" "$protocol" "$path" "$port" "$socks" >>"$NODES_CONFIG"
   validate_nodes_config
   apply_runtime_config
+}
+
+change_origin_port() {
+  local value temp next_port
+  begin_config_change
+  read -rp "新的 Argo Tunnel 回源端口 [${ORIGIN_PORT}]: " value
+  value="${value:-$ORIGIN_PORT}"
+  valid_port "$value" || die "端口格式错误。"
+  next_port="$((10#$value + 1))"
+  ((next_port + $(wc -l <"$NODES_CONFIG") - 1 <= 65535)) ||
+    die "端口过大，无法为全部节点顺延监听端口。"
+  temp="$(mktemp)"
+  awk -F'|' -v OFS='|' -v port="$next_port" '{$4=port++; print}' "$NODES_CONFIG" >"$temp"
+  install -m 600 "$temp" "$NODES_CONFIG"
+  rm -f "$temp"
+  ORIGIN_PORT="$value"
+  apply_runtime_config
+  info "Cloudflare Public Hostname 的 Service 请同步改为 http://localhost:${ORIGIN_PORT}。"
 }
 
 delete_node_profile() {
@@ -824,37 +824,42 @@ manage_config() {
   [[ -f "$ENV_FILE" ]] || die "${PROJECT_NAME} 尚未安装。"
   ensure_nodes_config
   while true; do
-    section "配置管理"
-    menu_item 1 "修改 Token"
-    menu_item 2 "修改 Argo 域名"
-    menu_item 3 "修改优选入口"
-    menu_item 4 "修改 Argo 本地入口端口"
-    menu_item 5 "修改全局 UUID"
-    menu_item 6 "添加 VLESS/VMess/Trojan WS 节点及可选 SOCKS5 出站"
-    menu_item 7 "修改节点路径、端口或出站"
+    section "基础配置"
+    menu_item 1 "Token / Argo 域名"
+    menu_item 2 "Cloudflare 优选入口"
+    menu_item 3 "Argo Tunnel 回源端口（节点端口依次顺延）"
+    menu_item 4 "全局 UUID"
+    section "节点与分流"
+    menu_item 5 "查看节点"
+    menu_item 6 "添加节点"
+    menu_item 7 "修改节点"
     menu_item 8 "删除节点"
-    menu_item 9 "查看节点与出站"
-    menu_item 10 "配置按网址优先使用 Cloudflare WARP"
+    menu_item 9 "WARP 网址分流"
     menu_item 0 "返回"
     read -rp "请选择: " choice
     case "$choice" in
-      1) begin_config_change; read -rp "新 Token: " value; [[ -n "$value" ]] || die "Token 不能为空。"; ARGO_TOKEN="$value"; apply_runtime_config ;;
-      2) begin_config_change; read -rp "新 Argo 域名: " value; [[ "$value" =~ ^[A-Za-z0-9.-]+$ ]] || die "域名格式错误。"; ARGO_DOMAIN="$value"; apply_runtime_config ;;
-      3) begin_config_change; read -rp "新优选入口 域名/IP:端口: " endpoint; parse_endpoint "$endpoint"; apply_runtime_config ;;
-      4) begin_config_change; read -rp "新本地入口端口 [${ORIGIN_PORT}]: " value; valid_port "$value" || die "端口格式错误。"; ORIGIN_PORT="$value"; apply_runtime_config ;;
-      5) begin_config_change; read -rp "新 UUID: " value; valid_uuid "$value" || die "UUID 格式错误。"; UUID="$value"; apply_runtime_config ;;
+      1)
+        begin_config_change
+        read -rp "新 Token [留空保持]: " value; ARGO_TOKEN="${value:-$ARGO_TOKEN}"
+        read -rp "新 Argo 域名 [${ARGO_DOMAIN}]: " value; ARGO_DOMAIN="${value:-$ARGO_DOMAIN}"
+        [[ -n "$ARGO_TOKEN" && "$ARGO_DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || die "Token 或域名无效。"
+        apply_runtime_config
+        ;;
+      2) begin_config_change; read -rp "新优选入口 域名/IP:端口: " endpoint; parse_endpoint "$endpoint"; apply_runtime_config ;;
+      3) change_origin_port ;;
+      4) begin_config_change; read -rp "新 UUID: " value; valid_uuid "$value" || die "UUID 格式错误。"; UUID="$value"; apply_runtime_config ;;
+      5) list_node_profiles ;;
       6) add_node_profile ;;
       7) edit_node_profile ;;
       8) delete_node_profile ;;
-      9) list_node_profiles ;;
-      10) configure_warp ;;
+      9) configure_warp ;;
       0) return ;;
-      *) yellow "请输入 0 到 10。" ;;
+      *) yellow "请输入 0 到 9。" ;;
     esac
   done
 }
 
-backup_sba() {
+backup_project() {
   local output="${1:-/root/asb-backup-$(date +%Y%m%d-%H%M%S).tar.gz}"
   require_root
   [[ -f "$MANAGED_FILE" ]] || die "缺少项目所有权标记，拒绝备份。"
@@ -865,7 +870,7 @@ backup_sba() {
   green "备份完成：${output}"
 }
 
-restore_sba() {
+restore_project() {
   local archive="${1:-}" stage old_dir
   require_root
   [[ -n "$archive" ]] || read -rp "请输入备份文件路径: " archive
@@ -903,10 +908,15 @@ restore_sba() {
 }
 
 doctor() {
-  local failed=0 token_in_unit=0 warp_target
+  local failed=0 token_in_unit=0 warp_target ip memory
   require_root
   load_env
   ensure_nodes_config
+  ip="$(curl -4fsS --connect-timeout 3 --max-time 5 https://api.ipify.org 2>/dev/null ||
+    hostname -I 2>/dev/null | awk '{print $1}')"
+  memory="$(free -m | awk '/^Mem:/{printf "%s/%s MiB (%.0f%%)",$3,$2,$3*100/$2}')"
+  printf '公网 IP：%s\n脚本版本：v%s\n内存：%s\n优选入口：%s:%s\nArgo 回源：127.0.0.1:%s\n' \
+    "${ip:-未知}" "$VERSION" "${memory:-未知}" "${SERVER:-未知}" "${SERVER_PORT:-未知}" "$ORIGIN_PORT"
   printf '配置文件：'
   if validate_nodes_config && valid_uuid "$UUID" && [[ -n "$ARGO_DOMAIN" && -n "$ARGO_TOKEN" ]]; then green "有效"; else red "无效"; failed=1; fi
   if "$BIN_DIR/sing-box" check -c "$SING_BOX_CONFIG" >/dev/null 2>&1; then green "Sing-box 配置：有效"; else red "Sing-box 配置：无效"; failed=1; fi
@@ -944,7 +954,7 @@ show_nodes() {
   local node index=0
   load_env
   [[ -f "$NODES_FILE" ]] || die "节点文件不存在，请先安装。"
-  printf '原始订阅：https://%s/sba-sub\nBase64 订阅：https://%s/sba-sub-base64\nUUID 订阅：https://%s/%s\n\n' \
+  printf '原始订阅：https://%s/asb-sub\nBase64 订阅：https://%s/asb-sub-base64\nUUID 订阅：https://%s/%s\n\n' \
     "$ARGO_DOMAIN" "$ARGO_DOMAIN" "$ARGO_DOMAIN" "$UUID"
   while IFS= read -r node; do
     ((index+=1))
@@ -1034,44 +1044,20 @@ manage_bbr() {
     https://raw.githubusercontent.com/ylx2016/Linux-NetSpeed/master/tcp.sh)
 }
 
-show_status() {
-  local ip memory service port state
-  load_env
-  ip="$(curl -4fsS --connect-timeout 3 --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')"
-  memory="$(free -m | awk '/^Mem:/{printf "%s/%s MiB (%.0f%%)",$3,$2,$3*100/$2}')"
-  printf '%-14s %s\n' "公网 IP" "${ip:-未知}" "脚本版本" "v${VERSION}" \
-    "Sing-box" "$(local_sing_box_version || echo 未安装)" \
-    "Cloudflared" "$(local_cloudflared_version || echo 未安装)" \
-    "内存" "${memory:-未知}" "优选入口" "${SERVER:-未知}:${SERVER_PORT:-未知}"
-  printf '\n服务健康：\n'
-  for service in nginx "$SING_SERVICE" "$ARGO_SERVICE"; do
-    state="$(systemctl is-active "$service" 2>/dev/null || true)"
-    printf '  %-20s %s\n' "$service" "${state:-unknown}"
-  done
-  printf '\n监听端口：\n'
-  ensure_nodes_config
-  while read -r port; do
-    ss -lntH "sport = :${port}" | grep -q . && state="LISTEN" || state="CLOSED"
-    printf '  %-6s %s\n' "$port" "$state"
-  done < <(printf '%s\n' "$ORIGIN_PORT"; cut -d'|' -f4 "$NODES_CONFIG")
-  printf '\n最近错误：\n'
-  journalctl -u "$SING_SERVICE" -u "$ARGO_SERVICE" -p warning -n 8 --no-pager -o cat 2>/dev/null || true
-  printf '\nWARP：%s\n' "$([[ "$WARP_ENABLED" == "1" ]] && printf '启用（%s，端口 %s）' "$WARP_DOMAINS" "$WARP_PROXY_PORT" || printf '未启用')"
-}
-
 restart_services() {
   require_root
   systemctl restart nginx "$SING_SERVICE" "$ARGO_SERVICE"
   green "服务已重启。"
 }
 
-uninstall_sba() {
+uninstall_project() {
   local legacy_link target
   require_root
   [[ -f "$MANAGED_FILE" ]] || die "缺少项目所有权标记，拒绝自动卸载；请人工核对 ${WORK_DIR}。"
   systemctl disable --now "$SING_SERVICE" "$ARGO_SERVICE" 2>/dev/null || true
   rm -f "/etc/systemd/system/${SING_SERVICE}.service" "/etc/systemd/system/${ARGO_SERVICE}.service"
-  rm -f "$NGINX_CONFIG" "/usr/local/bin/${COMMAND_NAME}" "$NODES_FILE"
+  rm -f "$NGINX_CONFIG" "$LEGACY_NGINX_CONFIG" "/usr/local/bin/${COMMAND_NAME}" \
+    "$NODES_FILE" "$LEGACY_NODES_FILE"
   for legacy_link in /usr/local/bin/sb /usr/local/bin/argo-singbox; do
     [[ -L "$legacy_link" ]] || continue
     target="$(readlink -f "$legacy_link" 2>/dev/null || true)"
@@ -1082,47 +1068,43 @@ uninstall_sba() {
   rmdir "$BIN_DIR" "$BACKUP_DIR" "$WORK_DIR" 2>/dev/null || true
   systemctl daemon-reload
   systemctl restart nginx 2>/dev/null || true
-  green "SBA 已卸载。"
+  green "${PROJECT_NAME} 已卸载。"
 }
 
 menu() {
   while true; do
     section "${PROJECT_NAME} v${VERSION}"
+    section "日常管理"
     menu_item 1 "查看节点信息" "${COMMAND_NAME} -n"
     menu_item 2 "开启/关闭 Argo" "${COMMAND_NAME} -a"
     menu_item 3 "开启/关闭 Sing-box" "${COMMAND_NAME} -s"
-    menu_item 4 "更换 Argo 隧道 Token" "${COMMAND_NAME} -t"
-    menu_item 5 "更换优选域名、IP 或端口" "${COMMAND_NAME} -d"
-    menu_item 6 "同步 Argo 和 Sing-box 至最新版本" "${COMMAND_NAME} -v"
-    menu_item 7 "升级内核、安装 BBR、DD 脚本" "${COMMAND_NAME} -b"
-    menu_item 8 "卸载" "${COMMAND_NAME} -u"
-    menu_item 9 "安装 / 更新 ${PROJECT_NAME}"
-    menu_item 10 "查看简洁诊断"
-    menu_item 11 "重启服务"
-    menu_item 12 "集中配置" "${COMMAND_NAME} config"
-    menu_item 13 "完整诊断" "${COMMAND_NAME} doctor"
-    menu_item 14 "备份 /etc/sba" "${COMMAND_NAME} backup"
-    menu_item 15 "恢复 /etc/sba" "${COMMAND_NAME} restore"
+    menu_item 4 "集中配置" "${COMMAND_NAME} -c"
+    menu_item 5 "重启全部服务" "${COMMAND_NAME} -r"
+    menu_item 6 "完整诊断" "${COMMAND_NAME} -x"
+    section "维护工具"
+    menu_item 7 "安装 / 更新 ${PROJECT_NAME}" "${COMMAND_NAME} -i"
+    menu_item 8 "更新 Argo / Sing-box 核心" "${COMMAND_NAME} -v"
+    menu_item 9 "备份 /etc/sba" "${COMMAND_NAME} -k"
+    menu_item 10 "恢复 /etc/sba" "${COMMAND_NAME} -l"
+    menu_item 11 "第三方 BBR / DD 工具" "${COMMAND_NAME} -b"
+    menu_item 12 "卸载 ${PROJECT_NAME}" "${COMMAND_NAME} -u"
     menu_item 0 "退出"
     read -rp "请选择: " choice
     case "$choice" in
       1) show_nodes ;;
       2) toggle_service "$ARGO_SERVICE" Argo ;;
       3) toggle_service "$SING_SERVICE" Sing-box ;;
-      4) change_token ;;
-      5) change_server ;;
-      6) sync_versions ;;
-      7) manage_bbr ;;
-      8) uninstall_sba ;;
-      9) install_sba ;;
-      10) show_status ;;
-      11) restart_services ;;
-      12) manage_config ;;
-      13) doctor ;;
-      14) backup_sba ;;
-      15) restore_sba ;;
+      4) manage_config ;;
+      5) restart_services ;;
+      6) doctor ;;
+      7) install_project ;;
+      8) sync_versions ;;
+      9) backup_project ;;
+      10) restore_project ;;
+      11) manage_bbr ;;
+      12) uninstall_project ;;
       0) exit 0 ;;
-      *) yellow "请输入 0 到 15。" ;;
+      *) yellow "请输入 0 到 12。" ;;
     esac
   done
 }
@@ -1132,23 +1114,16 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     -n) show_nodes ;;
     -a) toggle_service "$ARGO_SERVICE" Argo ;;
     -s) toggle_service "$SING_SERVICE" Sing-box ;;
-    -t) change_token ;;
-    -d) change_server ;;
+    -c) manage_config ;;
+    -r) restart_services ;;
+    -x) doctor ;;
+    -i) install_project ;;
     -v) sync_versions ;;
+    -k) backup_project "${2:-}" ;;
+    -l) restore_project "${2:-}" ;;
     -b) manage_bbr ;;
-    -u) uninstall_sba ;;
-    install) install_sba ;;
-    token) change_token ;;
-    server) change_server ;;
-    status) show_status ;;
-    nodes) show_nodes ;;
-    restart) restart_services ;;
-    uninstall) uninstall_sba ;;
-    config) manage_config ;;
-    doctor) doctor ;;
-    backup) backup_sba "${2:-}" ;;
-    restore) restore_sba "${2:-}" ;;
+    -u) uninstall_project ;;
     "") menu ;;
-    *) die "未知参数。可用参数：-n、-a、-s、-t、-d、-v、-b、-u、install、config、doctor、backup、restore、status、nodes、restart、uninstall。" ;;
+    *) die "未知参数。可用参数：-n、-a、-s、-c、-r、-x、-i、-v、-k、-l、-b、-u。" ;;
   esac
 fi
