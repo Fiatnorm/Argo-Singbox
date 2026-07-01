@@ -127,6 +127,6 @@ https://你的域名/你的UUID
 
 ## 卸载边界
 
-卸载要求 `/etc/asb/managed` 所有权标记存在。确认所有权后只删除项目管理的核心、配置、服务、Nginx 配置、`asb` 链接和节点文件；如果 `/etc/asb` 中仍有其他文件则保留目录，不会删除 `/usr/local/bin/sing-box`、`/usr/local/bin/cloudflared` 或其他软件的服务。
+卸载要求 `/etc/asb/managed` 所有权标记存在。确认所有权后会停止并删除项目服务，删除项目 Nginx 配置、`asb` 链接、节点文件以及整个 `/etc/asb` 项目目录（包括其中的备份和残留文件）。不会删除 `/usr/local/bin/sing-box`、`/usr/local/bin/cloudflared` 或其他软件的服务。
 
 本项目不包含 Reality、临时隧道、Argo Json、Cloudflare API 建隧道、英文界面或其他协议脚本。
