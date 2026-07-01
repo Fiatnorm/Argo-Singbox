@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.6.0"
+VERSION="2.6.1"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
 WORK_DIR="/etc/sba"
@@ -27,7 +27,6 @@ SING_BOX_FORCE_VERSION_URL="https://raw.githubusercontent.com/fscarmen/sing-box/
 VLESS_PORT=3011
 VMESS_PORT=3012
 TROJAN_PORT=3013
-VLESS2_PORT=3015
 ORIGIN_PORT=3010
 
 if [[ -t 1 && -z "${NO_COLOR:-}" && "${TERM:-dumb}" != "dumb" ]]; then
@@ -143,7 +142,6 @@ ensure_nodes_config() {
   [[ -f "$NODES_CONFIG" ]] && return
   cat >"$NODES_CONFIG" <<EOF
 vless-1|vless|/sba-vl|${VLESS_PORT}|
-vless-2|vless|/sba-vl2|${VLESS2_PORT}|
 vmess-1|vmess|/sba-vm|${VMESS_PORT}|
 trojan-1|trojan|/sba-tr|${TROJAN_PORT}|
 EOF

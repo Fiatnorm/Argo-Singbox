@@ -1,8 +1,8 @@
-# Argo-Singbox v2.6.0
+# Argo-Singbox v2.6.1
 
 面向固定 Argo Token 隧道的中文轻量安装脚本，提供：
 
-- VLESS + WS + TLS：`/sba-vl`、`/sba-vl2`
+- VLESS + WS + TLS：`/sba-vl`
 - VMess + WS + TLS：`/sba-vm`
 - Trojan + WS + TLS：`/sba-tr`
 - 原始节点、二维码、原始订阅与 Base64 通用订阅
