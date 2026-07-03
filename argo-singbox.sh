@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.9.1"
+VERSION="2.10.0"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
 WORK_DIR="/etc/asb"
@@ -24,6 +24,7 @@ SUB_CLASH_FILE="${WORK_DIR}/subscription.clash.yaml"
 SUB_CLASH_PROVIDER_FILE="${WORK_DIR}/subscription.proxies.yaml"
 SUB_SING_BOX_FILE="${WORK_DIR}/subscription.sing-box.json"
 SUB_SHADOWROCKET_FILE="${WORK_DIR}/subscription.shadowrocket"
+SUB_INDEX_FILE="${WORK_DIR}/subscription.index.html"
 SING_SERVICE="asb-sing-box"
 ARGO_SERVICE="asb-cloudflared"
 LEGACY_SING_SERVICE="sba-sing-box"
@@ -460,8 +461,11 @@ EOF
   done <"$NODES_CONFIG"
   cat >>"$NGINX_CONFIG" <<EOF
     location = /${UUID} {
-        default_type text/plain;
-        alias \$asb_subscription_file;
+        return 302 /${UUID}/;
+    }
+    location = /${UUID}/ {
+        default_type text/html;
+        alias ${SUB_INDEX_FILE};
     }
     location = /${UUID}/auto {
         default_type text/plain;
@@ -605,6 +609,35 @@ generate_nodes() {
   chmod 644 "$SUB_BASE64_FILE"
   chmod 644 "$SUB_CLASH_FILE" "$SUB_CLASH_PROVIDER_FILE" "$SUB_SING_BOX_FILE" \
     "$SUB_SHADOWROCKET_FILE"
+  cat >"$SUB_INDEX_FILE" <<EOF
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Argo-Singbox 配置文件</title>
+  <style>
+    body{max-width:720px;margin:40px auto;padding:0 20px;font:16px/1.6 system-ui,sans-serif;color:#202124}
+    h1{font-size:24px}ul{padding-left:22px}a{color:#0969da;text-decoration:none}a:hover{text-decoration:underline}
+    code{background:#f6f8fa;padding:2px 6px;border-radius:4px}
+  </style>
+</head>
+<body>
+  <h1>Argo-Singbox 配置文件</h1>
+  <p>按客户端选择订阅；查看明文节点请打开 <code>raw</code>。</p>
+  <ul>
+    <li><a href="auto">自动适配订阅</a></li>
+    <li><a href="raw">明文节点协议</a></li>
+    <li><a href="base64">Base64 通用订阅</a></li>
+    <li><a href="clash">Clash / Mihomo 配置</a></li>
+    <li><a href="proxies">Clash Proxy Provider</a></li>
+    <li><a href="sing-box">sing-box 配置</a></li>
+    <li><a href="shadowrocket">Shadowrocket 订阅</a></li>
+  </ul>
+</body>
+</html>
+EOF
+  chmod 644 "$SUB_INDEX_FILE"
   umask "$old_umask"
 }
 
@@ -637,7 +670,8 @@ sync_argo_domain() {
     write_nginx_config
     systemctl reload nginx
   elif [[ -z "$actual_domain" ]]; then
-    yellow "未能从 cloudflared 日志读取实际域名，请确认输入域名与 Tunnel Public Hostname 完全一致。"
+    # 固定 Token 隧道的日志并不保证输出 Public Hostname；保留用户输入值即可。
+    :
   fi
 }
 
@@ -655,7 +689,7 @@ wait_for_services() {
 }
 
 health_check() {
-  local failed=0 public_code public_headers port path tag protocol socks
+  local failed=0 public_code public_headers curl_status port path tag protocol socks
   ensure_nodes_config
   for service in nginx "$SING_SERVICE" "$ARGO_SERVICE"; do
     if systemctl is-active --quiet "$service"; then
@@ -676,18 +710,21 @@ health_check() {
   done < <(printf '%s\n' "$ORIGIN_PORT"; cut -d'|' -f4 "$NODES_CONFIG")
 
   while IFS='|' read -r tag protocol path port socks; do
-    public_headers="$(curl -ksS --http1.1 --max-time 8 -D - -o /dev/null \
+    curl_status=0
+    public_headers="$(curl -ksS --http1.1 --connect-timeout 5 --max-time 8 -D - -o /dev/null \
       --connect-to "${ARGO_DOMAIN}:${SERVER_PORT}:${SERVER}:${SERVER_PORT}" \
       -H "Connection: Upgrade" -H "Upgrade: websocket" \
       -H "Sec-WebSocket-Version: 13" \
       -H "Sec-WebSocket-Key: SGVsbG9Xb3JsZDEyMzQ1Ng==" \
-      "https://${ARGO_DOMAIN}:${SERVER_PORT}${path}" || true)"
+      "https://${ARGO_DOMAIN}:${SERVER_PORT}${path}" 2>/dev/null)" || curl_status=$?
     public_code="$(awk '/^HTTP/{code=$2} END{print code}' <<<"$public_headers")"
     if grep -qi '^cf-mitigated: *challenge' <<<"$public_headers"; then
       red "${path}：Cloudflare 人机挑战（HTTP ${public_code:-403}）"
       failed=1
     elif [[ "$public_code" == "101" ]]; then
       green "${path}：公网 WebSocket 握手正常"
+    elif [[ "$curl_status" -eq 28 ]]; then
+      info "${path}：公网握手探测超时，未作为安装失败（请用客户端实测）"
     else
       red "${path}：公网 WebSocket 握手失败（HTTP ${public_code:-000}）"
       failed=1
@@ -902,7 +939,7 @@ install_project() {
     fi
   done
   sing_stage="$(mktemp)"; argo_stage="$(mktemp)"
-  stage_sing_box "" "$sing_stage"
+  stage_sing_box "$DEFAULT_SING_BOX_VERSION" "$sing_stage"
   stage_cloudflared "$argo_stage"
   install -m 755 "$sing_stage" "${BIN_DIR}/sing-box.new"
   install -m 755 "$argo_stage" "${BIN_DIR}/cloudflared.new"
@@ -986,9 +1023,11 @@ apply_runtime_config() {
 
 list_node_profiles() {
   local tag protocol path port socks
-  printf '%-18s %-8s %-20s %-7s %s\n' "标签" "协议" "WS 路径" "端口" "出站"
+  printf '标签              协议    WS 路径              端口    出站\n'
+  printf '%s\n' '----------------  ------  --------------------  ------  ------'
   while IFS='|' read -r tag protocol path port socks; do
-    printf '%-18s %-8s %-20s %-7s %s\n' "$tag" "$protocol" "$path" "$port" "${socks:-direct}"
+    printf '%-16s  %-6s  %-20s  %-6s  %s\n' \
+      "$tag" "$protocol" "$path" "$port" "${socks:-direct}"
   done <"$NODES_CONFIG"
 }
 
@@ -1115,6 +1154,7 @@ configure_warp() {
         ;;
       2)
         [[ "$WARP_ENABLED" == "1" ]] || die "请先启用 WARP 分流。"
+        printf '已有 WARP 域名：%s\n' "$WARP_DOMAINS"
         read -rp "要添加的网址/域名（可用逗号分隔）: " targets
         targets="$(normalize_warp_domains "$targets")"
         begin_config_change
@@ -1191,9 +1231,26 @@ manage_config() {
 }
 
 backup_project() {
-  local output="${1:-/root/asb-backup-$(date +%Y%m%d-%H%M%S).tar.gz}"
+  local output="${1:-}" backup_dir
   require_root
   [[ -f "$MANAGED_FILE" ]] || die "缺少项目所有权标记，拒绝备份。"
+  if [[ -z "$output" ]]; then
+    read -rp "请输入备份文件夹或 .tar.gz 路径 [/root]: " output
+    output="${output:-/root}"
+  fi
+  if [[ "$output" != *.tar.gz ]]; then
+    backup_dir="${output%/}"
+    [[ -n "$backup_dir" ]] || backup_dir="/"
+    [[ "$backup_dir" == /* ]] || die "备份文件夹必须使用绝对路径。"
+    [[ "$backup_dir" != "$WORK_DIR" && "$backup_dir" != "$WORK_DIR/"* ]] ||
+      die "备份不能保存到项目目录 ${WORK_DIR} 内。"
+    install -d -m 700 "$backup_dir"
+    output="${backup_dir}/asb-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+  fi
+  [[ "$output" == /* ]] || die "备份路径必须使用绝对路径。"
+  [[ "$output" != "$WORK_DIR" && "$output" != "$WORK_DIR/"* ]] ||
+    die "备份不能保存到项目目录 ${WORK_DIR} 内。"
+  install -d -m 700 "$(dirname "$output")"
   [[ "$output" == *.tar.gz ]] || die "备份文件必须以 .tar.gz 结尾。"
   tar -C "$(dirname "$WORK_DIR")" -czf "${output}.tmp" "$WORK_DIR_NAME"
   mv -f "${output}.tmp" "$output"
@@ -1282,16 +1339,23 @@ doctor() {
 }
 
 show_nodes() {
-  local node index=0
+  local node index=0 auto_url
   load_env
   [[ -f "$NODES_FILE" ]] || die "节点文件不存在，请先安装。"
-  printf '自动适配：https://%s/%s/auto\n原始明文：https://%s/%s/raw\nBase64：https://%s/%s/base64\nClash：https://%s/%s/clash\nClash Provider：https://%s/%s/proxies\nsing-box：https://%s/%s/sing-box\nShadowrocket：https://%s/%s/shadowrocket\n兼容入口：https://%s/%s\n\n' \
+  auto_url="https://${ARGO_DOMAIN}/${UUID}/auto"
+  section "配置文件索引"
+  printf '文件索引：https://%s/%s/\n自动适配：%s\n原始明文：https://%s/%s/raw\nBase64：https://%s/%s/base64\nClash：https://%s/%s/clash\nClash Provider：https://%s/%s/proxies\nsing-box：https://%s/%s/sing-box\nShadowrocket：https://%s/%s/shadowrocket\n' \
+    "$ARGO_DOMAIN" "$UUID" "$auto_url" \
     "$ARGO_DOMAIN" "$UUID" "$ARGO_DOMAIN" "$UUID" "$ARGO_DOMAIN" "$UUID" \
-    "$ARGO_DOMAIN" "$UUID" "$ARGO_DOMAIN" "$UUID" "$ARGO_DOMAIN" "$UUID" \
-    "$ARGO_DOMAIN" "$UUID" "$ARGO_DOMAIN" "$UUID"
+    "$ARGO_DOMAIN" "$UUID" "$ARGO_DOMAIN" "$UUID" "$ARGO_DOMAIN" "$UUID"
+  if command -v qrencode >/dev/null 2>&1; then
+    printf '\n自动适配订阅二维码：\n'
+    qrencode -t ANSIUTF8 "$auto_url"
+  fi
+  section "明文节点协议"
   while IFS= read -r node; do
     ((index+=1))
-    printf '[节点 %d]\n%s\n' "$index" "$node"
+    printf '\n[节点 %d]\n%s\n' "$index" "$node"
     command -v qrencode >/dev/null 2>&1 && qrencode -t ANSIUTF8 "$node"
   done <"$NODES_FILE"
 }
