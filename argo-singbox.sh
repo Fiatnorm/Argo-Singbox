@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.8.2"
+VERSION="2.9.1"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
 WORK_DIR="/etc/asb"
@@ -20,6 +20,10 @@ MANAGED_FILE="${WORK_DIR}/managed"
 NODES_CONFIG="${WORK_DIR}/nodes.conf"
 SUB_FILE="${WORK_DIR}/subscription.txt"
 SUB_BASE64_FILE="${WORK_DIR}/subscription.base64"
+SUB_CLASH_FILE="${WORK_DIR}/subscription.clash.yaml"
+SUB_CLASH_PROVIDER_FILE="${WORK_DIR}/subscription.proxies.yaml"
+SUB_SING_BOX_FILE="${WORK_DIR}/subscription.sing-box.json"
+SUB_SHADOWROCKET_FILE="${WORK_DIR}/subscription.shadowrocket"
 SING_SERVICE="asb-sing-box"
 ARGO_SERVICE="asb-cloudflared"
 LEGACY_SING_SERVICE="sba-sing-box"
@@ -107,7 +111,7 @@ valid_path() { [[ "$1" =~ ^/[A-Za-z0-9._~-]+$ ]]; }
 valid_port() { [[ "$1" =~ ^[0-9]+$ ]] && ((10#$1 >= 1 && 10#$1 <= 65535)); }
 
 normalize_warp_domains() {
-  local input="$1" item host output="" old_ifs="$IFS"
+  local input="$1" item host output="" seen="," old_ifs="$IFS"
   IFS=','
   for item in $input; do
     item="${item//[[:space:]]/}"
@@ -116,7 +120,10 @@ normalize_warp_domains() {
     host="${host#.}"
     [[ "$host" =~ ^([A-Za-z0-9-]+\.)*[A-Za-z0-9-]+$ ]] ||
       die "WARP 目标网址无效：${item}"
-    output+="${output:+,}${host,,}"
+    host="${host,,}"
+    [[ "$seen" == *",${host},"* ]] && continue
+    output+="${output:+,}${host}"
+    seen+="${host},"
   done
   IFS="$old_ifs"
   [[ -n "$output" ]] || die "至少需要一个 WARP 目标网址。"
@@ -149,9 +156,9 @@ parse_socks5() {
 ensure_nodes_config() {
   [[ -f "$NODES_CONFIG" ]] && return
   cat >"$NODES_CONFIG" <<EOF
-vless-1|vless|/argo-vl|$((ORIGIN_PORT + 1))|
-vmess-1|vmess|/argo-vm|$((ORIGIN_PORT + 2))|
-trojan-1|trojan|/argo-tr|$((ORIGIN_PORT + 3))|
+Argo-Vl|vless|/argo-vl|$((ORIGIN_PORT + 1))|
+Argo-Vm|vmess|/argo-vm|$((ORIGIN_PORT + 2))|
+Argo-Tr|trojan|/argo-tr|$((ORIGIN_PORT + 3))|
 EOF
   chmod 600 "$NODES_CONFIG"
 }
@@ -210,6 +217,75 @@ install_dependencies() {
   command -v apt-get >/dev/null 2>&1 || die "轻量版仅支持使用 apt 的 Debian/Ubuntu。"
   apt-get update
   DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates nginx openssl tar qrencode
+}
+
+install_cloudflare_warp() {
+  local answer codename key_file fingerprint
+  command -v warp-cli >/dev/null 2>&1 && return
+  read -rp "未安装官方 Cloudflare WARP 客户端，立即自动安装？[Y/n]: " answer
+  [[ ! "$answer" =~ ^[Nn]$ ]] || die "已取消安装 Cloudflare WARP 客户端。"
+  command -v apt-get >/dev/null 2>&1 ||
+    die "无法自动安装：当前系统没有 apt-get。"
+  detect_arch
+  codename="${VERSION_CODENAME:-}"
+  if [[ -z "$codename" ]] && command -v lsb_release >/dev/null 2>&1; then
+    codename="$(lsb_release -cs)"
+  fi
+  [[ "$codename" =~ ^[a-z0-9][a-z0-9-]*$ ]] ||
+    die "无法识别 Debian/Ubuntu 发行版代号，不能安全配置 Cloudflare 软件源。"
+
+  info "正在配置 Cloudflare 官方 APT 软件源并安装 cloudflare-warp..."
+  DEBIAN_FRONTEND=noninteractive apt-get update
+  DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates gnupg
+  key_file="$(mktemp)"
+  if ! curl -fL --retry 3 --retry-all-errors --connect-timeout 10 --max-time 60 \
+    https://pkg.cloudflareclient.com/pubkey.gpg -o "$key_file"; then
+    rm -f "$key_file"
+    die "Cloudflare 软件源签名密钥下载失败。"
+  fi
+  fingerprint="$(gpg --show-keys --with-colons "$key_file" 2>/dev/null |
+    awk -F: '$1 == "fpr" {print $10; exit}')"
+  if [[ "$fingerprint" != "C068A2B5771775193CBE1F2F6E2DD2174FA1C3BA" ]]; then
+    rm -f "$key_file"
+    die "Cloudflare 软件源签名密钥指纹校验失败。"
+  fi
+  gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg \
+    "$key_file"
+  rm -f "$key_file"
+  printf 'deb [arch=%s signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ %s main\n' \
+    "$ARCH" "$codename" >/etc/apt/sources.list.d/cloudflare-client.list
+  apt-get update ||
+    die "Cloudflare 软件源不可用；请检查系统版本和网络后重试。"
+  DEBIAN_FRONTEND=noninteractive apt-get install -y cloudflare-warp ||
+    die "cloudflare-warp 安装失败；当前发行版可能不受 Cloudflare 支持。"
+  command -v warp-cli >/dev/null 2>&1 ||
+    die "cloudflare-warp 已安装，但找不到 warp-cli。"
+  green "Cloudflare WARP 客户端安装完成。"
+}
+
+ensure_warp_registration() {
+  local output answer
+  warp-cli --accept-tos registration show >/dev/null 2>&1 && return
+  output="$(mktemp)"
+  if warp-cli --accept-tos registration new >"$output" 2>&1; then
+    rm -f "$output"
+    return
+  fi
+  if grep -qi "Old registration is still around" "$output"; then
+    cat "$output" >&2
+    rm -f "$output"
+    read -rp "检测到无法使用的旧 WARP 注册，删除并重新注册？[y/N]: " answer
+    [[ "$answer" =~ ^[Yy]$ ]] ||
+      die "未清理旧 WARP 注册，已取消启用。"
+    warp-cli --accept-tos registration delete >/dev/null 2>&1 ||
+      die "旧 WARP 注册删除失败。"
+    warp-cli --accept-tos registration new >/dev/null ||
+      die "WARP 客户端重新注册失败。"
+    return
+  fi
+  cat "$output" >&2
+  rm -f "$output"
+  die "WARP 客户端注册失败。"
 }
 
 version_gt() {
@@ -355,6 +431,13 @@ map \$http_upgrade \$connection_upgrade {
     '' close;
 }
 
+map \$http_user_agent \$asb_subscription_file {
+    default ${SUB_BASE64_FILE};
+    ~*(clash|mihomo|stash) ${SUB_CLASH_FILE};
+    ~*(sing-box|singbox|sfi|sfa|sfm) ${SUB_SING_BOX_FILE};
+    ~*(shadowrocket) ${SUB_SHADOWROCKET_FILE};
+}
+
 server {
     listen 127.0.0.1:${ORIGIN_PORT};
     server_name ${ARGO_DOMAIN};
@@ -378,7 +461,35 @@ EOF
   cat >>"$NGINX_CONFIG" <<EOF
     location = /${UUID} {
         default_type text/plain;
+        alias \$asb_subscription_file;
+    }
+    location = /${UUID}/auto {
+        default_type text/plain;
+        alias \$asb_subscription_file;
+    }
+    location = /${UUID}/raw {
+        default_type text/plain;
+        alias ${SUB_FILE};
+    }
+    location = /${UUID}/base64 {
+        default_type text/plain;
         alias ${SUB_BASE64_FILE};
+    }
+    location = /${UUID}/clash {
+        default_type text/yaml;
+        alias ${SUB_CLASH_FILE};
+    }
+    location = /${UUID}/proxies {
+        default_type text/yaml;
+        alias ${SUB_CLASH_PROVIDER_FILE};
+    }
+    location = /${UUID}/sing-box {
+        default_type application/json;
+        alias ${SUB_SING_BOX_FILE};
+    }
+    location = /${UUID}/shadowrocket {
+        default_type text/plain;
+        alias ${SUB_SHADOWROCKET_FILE};
     }
     location = /asb-sub {
         default_type text/plain;
@@ -435,7 +546,7 @@ EOF
 }
 
 generate_nodes() {
-  local old_umask vmess_json vmess_link tag protocol path port socks encoded_path
+  local old_umask vmess_json vmess_link tag protocol path port socks encoded_path first
   ensure_nodes_config
   validate_nodes_config
   old_umask="$(umask)"
@@ -444,9 +555,9 @@ generate_nodes() {
   while IFS='|' read -r tag protocol path port socks; do
     encoded_path="%2F${path#/}%3Fed%3D2560"
     case "$protocol" in
-      vless) printf 'vless://%s@%s:%s?encryption=none&security=tls&sni=%s&type=ws&host=%s&path=%s#%s\n' \
+      vless) printf 'vless://%s@%s:%s?encryption=none&security=tls&sni=%s&insecure=0&allowInsecure=0&type=ws&host=%s&path=%s#%s\n' \
         "$UUID" "$SERVER" "$SERVER_PORT" "$ARGO_DOMAIN" "$ARGO_DOMAIN" "$encoded_path" "$tag" >>"$NODES_FILE" ;;
-      trojan) printf 'trojan://%s@%s:%s?security=tls&sni=%s&type=ws&host=%s&path=%s#%s\n' \
+      trojan) printf 'trojan://%s@%s:%s?security=tls&sni=%s&insecure=0&allowInsecure=0&type=ws&host=%s&path=%s#%s\n' \
         "$UUID" "$SERVER" "$SERVER_PORT" "$ARGO_DOMAIN" "$ARGO_DOMAIN" "$encoded_path" "$tag" >>"$NODES_FILE" ;;
       vmess)
         vmess_json="{\"v\":\"2\",\"ps\":\"${tag}\",\"add\":\"${SERVER}\",\"port\":\"${SERVER_PORT}\",\"id\":\"${UUID}\",\"aid\":\"0\",\"scy\":\"auto\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"${ARGO_DOMAIN}\",\"path\":\"${path}?ed=2560\",\"tls\":\"tls\",\"sni\":\"${ARGO_DOMAIN}\",\"alpn\":\"\"}"
@@ -457,7 +568,43 @@ generate_nodes() {
   chmod 600 "$NODES_FILE"
   install -m 644 "$NODES_FILE" "$SUB_FILE"
   base64 -w 0 "$NODES_FILE" >"$SUB_BASE64_FILE"
+  cp -f "$SUB_BASE64_FILE" "$SUB_SHADOWROCKET_FILE"
+  printf 'proxies:\n' >"$SUB_CLASH_PROVIDER_FILE"
+  while IFS='|' read -r tag protocol path port socks; do
+    case "$protocol" in
+      vless) printf '  - {name: "%s", type: vless, server: %s, port: %s, uuid: %s, encryption: none, udp: true, tls: true, servername: %s, skip-cert-verify: false, network: ws, ws-opts: {path: "%s", headers: {Host: %s}, max-early-data: 2560, early-data-header-name: Sec-WebSocket-Protocol}}\n' \
+        "$tag" "$SERVER" "$SERVER_PORT" "$UUID" "$ARGO_DOMAIN" "$path" "$ARGO_DOMAIN" ;;
+      vmess) printf '  - {name: "%s", type: vmess, server: %s, port: %s, uuid: %s, alterId: 0, cipher: auto, udp: true, tls: true, servername: %s, skip-cert-verify: false, network: ws, ws-opts: {path: "%s", headers: {Host: %s}, max-early-data: 2560, early-data-header-name: Sec-WebSocket-Protocol}}\n' \
+        "$tag" "$SERVER" "$SERVER_PORT" "$UUID" "$ARGO_DOMAIN" "$path" "$ARGO_DOMAIN" ;;
+      trojan) printf '  - {name: "%s", type: trojan, server: %s, port: %s, password: %s, udp: true, tls: true, sni: %s, skip-cert-verify: false, network: ws, ws-opts: {path: "%s", headers: {Host: %s}, max-early-data: 2560, early-data-header-name: Sec-WebSocket-Protocol}}\n' \
+        "$tag" "$SERVER" "$SERVER_PORT" "$UUID" "$ARGO_DOMAIN" "$path" "$ARGO_DOMAIN" ;;
+    esac
+  done <"$NODES_CONFIG" >>"$SUB_CLASH_PROVIDER_FILE"
+  cat "$SUB_CLASH_PROVIDER_FILE" >"$SUB_CLASH_FILE"
+  printf 'proxy-groups:\n  - name: PROXY\n    type: select\n    proxies:\n' >>"$SUB_CLASH_FILE"
+  while IFS='|' read -r tag protocol path port socks; do
+    printf '      - "%s"\n' "$tag"
+  done <"$NODES_CONFIG" >>"$SUB_CLASH_FILE"
+  printf 'rules:\n  - MATCH,PROXY\n' >>"$SUB_CLASH_FILE"
+
+  printf '{"outbounds":[' >"$SUB_SING_BOX_FILE"
+  first=1
+  while IFS='|' read -r tag protocol path port socks; do
+    ((first)) || printf ',' >>"$SUB_SING_BOX_FILE"; first=0
+    printf '{"type":"%s","tag":"%s","server":"%s","server_port":%s,' \
+      "$protocol" "$tag" "$SERVER" "$SERVER_PORT" >>"$SUB_SING_BOX_FILE"
+    case "$protocol" in
+      trojan) printf '"password":"%s",' "$UUID" >>"$SUB_SING_BOX_FILE" ;;
+      vmess) printf '"uuid":"%s","security":"auto","alter_id":0,' "$UUID" >>"$SUB_SING_BOX_FILE" ;;
+      vless) printf '"uuid":"%s","flow":"","packet_encoding":"xudp",' "$UUID" >>"$SUB_SING_BOX_FILE" ;;
+    esac
+    printf '"tls":{"enabled":true,"server_name":"%s","insecure":false,"utls":{"enabled":true,"fingerprint":"chrome"}},"transport":{"type":"ws","path":"%s","headers":{"Host":"%s"},"max_early_data":2560,"early_data_header_name":"Sec-WebSocket-Protocol"}}' \
+      "$ARGO_DOMAIN" "$path" "$ARGO_DOMAIN" >>"$SUB_SING_BOX_FILE"
+  done <"$NODES_CONFIG"
+  printf ']}\n' >>"$SUB_SING_BOX_FILE"
   chmod 644 "$SUB_BASE64_FILE"
+  chmod 644 "$SUB_CLASH_FILE" "$SUB_CLASH_PROVIDER_FILE" "$SUB_SING_BOX_FILE" \
+    "$SUB_SHADOWROCKET_FILE"
   umask "$old_umask"
 }
 
@@ -902,7 +1049,7 @@ delete_node_profile() {
 }
 
 edit_node_profile() {
-  local wanted tag protocol path port socks new_path new_port new_socks temp
+  local wanted tag protocol path port socks new_tag new_protocol new_path new_port new_socks temp
   list_node_profiles
   read -rp "要修改的节点标签: " wanted
   while IFS='|' read -r tag protocol path port socks; do
@@ -910,59 +1057,95 @@ edit_node_profile() {
   done <"$NODES_CONFIG"
   [[ "${tag:-}" == "$wanted" ]] || die "未找到节点标签：${wanted}"
   begin_config_change
+  read -rp "新节点标签 [${tag}]: " new_tag
+  read -rp "新协议 [${protocol}]（vless/vmess/trojan）: " new_protocol
   read -rp "新 WS 路径 [${path}]: " new_path
   read -rp "新本地端口 [${port}]: " new_port
   read -rp "新 SOCKS5 [${socks:-direct}]（留空保持，输入 - 改为直连）: " new_socks
-  path="${new_path:-$path}"; port="${new_port:-$port}"
+  tag="${new_tag:-$tag}"; protocol="${new_protocol:-$protocol}"
+  protocol="${protocol,,}"; path="${new_path:-$path}"; port="${new_port:-$port}"
   [[ "$new_socks" == "-" ]] && socks="" || socks="${new_socks:-$socks}"
+  [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || die "节点标签格式错误。"
+  [[ "$protocol" =~ ^(vless|vmess|trojan)$ ]] || die "协议不受支持。"
   valid_path "$path" || die "WS 路径格式错误。"
   valid_port "$port" || die "端口格式错误。"
   [[ -z "$socks" ]] || parse_socks5 "$socks" >/dev/null
-  ! awk -F'|' -v wanted="$wanted" -v path="$path" -v port="$port" \
-    '$1 != wanted && ($3 == path || $4 == port) {found=1} END {exit !found}' "$NODES_CONFIG" ||
-    die "WS 路径或端口已被其他节点使用。"
+  ! awk -F'|' -v wanted="$wanted" -v tag="$tag" -v path="$path" -v port="$port" \
+    '$1 != wanted && ($1 == tag || $3 == path || $4 == port) {found=1} END {exit !found}' "$NODES_CONFIG" ||
+    die "节点标签、WS 路径或端口已被其他节点使用。"
   temp="$(mktemp)"
-  awk -F'|' -v OFS='|' -v wanted="$wanted" -v path="$path" -v port="$port" -v socks="$socks" \
-    '$1 == wanted {$3=path; $4=port; $5=socks} {print}' "$NODES_CONFIG" >"$temp"
+  awk -F'|' -v OFS='|' -v wanted="$wanted" -v tag="$tag" -v protocol="$protocol" \
+    -v path="$path" -v port="$port" -v socks="$socks" \
+    '$1 == wanted {$1=tag; $2=protocol; $3=path; $4=port; $5=socks} {print}' "$NODES_CONFIG" >"$temp"
   install -m 600 "$temp" "$NODES_CONFIG"; rm -f "$temp"
   validate_nodes_config
   apply_runtime_config
 }
 
 configure_warp() {
-  local answer port targets
-  printf '当前状态：%s；代理端口：%s；目标：%s\n' \
-    "$([[ "$WARP_ENABLED" == "1" ]] && echo 已启用 || echo 未启用)" \
-    "$WARP_PROXY_PORT" "${WARP_DOMAINS:-无}"
-  read -rp "启用按网址分流到 Cloudflare WARP？[y/N]: " answer
-  begin_config_change
-  if [[ ! "$answer" =~ ^[Yy]$ ]]; then
-    WARP_ENABLED=0
-    WARP_DOMAINS=""
-    apply_runtime_config
-    return
-  fi
-  command -v warp-cli >/dev/null 2>&1 ||
-    die "未安装官方 Cloudflare WARP 客户端。请先安装 cloudflare-warp 软件包。"
-  read -rp "WARP 本地 SOCKS5 端口 [${WARP_PROXY_PORT}]: " port
-  port="${port:-$WARP_PROXY_PORT}"
-  valid_port "$port" || die "WARP 代理端口无效。"
-  read -rp "走 WARP 的网址/域名（逗号分隔）[${WARP_DOMAINS:-无}]: " targets
-  targets="${targets:-$WARP_DOMAINS}"
-  targets="$(normalize_warp_domains "$targets")"
-  systemctl enable --now warp-svc >/dev/null 2>&1 ||
-    die "无法启动 warp-svc。"
-  warp-cli registration show >/dev/null 2>&1 ||
-    warp-cli --accept-tos registration new >/dev/null ||
-    die "WARP 客户端注册失败。"
-  warp-cli --accept-tos mode proxy >/dev/null &&
-    warp-cli --accept-tos proxy port "$port" >/dev/null &&
-    warp-cli --accept-tos connect >/dev/null ||
-    die "无法把 WARP 客户端切换到本地代理模式，请运行 warp-cli mode --help 检查客户端版本。"
-  WARP_ENABLED=1
-  WARP_PROXY_PORT="$port"
-  WARP_DOMAINS="$targets"
-  apply_runtime_config
+  local choice port targets domain normalized output item old_ifs
+  while true; do
+    printf '当前状态：%s；代理端口：%s；目标：%s\n' \
+      "$([[ "$WARP_ENABLED" == "1" ]] && echo 已启用 || echo 未启用)" \
+      "$WARP_PROXY_PORT" "${WARP_DOMAINS:-无}"
+    menu_item 1 "启用 / 修改代理端口和全部域名"
+    menu_item 2 "添加域名"
+    menu_item 3 "删除域名"
+    menu_item 4 "停用 WARP 分流"
+    menu_item 0 "返回"
+    read -rp "请选择: " choice
+    case "$choice" in
+      1)
+        install_cloudflare_warp
+        read -rp "WARP 本地 SOCKS5 端口 [${WARP_PROXY_PORT}]: " port
+        port="${port:-$WARP_PROXY_PORT}"
+        valid_port "$port" || die "WARP 代理端口无效。"
+        read -rp "走 WARP 的网址/域名（逗号分隔）[${WARP_DOMAINS:-无}]: " targets
+        targets="${targets:-$WARP_DOMAINS}"
+        targets="$(normalize_warp_domains "$targets")"
+        systemctl enable --now warp-svc >/dev/null 2>&1 || die "无法启动 warp-svc。"
+        ensure_warp_registration
+        warp-cli --accept-tos mode proxy >/dev/null &&
+          warp-cli --accept-tos proxy port "$port" >/dev/null &&
+          warp-cli --accept-tos connect >/dev/null ||
+          die "无法把 WARP 客户端切换到本地代理模式，请运行 warp-cli mode --help 检查客户端版本。"
+        begin_config_change
+        WARP_ENABLED=1; WARP_PROXY_PORT="$port"; WARP_DOMAINS="$targets"
+        apply_runtime_config
+        ;;
+      2)
+        [[ "$WARP_ENABLED" == "1" ]] || die "请先启用 WARP 分流。"
+        read -rp "要添加的网址/域名（可用逗号分隔）: " targets
+        targets="$(normalize_warp_domains "$targets")"
+        begin_config_change
+        WARP_DOMAINS="$(normalize_warp_domains "${WARP_DOMAINS},${targets}")"
+        apply_runtime_config
+        ;;
+      3)
+        [[ "$WARP_ENABLED" == "1" ]] || die "WARP 分流尚未启用。"
+        read -rp "要删除的网址或域名: " domain
+        normalized="$(normalize_warp_domains "$domain")"
+        [[ "$normalized" != *,* ]] || die "每次只能删除一个域名。"
+        output=""; old_ifs="$IFS"; IFS=','
+        for item in $WARP_DOMAINS; do
+          [[ "$item" == "$normalized" ]] || output+="${output:+,}${item}"
+        done
+        IFS="$old_ifs"
+        [[ "$output" != "$WARP_DOMAINS" ]] || die "未找到 WARP 域名：${normalized}"
+        [[ -n "$output" ]] || die "不能删除最后一个域名；如不再使用，请选择停用 WARP 分流。"
+        begin_config_change
+        WARP_DOMAINS="$output"
+        apply_runtime_config
+        ;;
+      4)
+        begin_config_change
+        WARP_ENABLED=0; WARP_DOMAINS=""
+        apply_runtime_config
+        ;;
+      0) return ;;
+      *) yellow "无效选择。" ;;
+    esac
+  done
 }
 
 manage_config() {
@@ -1102,8 +1285,10 @@ show_nodes() {
   local node index=0
   load_env
   [[ -f "$NODES_FILE" ]] || die "节点文件不存在，请先安装。"
-  printf '原始订阅：https://%s/asb-sub\nBase64 订阅：https://%s/asb-sub-base64\nUUID 订阅：https://%s/%s\n\n' \
-    "$ARGO_DOMAIN" "$ARGO_DOMAIN" "$ARGO_DOMAIN" "$UUID"
+  printf '自动适配：https://%s/%s/auto\n原始明文：https://%s/%s/raw\nBase64：https://%s/%s/base64\nClash：https://%s/%s/clash\nClash Provider：https://%s/%s/proxies\nsing-box：https://%s/%s/sing-box\nShadowrocket：https://%s/%s/shadowrocket\n兼容入口：https://%s/%s\n\n' \
+    "$ARGO_DOMAIN" "$UUID" "$ARGO_DOMAIN" "$UUID" "$ARGO_DOMAIN" "$UUID" \
+    "$ARGO_DOMAIN" "$UUID" "$ARGO_DOMAIN" "$UUID" "$ARGO_DOMAIN" "$UUID" \
+    "$ARGO_DOMAIN" "$UUID" "$ARGO_DOMAIN" "$UUID"
   while IFS= read -r node; do
     ((index+=1))
     printf '[节点 %d]\n%s\n' "$index" "$node"
@@ -1198,12 +1383,44 @@ restart_services() {
   green "服务已重启。"
 }
 
+purge_installed_packages() {
+  local package installed=()
+  for package in "$@"; do
+    dpkg-query -W -f='${Status}' "$package" 2>/dev/null |
+      grep -q '^install ok installed$' && installed+=("$package")
+  done
+  ((${#installed[@]} > 0)) || return 0
+  apt-get purge -y "${installed[@]}"
+}
+
 uninstall_project() {
-  local legacy_link target
+  local legacy_link target answer resolved_work_dir remove_nginx=0 remove_warp=0 remove_tools=0
   require_root
   [[ -f "$MANAGED_FILE" ]] || die "缺少项目所有权标记，拒绝自动卸载；请人工核对 ${WORK_DIR}。"
+  resolved_work_dir="$(readlink -f "$WORK_DIR" 2>/dev/null || true)"
+  [[ "$resolved_work_dir" == "$WORK_DIR" ]] ||
+    die "项目目录解析结果异常，拒绝递归删除：${WORK_DIR}"
+  yellow "将删除本项目服务、私有 Argo/cloudflared 与 sing-box 核心、配置、订阅、备份和命令入口。"
+  read -rp "确认彻底卸载 ${PROJECT_NAME}？[y/N]: " answer
+  [[ "$answer" =~ ^[Yy]$ ]] || { yellow "已取消卸载。"; return 0; }
+  if command -v nginx >/dev/null 2>&1 ||
+    dpkg-query -W -f='${Status}' nginx 2>/dev/null | grep -q 'install ok installed'; then
+    read -rp "同时卸载 Nginx？可能被其他网站使用，默认保留 [y/N]: " answer
+    [[ "$answer" =~ ^[Yy]$ ]] && remove_nginx=1
+  fi
+  if command -v warp-cli >/dev/null 2>&1 ||
+    dpkg-query -W -f='${Status}' cloudflare-warp 2>/dev/null | grep -q 'install ok installed' ||
+    [[ -e /etc/apt/sources.list.d/cloudflare-client.list ||
+      -e /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg ]]; then
+    read -rp "同时卸载 Cloudflare WARP 客户端、注册与软件源？默认保留 [y/N]: " answer
+    [[ "$answer" =~ ^[Yy]$ ]] && remove_warp=1
+  fi
+  read -rp "同时卸载脚本使用的通用工具 curl/ca-certificates/openssl/tar/qrencode/gnupg？可能被其他程序使用，默认保留 [y/N]: " answer
+  [[ "$answer" =~ ^[Yy]$ ]] && remove_tools=1
+
   systemctl disable --now "$SING_SERVICE" "$ARGO_SERVICE" 2>/dev/null || true
   rm -f "/etc/systemd/system/${SING_SERVICE}.service" "/etc/systemd/system/${ARGO_SERVICE}.service"
+  remove_legacy_services
   rm -f "$NGINX_CONFIG" "$LEGACY_NGINX_CONFIG" "/usr/local/bin/${COMMAND_NAME}" \
     "$NODES_FILE" "$LEGACY_NODES_FILE"
   for legacy_link in /usr/local/bin/sb /usr/local/bin/argo-singbox; do
@@ -1211,12 +1428,37 @@ uninstall_project() {
     target="$(readlink -f "$legacy_link" 2>/dev/null || true)"
     [[ "$target" == "$LOCAL_SCRIPT" ]] && rm -f "$legacy_link"
   done
+  remove_legacy_symlink
   rm -f "$ENV_FILE" "$NODES_CONFIG" "$SING_BOX_CONFIG" "$LOCAL_SCRIPT" "$MANAGED_FILE" \
-    "$SUB_FILE" "$SUB_BASE64_FILE" "$BIN_DIR/sing-box" "$BIN_DIR/cloudflared"
-  rmdir "$BIN_DIR" "$BACKUP_DIR" "$WORK_DIR" 2>/dev/null || true
+    "$SUB_FILE" "$SUB_BASE64_FILE" "$SUB_CLASH_FILE" "$SUB_CLASH_PROVIDER_FILE" \
+    "$SUB_SING_BOX_FILE" "$SUB_SHADOWROCKET_FILE" \
+    "$BIN_DIR/sing-box" "$BIN_DIR/cloudflared"
+  rm -rf "$BACKUP_DIR"
+  rm -rf "$resolved_work_dir"
+
+  if ((remove_warp)); then
+    warp-cli --accept-tos disconnect >/dev/null 2>&1 || true
+    warp-cli --accept-tos registration delete >/dev/null 2>&1 || true
+    systemctl disable --now warp-svc 2>/dev/null || true
+    purge_installed_packages cloudflare-warp >/dev/null 2>&1 ||
+      yellow "cloudflare-warp 软件包卸载失败，请手工检查。"
+    rm -f /etc/apt/sources.list.d/cloudflare-client.list \
+      /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+  fi
+  if ((remove_nginx)); then
+    systemctl disable --now nginx 2>/dev/null || true
+    purge_installed_packages nginx nginx-common nginx-core nginx-full nginx-light >/dev/null 2>&1 ||
+      yellow "Nginx 软件包卸载失败，请手工检查。"
+  else
+    systemctl restart nginx 2>/dev/null || true
+  fi
+  if ((remove_tools)); then
+    purge_installed_packages curl ca-certificates openssl tar qrencode gnupg >/dev/null 2>&1 ||
+      yellow "部分通用工具卸载失败，请手工检查。"
+  fi
   systemctl daemon-reload
-  systemctl restart nginx 2>/dev/null || true
-  green "${PROJECT_NAME} 已卸载。"
+  green "${PROJECT_NAME} 已彻底卸载；本次脚本执行结束。"
+  exit 0
 }
 
 menu() {
