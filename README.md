@@ -59,7 +59,11 @@ v2.9.0 增加按客户端区分的订阅文件和自动适配入口，覆盖 V2r
 
 v2.9.1 修复从交互菜单卸载后再次进入面板的问题。卸载会清理项目核心、配置、订阅、备份、服务和命令入口，并分别询问是否额外卸载 Nginx、Cloudflare WARP 及通用系统工具。
 
+v2.10.0 首次安装固定使用 sing-box `1.13.0-rc.4`，cloudflared 与原版 SBA 一样下载 latest；固定 Token 日志未输出 hostname 时不再误报，公网 WS 探测超时也不再阻断安装。新增 UUID 文件索引、可输入备份文件夹、WARP 添加前展示已有域名，并调整节点表格和终端输出间距。
+
 下载具有总超时、重试、GitHub 代理回退和 GitHub Release SHA256 digest 校验；二进制还会执行基本版本检查。sing-box 版本优先采用上游 `force_version`，不可用时回退到 GitHub releases，再失败才使用脚本预设版本。
+
+首次安装使用经过项目确认的 sing-box `1.13.0-rc.4`，避免安装时因远端版本变化产生不一致；cloudflared 首次安装按原版 SBA 逻辑使用 GitHub latest。后续执行 `asb -v` 时，sing-box 仍按 `force_version`、GitHub releases、预设版本的顺序查询更新。
 
 ## 是否需要反复拉取 GitHub
 
@@ -104,7 +108,7 @@ sudo ./argo-singbox.sh -i
 | `sudo asb -r` | 重启 Nginx、sing-box 和 Argo 服务 |
 | `sudo asb -x` | 执行完整诊断、WS 检查并显示最近日志 |
 | `sudo asb -v` | 比较版本并更新 Argo/cloudflared 与 sing-box 核心 |
-| `sudo asb -k` | 备份到 `/root/asb-backup-时间.tar.gz` |
+| `sudo asb -k [文件夹或文件.tar.gz]` | 备份到指定文件夹或完整归档路径 |
 | `sudo asb -k /root/my-asb.tar.gz` | 备份到指定文件 |
 | `sudo asb -l /root/my-asb.tar.gz` | 从指定备份恢复并验证服务 |
 | `sudo asb -b` | 启动第三方 Linux-NetSpeed BBR/DD 工具 |
@@ -169,7 +173,7 @@ WARP 只覆盖匹配的网址，不会替换其他节点的 SOCKS5 配置。`asb
 ## 诊断、备份与恢复
 
 - `asb -x`：检查配置与 Token 同步、三个服务、全部动态监听端口、每条公网 WS 路径、核心版本，并输出最近 30 条项目日志。
-- `asb -k [文件.tar.gz]`：备份 `/etc/asb`；省略路径时写入 `/root/asb-backup-时间.tar.gz`。
+- `asb -k [文件夹或文件.tar.gz]`：备份 `/etc/asb`。省略参数时会询问保存位置；输入 `/root/back` 会自动创建目录并生成 `asb-backup-时间.tar.gz`，也可直接输入完整 `.tar.gz` 路径。
 - `asb -l [文件.tar.gz]`：验证备份中的项目所有权标记和核心文件后恢复 `/etc/asb`，重新生成 Nginx 与 systemd 配置并验证服务；失败自动回滚。
 
 `asb -v` 会先比较本地和远端版本并请求确认，然后下载到临时文件、校验 SHA256/可执行性、执行 `sing-box check`、备份旧核心、原子替换并重启验证。验证失败会自动恢复两个旧核心。
@@ -180,7 +184,7 @@ WARP 只覆盖匹配的网址，不会替换其他节点的 SOCKS5 配置。`asb
 
 ## 节点、订阅和检查
 
-`asb -n` 输出全部原始节点链接、终端二维码，以及以下订阅地址：
+`asb -n` 输出配置文件索引、全部原始节点链接和终端二维码。浏览器访问 `https://你的域名/你的UUID/` 可进入文件索引，再打开不同客户端配置：
 
 ```text
 https://你的域名/你的UUID/auto
@@ -192,11 +196,15 @@ https://你的域名/你的UUID/sing-box
 https://你的域名/你的UUID/shadowrocket
 ```
 
-`/auto` 根据 User-Agent 为 Clash/Mihomo、sing-box 和 Shadowrocket 返回对应格式，其他客户端返回 Base64 通用订阅；`/你的UUID` 保留为同等的兼容入口。`/raw` 以及 `/root/argo-singbox_nodes.txt` 保留逐行明文 `vless://`、`vmess://`、`trojan://` 节点协议。旧的 `/asb-sub` 与 `/asb-sub-base64` 入口继续可用。
+`/你的UUID` 会跳转到文件索引；`/auto` 根据 User-Agent 为 Clash/Mihomo、sing-box 和 Shadowrocket 返回对应格式，其他客户端返回 Base64 通用订阅。`/raw` 以及 `/root/argo-singbox_nodes.txt` 保留逐行明文 `vless://`、`vmess://`、`trojan://` 节点协议。旧的 `/asb-sub` 与 `/asb-sub-base64` 入口继续可用。
+
+二维码只为“自动适配订阅地址”和每条可直接导入的明文节点生成。Clash、sing-box 等配置文件地址不单独生成二维码，避免用户把客户端不支持的文件 URL 当成通用订阅扫描。
 
 默认标签使用接近原版 SBA 的 `Argo-Vl`、`Argo-Vm`、`Argo-Tr` 后缀形式。`asb -c` 修改节点时可直接修改标签和协议；标签同时作为 sing-box inbound tag 和各客户端显示名称。
 
 如 Cloudflare 返回 Challenge/WAF，需为全部动态代理路径和订阅路径建立适当的 Skip 规则。不要把 Public Hostname 手工解析到 VPS IP；应让流量经过 Argo Tunnel。
+
+固定 Token 模式下 cloudflared 日志不保证包含 Public Hostname，因此脚本无法从日志读取 hostname 时会保留用户输入域名，不再显示失败提醒。公网 WS 探测经过优选入口，单次超时只显示非阻断提示；明确的 HTTP 错误、Cloudflare Challenge 或本地服务/端口异常仍会使健康检查失败。最终连通性应以客户端实测为准。
 
 ## 卸载边界
 
