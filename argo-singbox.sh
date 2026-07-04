@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.10.2"
+VERSION="2.10.3"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
 PROJECT_REPO="Fiatnorm/Argo-Singbox"
@@ -57,22 +57,22 @@ yellow() { printf '%s! %s%s\n' "$C_BRIGHT_YELLOW" "$*" "$C_RESET"; }
 red() { printf '%s✗ %s%s\n' "$C_BRIGHT_RED" "$*" "$C_RESET" >&2; }
 info() { printf '%s• %s%s\n' "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
 brand() {
-  printf '\n%s%s◆ %s%s\n%s%s%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$*" "$C_RESET" \
-    "$C_DIM" "----------------------------------------" "$C_RESET"
+  printf '\n%s%s◆ %s%s\n%s%s%s\n' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$*" "$C_RESET" \
+    "$C_BRIGHT_BLUE" "----------------------------------------" "$C_RESET"
 }
-section() { printf '\n%s%s▸ %s%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET"; }
-subsection() { printf '%s%s%s%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
+section() { printf '\n%s%s▸ %s%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
+subsection() { printf '%s%s%s%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET"; }
 key_value() {
-  printf '%s%-14s%s %s%s%s\n' "$C_BRIGHT_CYAN" "$1" "$C_RESET" "$C_WHITE" "$2" "$C_RESET"
+  printf '%s%-14s%s %s%s%s\n' "$C_BRIGHT_BLUE" "$1" "$C_RESET" "$C_WHITE" "$2" "$C_RESET"
 }
 link_value() {
-  printf '%s%-14s%s %s%s%s%s\n' "$C_BRIGHT_CYAN" "$1" "$C_RESET" "$C_BRIGHT_BLUE" "$C_UNDERLINE" "$2" "$C_RESET"
+  printf '%s%-14s%s %s%s%s%s\n' "$C_BRIGHT_BLUE" "$1" "$C_RESET" "$C_BRIGHT_MAGENTA" "$C_UNDERLINE" "$2" "$C_RESET"
 }
-prompt() { printf '%s%s› %s%s' "$C_BOLD" "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
+prompt() { printf '%s%s› %s%s' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$*" "$C_RESET"; }
 read_choice() { prompt "$1"; IFS= read -r REPLY; }
 menu_item() {
-  printf '  %s%2s%s  %s%s%s%s%s%s\n' "$C_BRIGHT_CYAN" "$1" "$C_RESET" "$C_WHITE" "$2" \
-    "$C_RESET" "$C_BRIGHT_BLUE" "${3:+  [$3]}" "$C_RESET"
+  printf '  %s%2s%s  %s%s%s%s%s%s\n' "$C_BRIGHT_YELLOW" "$1" "$C_RESET" "$C_WHITE" "$2" \
+    "$C_RESET" "$C_BRIGHT_CYAN" "${3:+  [$3]}" "$C_RESET"
 }
 die() { red "$*"; exit 1; }
 
@@ -921,22 +921,31 @@ report_node_port_owners() {
   done <"$NODES_CONFIG"
 }
 
+show_install_nodes() {
+  section "明文节点"
+  cat "$NODES_FILE"
+  printf '\n'
+}
+
 install_project() {
-  local installer_source latest_installer work_backup="" sing_stage argo_stage file refresh_status
+  local install_mode="${1:-local}" installer_source latest_installer
+  local work_backup="" sing_stage argo_stage file refresh_status
   require_root
-  if [[ "${ASB_INSTALLER_REFRESHED:-0}" != "1" ]]; then
+  if [[ "$install_mode" == "github" ]]; then
     latest_installer="$(mktemp)"
     info "正在获取 ${PROJECT_REPO} ${PROJECT_BRANCH} 的最新安装脚本。"
     fetch_latest_installer "$latest_installer"
     if ! cmp -s "$latest_installer" "$0"; then
       green "已取得并校验最新安装脚本，切换到最新版本继续安装。"
       refresh_status=0
-      ASB_INSTALLER_REFRESHED=1 bash "$latest_installer" -i || refresh_status=$?
+      bash "$latest_installer" -i --github-refreshed || refresh_status=$?
       rm -f "$latest_installer"
       return "$refresh_status"
     fi
     rm -f "$latest_installer"
     green "当前安装脚本已是 GitHub 最新版本。"
+  elif [[ "$install_mode" != "local" ]]; then
+    die "未知安装模式：${install_mode}"
   fi
   migrate_legacy_install
   load_env
@@ -1008,8 +1017,25 @@ install_project() {
   else
     yellow "${PROJECT_NAME} 文件已安装，但健康检查未全部通过；请先处理上述错误再使用节点。"
   fi
-  section "明文节点"
-  cat "$NODES_FILE"
+  show_install_nodes
+}
+
+install_menu() {
+  local choice
+  while true; do
+    brand "${PROJECT_NAME} · 安装 / 更新"
+    subsection "请选择安装来源"
+    menu_item 1 "使用当前 VPS 本地脚本重装" "不更新项目脚本"
+    menu_item 2 "从 GitHub 获取最新脚本安装" "可更新项目脚本"
+    menu_item 0 "返回"
+    read_choice "请选择："; choice="$REPLY"
+    case "$choice" in
+      1) install_project local; return ;;
+      2) install_project github; return ;;
+      0) return ;;
+      *) yellow "请输入 0、1 或 2。" ;;
+    esac
+  done
 }
 
 begin_config_change() {
@@ -1046,12 +1072,12 @@ apply_runtime_config() {
 list_node_profiles() {
   local tag protocol path port socks
   printf '%s%s标签              协议      WS 路径               端口    出站%s\n' \
-    "$C_BOLD" "$C_CYAN" "$C_RESET"
+    "$C_BOLD" "$C_BRIGHT_CYAN" "$C_RESET"
   printf '%s%s%s\n' "$C_DIM" '----------------  --------  --------------------  ------  ------' "$C_RESET"
   while IFS='|' read -r tag protocol path port socks; do
     printf '%s%-16s%s  %s%-8s%s  %-20s  %s%-6s%s  %s\n' \
-      "$C_WHITE" "$tag" "$C_RESET" "$C_CYAN" "$protocol" "$C_RESET" "$path" \
-      "$C_GREEN" "$port" "$C_RESET" "${socks:-direct}"
+      "$C_WHITE" "$tag" "$C_RESET" "$C_BRIGHT_MAGENTA" "$protocol" "$C_RESET" "$path" \
+      "$C_BRIGHT_YELLOW" "$port" "$C_RESET" "${socks:-direct}"
   done <"$NODES_CONFIG"
 }
 
@@ -1643,7 +1669,7 @@ menu() {
       4) manage_config ;;
       5) restart_services ;;
       6) doctor ;;
-      7) install_project ;;
+      7) install_menu ;;
       8) sync_versions ;;
       9) backup_project ;;
       10) restore_project ;;
@@ -1663,7 +1689,15 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     -c) manage_config ;;
     -r) restart_services ;;
     -x) doctor ;;
-    -i) install_project ;;
+    -i)
+      if [[ "${2:-}" == "--github-refreshed" ]]; then
+        install_project local
+      elif [[ -n "${2:-}" ]]; then
+        die "未知安装参数：${2}"
+      else
+        install_menu
+      fi
+      ;;
     -v) sync_versions ;;
     -k) backup_project "${2:-}" ;;
     -l) restore_project "${2:-}" ;;

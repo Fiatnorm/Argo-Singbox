@@ -1,4 +1,4 @@
-# Argo-Singbox v2.10.2
+# Argo-Singbox v2.10.3
 
 面向固定 Argo Token 隧道的中文轻量安装脚本，提供：
 
@@ -68,13 +68,15 @@ v2.10.1 修复 UUID 配置索引的 Nginx 500 错误；节点文件迁入 `/etc/
 
 v2.10.2 调整面板为高亮蓝、青和白色主视觉，明文节点块末尾固定保留一行；`asb -i` 会先获取并校验 `Fiatnorm/Argo-Singbox` 的最新 `main` 脚本，再由最新脚本继续安装或更新。
 
+v2.10.3 修正安装完成后的明文节点块末尾空行，并将 `asb -i` 拆分为“当前 VPS 本地脚本重装”和“GitHub 最新脚本安装”两种明确模式。最终面板配色使用亮紫品牌、亮蓝/亮青分区、亮黄菜单序号、白色功能名及绿/黄/红状态色，增强层级和区分度。
+
 下载具有总超时、重试、GitHub 代理回退和 GitHub Release SHA256 digest 校验；二进制还会执行基本版本检查。sing-box 版本优先采用上游 `force_version`，不可用时回退到 GitHub releases，再失败才使用脚本预设版本。
 
 首次安装使用经过项目确认的 sing-box `1.13.0-rc.4`，避免安装时因远端版本变化产生不一致；cloudflared 首次安装按原版 SBA 逻辑使用 GitHub latest。后续执行 `asb -v` 时，sing-box 仍按 `force_version`、GitHub releases、预设版本的顺序查询更新。
 
 ## 是否需要反复拉取 GitHub
 
-安装完成后，脚本会保存在 `/etc/asb/argo-singbox.sh`，并建立本地命令 `/usr/local/bin/asb`。查看节点、修改 Token/优选入口、启停或重启服务、查看状态和卸载都直接使用 VPS 上的本地文件，不会重新拉取仓库。只有用户明确执行 `asb -i` 时，才会获取 `Fiatnorm/Argo-Singbox` 的最新 `main` 提交，校验随仓库发布的 SHA256 和 Bash 语法，然后切换到最新脚本继续安装。
+安装完成后，脚本会保存在 `/etc/asb/argo-singbox.sh`，并建立本地命令 `/usr/local/bin/asb`。查看节点、修改 Token/优选入口、启停或重启服务、查看状态和卸载都直接使用 VPS 上的本地文件，不会重新拉取仓库。执行 `asb -i` 后可选择本地重装或 GitHub 安装：本地重装直接使用 `/etc/asb/argo-singbox.sh`；GitHub 安装会获取 `Fiatnorm/Argo-Singbox` 的最新 `main` 提交，校验随仓库发布的 SHA256 和 Bash 语法，然后切换到最新脚本继续安装。
 
 以下操作仍会主动访问网络：
 
@@ -107,7 +109,7 @@ sudo ./argo-singbox.sh -i
 | 指令 | 功能 |
 |---|---|
 | `sudo asb` | 打开完整中文管理面板 |
-| `sudo asb -i` | 从项目 GitHub 获取并校验最新脚本，再更新配置和两个私有核心 |
+| `sudo asb -i` | 选择使用 VPS 本地脚本重装，或从 GitHub 获取最新脚本后安装 |
 | `sudo asb -n` | 显示全部节点、二维码及所有订阅地址 |
 | `sudo asb -a` | 开启或关闭 Argo/cloudflared 服务 |
 | `sudo asb -s` | 开启或关闭 sing-box 服务 |
@@ -175,7 +177,7 @@ https://chatgpt.com,api.openai.com,example.com
 
 WARP 只覆盖匹配的网址，不会替换其他节点的 SOCKS5 配置。`asb -x` 会检查 `warp-svc`、本地代理端口，并通过 WARP 访问第一个目标域名。WARP 不提供匿名保证，也不保证指定国家或地区的落地 IP。
 
-终端输出按“青色品牌标题 → 蓝色分区标题 → 青色键名 → 白色内容”建立固定层级，并参考原版 SBA 的简单语义色：绿色表示正常或可选项，黄色表示提示和交互，红色表示错误。菜单、诊断、节点订阅与表格统一采用内容块布局：区块之间保留一行，区块内部保持紧凑，避免连续空行。表格使用 ASCII `-` 分隔线并按固定列宽对齐，兼容不同终端字体；重定向输出、`TERM=dumb` 或设置 `NO_COLOR=1` 时自动关闭全部颜色和文本装饰。
+终端输出使用高亮配色：亮紫色标识品牌和输入提示，亮蓝/亮青区分分区与键名，亮黄色标识菜单序号，白色承载主要内容，绿/黄/红分别表示成功、警告和错误。菜单、诊断、节点订阅与表格统一采用内容块布局：区块之间保留一行，区块内部保持紧凑。表格使用 ASCII `-` 分隔线并按固定列宽对齐；重定向输出、`TERM=dumb` 或设置 `NO_COLOR=1` 时自动关闭全部颜色和文本装饰。
 
 ## 诊断、备份与恢复
 
