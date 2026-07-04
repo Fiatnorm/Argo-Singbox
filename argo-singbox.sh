@@ -50,13 +50,13 @@ else
   C_BLUE=""; C_MAGENTA=""; C_CYAN=""; C_WHITE=""; C_BRIGHT_RED=""; C_BRIGHT_GREEN=""
   C_BRIGHT_YELLOW=""; C_BRIGHT_BLUE=""; C_BRIGHT_MAGENTA=""; C_BRIGHT_CYAN=""
 fi
-green() { printf '%s✓ %s%s\n' "$C_BRIGHT_GREEN" "$*" "$C_RESET"; }
-yellow() { printf '%s! %s%s\n' "$C_BRIGHT_YELLOW" "$*" "$C_RESET"; }
-red() { printf '%s✗ %s%s\n' "$C_BRIGHT_RED" "$*" "$C_RESET" >&2; }
-info() { printf '%s• %s%s\n' "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
+green() { printf '%s%s✓ %s%s\n' "$C_BOLD" "$C_GREEN" "$*" "$C_RESET"; }
+yellow() { printf '%s%s! %s%s\n' "$C_BOLD" "$C_YELLOW" "$*" "$C_RESET"; }
+red() { printf '%s%s✗ %s%s\n' "$C_BOLD" "$C_RED" "$*" "$C_RESET" >&2; }
+info() { printf '%s• %s%s\n' "$C_CYAN" "$*" "$C_RESET"; }
 brand() {
-  printf '\n%s%s◆ %s%s\n%s%s%s\n' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$*" "$C_RESET" \
-    "$C_DIM" "────────────────────────────────────────" "$C_RESET"
+  printf '\n%s%s◆ %s%s\n%s%s%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$*" "$C_RESET" \
+    "$C_DIM" "----------------------------------------" "$C_RESET"
 }
 section() { printf '\n%s%s▸ %s%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET"; }
 subsection() { printf '%s%s%s%s\n' "$C_BOLD" "$C_CYAN" "$*" "$C_RESET"; }
@@ -64,12 +64,12 @@ key_value() {
   printf '%s%-14s%s %s%s%s\n' "$C_CYAN" "$1" "$C_RESET" "$C_WHITE" "$2" "$C_RESET"
 }
 link_value() {
-  printf '%s%-14s%s %s%s%s\n' "$C_CYAN" "$1" "$C_RESET" "$C_UNDERLINE" "$2" "$C_RESET"
+  printf '%s%-14s%s %s%s%s%s\n' "$C_CYAN" "$1" "$C_RESET" "$C_BLUE" "$C_UNDERLINE" "$2" "$C_RESET"
 }
-prompt() { printf '%s› %s%s' "$C_BRIGHT_MAGENTA" "$*" "$C_RESET"; }
+prompt() { printf '%s%s› %s%s' "$C_BOLD" "$C_YELLOW" "$*" "$C_RESET"; }
 read_choice() { prompt "$1"; IFS= read -r REPLY; }
 menu_item() {
-  printf '  %s%2s%s  %s%s%s%s%s%s\n' "$C_BRIGHT_CYAN" "$1" "$C_RESET" "$C_WHITE" "$2" \
+  printf '  %s%2s%s  %s%s%s%s%s%s\n' "$C_GREEN" "$1" "$C_RESET" "$C_WHITE" "$2" \
     "$C_RESET" "$C_DIM" "${3:+  [$3]}" "$C_RESET"
 }
 die() { red "$*"; exit 1; }
@@ -1008,13 +1008,13 @@ apply_runtime_config() {
 
 list_node_profiles() {
   local tag protocol path port socks
-  printf '%s%s%-16s  %-6s  %-20s  %-6s  %s%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" \
-    "标签" "协议" "WS 路径" "端口" "出站" "$C_RESET"
-  printf '%s%s%s\n' "$C_DIM" '────────────────  ──────  ────────────────────  ──────  ──────' "$C_RESET"
+  printf '%s%s标签              协议      WS 路径               端口    出站%s\n' \
+    "$C_BOLD" "$C_CYAN" "$C_RESET"
+  printf '%s%s%s\n' "$C_DIM" '----------------  --------  --------------------  ------  ------' "$C_RESET"
   while IFS='|' read -r tag protocol path port socks; do
-    printf '%s%-16s%s  %s%-6s%s  %-20s  %s%-6s%s  %s\n' \
-      "$C_WHITE" "$tag" "$C_RESET" "$C_MAGENTA" "$protocol" "$C_RESET" "$path" \
-      "$C_YELLOW" "$port" "$C_RESET" "${socks:-direct}"
+    printf '%s%-16s%s  %s%-8s%s  %-20s  %s%-6s%s  %s\n' \
+      "$C_WHITE" "$tag" "$C_RESET" "$C_CYAN" "$protocol" "$C_RESET" "$path" \
+      "$C_GREEN" "$port" "$C_RESET" "${socks:-direct}"
   done <"$NODES_CONFIG"
 }
 
