@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.10.0"
+VERSION="2.10.1"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
 WORK_DIR="/etc/asb"
@@ -11,8 +11,9 @@ ENV_FILE="${WORK_DIR}/asb.env"
 SING_BOX_CONFIG="${WORK_DIR}/sing-box.json"
 NGINX_CONFIG="/etc/nginx/conf.d/argo-singbox.conf"
 LEGACY_NGINX_CONFIG="/etc/nginx/conf.d/sba.conf"
-NODES_FILE="/root/argo-singbox_nodes.txt"
-LEGACY_NODES_FILE="/root/sba_nodes.txt"
+NODES_FILE="${WORK_DIR}/nodes.txt"
+LEGACY_NODES_FILE="/root/argo-singbox_nodes.txt"
+LEGACY_SBA_NODES_FILE="/root/sba_nodes.txt"
 LOCAL_SCRIPT="${WORK_DIR}/argo-singbox.sh"
 BIN_DIR="${WORK_DIR}/bin"
 BACKUP_DIR="${WORK_DIR}/backup"
@@ -24,7 +25,6 @@ SUB_CLASH_FILE="${WORK_DIR}/subscription.clash.yaml"
 SUB_CLASH_PROVIDER_FILE="${WORK_DIR}/subscription.proxies.yaml"
 SUB_SING_BOX_FILE="${WORK_DIR}/subscription.sing-box.json"
 SUB_SHADOWROCKET_FILE="${WORK_DIR}/subscription.shadowrocket"
-SUB_INDEX_FILE="${WORK_DIR}/subscription.index.html"
 SING_SERVICE="asb-sing-box"
 ARGO_SERVICE="asb-cloudflared"
 LEGACY_SING_SERVICE="sba-sing-box"
@@ -465,7 +465,7 @@ EOF
     }
     location = /${UUID}/ {
         default_type text/html;
-        alias ${SUB_INDEX_FILE};
+        return 200 '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Argo-Singbox 配置文件</title><style>body{max-width:720px;margin:40px auto;padding:0 20px;font:16px/1.6 system-ui,sans-serif;color:#202124}h1{font-size:24px}li{margin:8px 0}a{color:#0969da;text-decoration:none}a:hover{text-decoration:underline}code{background:#f6f8fa;padding:2px 6px;border-radius:4px}</style></head><body><h1>Argo-Singbox 配置文件</h1><p>按客户端选择订阅；查看明文节点请打开 <code>raw</code>。</p><ul><li><a href="auto">自动适配订阅</a></li><li><a href="raw">明文节点协议</a></li><li><a href="base64">Base64 通用订阅</a></li><li><a href="clash">Clash / Mihomo 配置</a></li><li><a href="proxies">Clash Proxy Provider</a></li><li><a href="sing-box">sing-box 配置</a></li><li><a href="shadowrocket">Shadowrocket 订阅</a></li></ul></body></html>';
     }
     location = /${UUID}/auto {
         default_type text/plain;
@@ -609,35 +609,6 @@ generate_nodes() {
   chmod 644 "$SUB_BASE64_FILE"
   chmod 644 "$SUB_CLASH_FILE" "$SUB_CLASH_PROVIDER_FILE" "$SUB_SING_BOX_FILE" \
     "$SUB_SHADOWROCKET_FILE"
-  cat >"$SUB_INDEX_FILE" <<EOF
-<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Argo-Singbox 配置文件</title>
-  <style>
-    body{max-width:720px;margin:40px auto;padding:0 20px;font:16px/1.6 system-ui,sans-serif;color:#202124}
-    h1{font-size:24px}ul{padding-left:22px}a{color:#0969da;text-decoration:none}a:hover{text-decoration:underline}
-    code{background:#f6f8fa;padding:2px 6px;border-radius:4px}
-  </style>
-</head>
-<body>
-  <h1>Argo-Singbox 配置文件</h1>
-  <p>按客户端选择订阅；查看明文节点请打开 <code>raw</code>。</p>
-  <ul>
-    <li><a href="auto">自动适配订阅</a></li>
-    <li><a href="raw">明文节点协议</a></li>
-    <li><a href="base64">Base64 通用订阅</a></li>
-    <li><a href="clash">Clash / Mihomo 配置</a></li>
-    <li><a href="proxies">Clash Proxy Provider</a></li>
-    <li><a href="sing-box">sing-box 配置</a></li>
-    <li><a href="shadowrocket">Shadowrocket 订阅</a></li>
-  </ul>
-</body>
-</html>
-EOF
-  chmod 644 "$SUB_INDEX_FILE"
   umask "$old_umask"
 }
 
@@ -691,6 +662,7 @@ wait_for_services() {
 health_check() {
   local failed=0 public_code public_headers curl_status port path tag protocol socks
   ensure_nodes_config
+  section "运行检查"
   for service in nginx "$SING_SERVICE" "$ARGO_SERVICE"; do
     if systemctl is-active --quiet "$service"; then
       green "${service}：运行正常"
@@ -702,6 +674,7 @@ health_check() {
     fi
   done
 
+  printf '\n'
   while read -r port; do
     if ! ss -lnt | grep -q "127.0.0.1:${port} "; then
       red "本地端口 ${port} 未监听。"
@@ -730,6 +703,7 @@ health_check() {
       failed=1
     fi
   done <"$NODES_CONFIG"
+  printf '\n'
   [[ "$failed" -eq 0 ]] || yellow "请确认 Public Hostname 指向 http://localhost:${ORIGIN_PORT}，并跳过全部代理路径的 Challenge/WAF。"
 
   return "$failed"
@@ -981,12 +955,13 @@ install_project() {
   systemctl daemon-reload
   sync_argo_domain
   generate_nodes
-  rm -f "$LEGACY_NODES_FILE"
+  rm -f "$LEGACY_NODES_FILE" "$LEGACY_SBA_NODES_FILE"
   if health_check; then
     green "${PROJECT_NAME} 安装 / 更新完成，核心链路检查通过。节点文件：${NODES_FILE}"
   else
     yellow "${PROJECT_NAME} 文件已安装，但健康检查未全部通过；请先处理上述错误再使用节点。"
   fi
+  section "明文节点"
   cat "$NODES_FILE"
 }
 
@@ -1231,49 +1206,75 @@ manage_config() {
 }
 
 backup_project() {
-  local output="${1:-}" backup_dir
+  local output="${1:-}" backup_dir temp_archive
   require_root
   [[ -f "$MANAGED_FILE" ]] || die "缺少项目所有权标记，拒绝备份。"
   if [[ -z "$output" ]]; then
-    read -rp "请输入备份文件夹或 .tar.gz 路径 [/root]: " output
-    output="${output:-/root}"
+    read -rp "请输入备份文件夹或 .tar.gz 路径 [${BACKUP_DIR}]: " output
+    output="${output:-$BACKUP_DIR}"
   fi
   if [[ "$output" != *.tar.gz ]]; then
     backup_dir="${output%/}"
     [[ -n "$backup_dir" ]] || backup_dir="/"
     [[ "$backup_dir" == /* ]] || die "备份文件夹必须使用绝对路径。"
-    [[ "$backup_dir" != "$WORK_DIR" && "$backup_dir" != "$WORK_DIR/"* ]] ||
-      die "备份不能保存到项目目录 ${WORK_DIR} 内。"
+    [[ "$backup_dir" != "$WORK_DIR" ]] || die "备份不能直接保存到项目根目录。"
+    if [[ "$backup_dir" == "$WORK_DIR/"* && "$backup_dir" != "$BACKUP_DIR" ]]; then
+      die "项目目录内仅允许使用默认备份目录 ${BACKUP_DIR}。"
+    fi
     install -d -m 700 "$backup_dir"
     output="${backup_dir}/asb-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
   fi
   [[ "$output" == /* ]] || die "备份路径必须使用绝对路径。"
-  [[ "$output" != "$WORK_DIR" && "$output" != "$WORK_DIR/"* ]] ||
-    die "备份不能保存到项目目录 ${WORK_DIR} 内。"
+  [[ "$output" != "$WORK_DIR" ]] || die "备份不能直接保存到项目根目录。"
+  if [[ "$output" == "$WORK_DIR/"* && "$output" != "$BACKUP_DIR/"* ]]; then
+    die "项目目录内仅允许使用默认备份目录 ${BACKUP_DIR}。"
+  fi
   install -d -m 700 "$(dirname "$output")"
   [[ "$output" == *.tar.gz ]] || die "备份文件必须以 .tar.gz 结尾。"
-  tar -C "$(dirname "$WORK_DIR")" -czf "${output}.tmp" "$WORK_DIR_NAME"
-  mv -f "${output}.tmp" "$output"
+  temp_archive="$(mktemp --suffix=.tar.gz)"
+  if ! tar --exclude="${WORK_DIR_NAME}/backup" -C "$(dirname "$WORK_DIR")" \
+    -czf "$temp_archive" "$WORK_DIR_NAME"; then
+    rm -f "$temp_archive"
+    die "备份归档创建失败。"
+  fi
+  mv -f "$temp_archive" "$output"
   chmod 600 "$output"
+  printf '\n'
   green "备份完成：${output}"
 }
 
 restore_project() {
-  local archive="${1:-}" stage old_dir
+  local archive="${1:-}" stage old_dir archive_copy archive_name latest
   require_root
-  [[ -n "$archive" ]] || read -rp "请输入备份文件路径: " archive
+  if [[ -z "$archive" ]]; then
+    read -rp "请输入备份文件或目录 [${BACKUP_DIR}，留空使用最新备份]: " archive
+    archive="${archive:-$BACKUP_DIR}"
+  fi
+  if [[ -d "$archive" ]]; then
+    latest="$(find "$archive" -maxdepth 1 -type f -name 'asb-backup-*.tar.gz' \
+      -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -n1 | cut -d' ' -f2-)"
+    [[ -n "$latest" ]] || die "备份目录中没有可恢复的归档：${archive}"
+    archive="$latest"
+    info "使用最新备份：${archive}"
+  fi
   [[ -f "$archive" ]] || die "备份文件不存在：${archive}"
   [[ -f "$MANAGED_FILE" ]] || die "当前 ${WORK_DIR} 缺少项目所有权标记，拒绝覆盖。"
+  archive_name="$(basename "$archive")"
+  archive_copy="$(mktemp --suffix=.tar.gz)"
+  cp -a "$archive" "$archive_copy"
   stage="$(mktemp -d)"
-  tar -xzf "$archive" -C "$stage"
+  tar -xzf "$archive_copy" -C "$stage"
   [[ -f "$stage/${WORK_DIR_NAME}/managed" && -f "$stage/${WORK_DIR_NAME}/asb.env" &&
     -x "$stage/${WORK_DIR_NAME}/bin/sing-box" && -x "$stage/${WORK_DIR_NAME}/bin/cloudflared" ]] ||
-    { rm -rf "$stage"; die "备份结构或所有权标记无效。"; }
+    { rm -rf "$stage"; rm -f "$archive_copy"; die "备份结构或所有权标记无效。"; }
   old_dir="${WORK_DIR}.restore-old-$(date +%Y%m%d-%H%M%S)"
   systemctl stop "$SING_SERVICE" "$ARGO_SERVICE" 2>/dev/null || true
   mv "$WORK_DIR" "$old_dir"
   if mv "$stage/${WORK_DIR_NAME}" "$WORK_DIR"; then
     rm -rf "$stage"
+    install -d -m 700 "$BACKUP_DIR"
+    install -m 600 "$archive_copy" "${BACKUP_DIR}/${archive_name}"
+    rm -f "$archive_copy"
     load_env
     ensure_nodes_config
     write_sing_box_config
@@ -1283,6 +1284,7 @@ restore_project() {
     if systemctl restart nginx "$SING_SERVICE" "$ARGO_SERVICE" && wait_for_services; then
       generate_nodes
       rm -rf "$old_dir"
+      printf '\n'
       green "恢复完成：${archive}"
       return 0
     fi
@@ -1291,6 +1293,7 @@ restore_project() {
   rm -rf "$WORK_DIR"
   mv "$old_dir" "$WORK_DIR"
   rm -rf "$stage"
+  rm -f "$archive_copy"
   systemctl restart nginx "$SING_SERVICE" "$ARGO_SERVICE" 2>/dev/null || true
   die "恢复失败，已回滚到恢复前状态。"
 }
@@ -1377,6 +1380,7 @@ toggle_service() {
 sync_versions() {
   local old_argo old_sing new_argo new_sing wanted_sing wanted_argo
   local sing_stage="" argo_stage="" backup_stamp answer update_sing=0 update_argo=0
+  local services=()
   require_root
   [[ -f "$ENV_FILE" ]] || die "${PROJECT_NAME} 尚未安装。"
   [[ -f "/etc/systemd/system/${ARGO_SERVICE}.service" && -f "/etc/systemd/system/${SING_SERVICE}.service" ]] ||
@@ -1388,46 +1392,65 @@ sync_versions() {
   wanted_argo="$(get_cloudflared_version)"
   new_sing="$wanted_sing"
   new_argo="$wanted_argo"
-  printf 'Sing-box：%s → %s\nCloudflared：%s → %s\n' \
-    "${old_sing:-未安装}" "${new_sing:-未知}" "${old_argo:-未安装}" "${new_argo:-未知}"
+  section "Argo / cloudflared 核心"
+  printf '当前版本：%s\n目标版本：%s\n' "${old_argo:-未安装}" "${new_argo:-未知}"
+  if [[ "$old_argo" != "$new_argo" ]]; then
+    read -rp "是否更新 Argo / cloudflared？[y/N]: " answer
+    [[ "$answer" =~ ^[Yy]$ ]] && update_argo=1
+  else
+    green "Argo / cloudflared 已是目标版本。"
+  fi
+  section "Sing-box 核心"
+  printf '当前版本：%s\n目标版本：%s\n' "${old_sing:-未安装}" "${new_sing:-未知}"
+  if [[ "$old_sing" != "$new_sing" ]]; then
+    read -rp "是否更新 Sing-box？[y/N]: " answer
+    [[ "$answer" =~ ^[Yy]$ ]] && update_sing=1
+  else
+    green "Sing-box 已是目标版本。"
+  fi
   if [[ "$old_sing" == "$new_sing" && "$old_argo" == "$new_argo" ]]; then
-    green "两个核心均已是目标版本，无需更新。"
     return 0
   fi
-  read -rp "确认更新需要变更的核心？[y/N]: " answer
-  [[ "$answer" =~ ^[Yy]$ ]] || { yellow "已取消更新。"; return 0; }
-  if [[ "$old_sing" != "$new_sing" ]]; then
-    update_sing=1
+  if ((update_sing == 0 && update_argo == 0)); then
+    yellow "未选择需要更新的核心。"
+    return 0
+  fi
+  if ((update_sing)); then
     sing_stage="$(mktemp)"
     stage_sing_box "$wanted_sing" "$sing_stage"
     "$sing_stage" check -c "$SING_BOX_CONFIG"
   fi
-  if [[ "$old_argo" != "$new_argo" ]]; then
-    update_argo=1
+  if ((update_argo)); then
     argo_stage="$(mktemp)"
     stage_cloudflared "$argo_stage"
   fi
   backup_stamp="${BACKUP_DIR}/core-$(date +%Y%m%d-%H%M%S)"
   install -d -m 700 "$backup_stamp"
-  cp -a "$BIN_DIR/sing-box" "$BIN_DIR/cloudflared" "$backup_stamp/"
+  ((update_sing)) && cp -a "$BIN_DIR/sing-box" "$backup_stamp/"
+  ((update_argo)) && cp -a "$BIN_DIR/cloudflared" "$backup_stamp/"
   if ((update_sing)); then
     install -m 755 "$sing_stage" "${BIN_DIR}/sing-box.new"
     mv -f "${BIN_DIR}/sing-box.new" "$BIN_DIR/sing-box"
+    services+=("$SING_SERVICE")
   fi
   if ((update_argo)); then
     install -m 755 "$argo_stage" "${BIN_DIR}/cloudflared.new"
     mv -f "${BIN_DIR}/cloudflared.new" "$BIN_DIR/cloudflared"
+    services+=("$ARGO_SERVICE")
   fi
   rm -f "$sing_stage" "$argo_stage"
-  if systemctl restart "$SING_SERVICE" "$ARGO_SERVICE" &&
+  if systemctl restart "${services[@]}" &&
     wait_for_services && "$BIN_DIR/sing-box" check -c "$SING_BOX_CONFIG"; then
     rm -rf "$backup_stamp"
-    green "核心更新成功：Sing-box ${old_sing:-无} → ${new_sing}；Cloudflared ${old_argo:-无} → ${new_argo}"
+    printf '\n'
+    ((update_argo)) && green "Argo / cloudflared 更新成功：${old_argo:-无} → ${new_argo}"
+    ((update_sing)) && green "Sing-box 更新成功：${old_sing:-无} → ${new_sing}"
+    return 0
   else
     red "更新后验证失败，正在自动回滚。"
-    install -m 755 "$backup_stamp/sing-box" "$BIN_DIR/sing-box"
-    install -m 755 "$backup_stamp/cloudflared" "$BIN_DIR/cloudflared"
-    systemctl restart "$SING_SERVICE" "$ARGO_SERVICE" || true
+    ((update_sing)) && install -m 755 "$backup_stamp/sing-box" "$BIN_DIR/sing-box"
+    ((update_argo)) && install -m 755 "$backup_stamp/cloudflared" "$BIN_DIR/cloudflared"
+    systemctl restart "${services[@]}" || true
     wait_for_services || true
     die "核心已回滚到更新前版本，请查看 journalctl。"
   fi
@@ -1486,7 +1509,7 @@ uninstall_project() {
   rm -f "/etc/systemd/system/${SING_SERVICE}.service" "/etc/systemd/system/${ARGO_SERVICE}.service"
   remove_legacy_services
   rm -f "$NGINX_CONFIG" "$LEGACY_NGINX_CONFIG" "/usr/local/bin/${COMMAND_NAME}" \
-    "$NODES_FILE" "$LEGACY_NODES_FILE"
+    "$NODES_FILE" "$LEGACY_NODES_FILE" "$LEGACY_SBA_NODES_FILE"
   for legacy_link in /usr/local/bin/sb /usr/local/bin/argo-singbox; do
     [[ -L "$legacy_link" ]] || continue
     target="$(readlink -f "$legacy_link" 2>/dev/null || true)"

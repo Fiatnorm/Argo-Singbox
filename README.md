@@ -1,4 +1,4 @@
-# Argo-Singbox v2.9.1
+# Argo-Singbox v2.10.1
 
 面向固定 Argo Token 隧道的中文轻量安装脚本，提供：
 
@@ -41,9 +41,12 @@ sudo ./argo-singbox.sh -i
 ```text
 /etc/asb/bin/sing-box
 /etc/asb/bin/cloudflared
+/etc/asb/nodes.txt
+/etc/asb/subscription.*
+/etc/asb/backup/
 ```
 
-服务使用 `asb-sing-box.service` 和 `asb-cloudflared.service`，不会覆盖系统已有的通用 `sing-box.service` 或 `cloudflared.service`。仅在覆盖现有项目配置时创建一个 `config-previous` 必要备份，不累计时间戳备份，也不为全新安装建立空备份目录；脚本只重建项目管理的文件。
+项目核心、配置、节点和订阅数据统一保存在 `/etc/asb/`。只有 systemd unit、Nginx 站点配置和 `/usr/local/bin/asb` 命令入口按 Linux 系统约定保存在对应系统目录。服务使用 `asb-sing-box.service` 和 `asb-cloudflared.service`，不会覆盖系统已有的通用 `sing-box.service` 或 `cloudflared.service`。
 
 从旧版升级时，脚本仅在 `/etc/sba/managed` 所有权标记有效且 `/etc/asb` 不存在时，将旧目录迁移为 `/etc/asb`、把 `sba.env` 改名为 `asb.env`，并临时保留指向新目录的兼容链接；新服务验证通过后才移除属于本项目的旧 `sba-*` 服务和兼容链接，失败则尝试恢复旧服务。两个真实目录同时存在或旧目录没有所有权标记时会停止并要求人工核对。
 
@@ -60,6 +63,8 @@ v2.9.0 增加按客户端区分的订阅文件和自动适配入口，覆盖 V2r
 v2.9.1 修复从交互菜单卸载后再次进入面板的问题。卸载会清理项目核心、配置、订阅、备份、服务和命令入口，并分别询问是否额外卸载 Nginx、Cloudflare WARP 及通用系统工具。
 
 v2.10.0 首次安装固定使用 sing-box `1.13.0-rc.4`，cloudflared 与原版 SBA 一样下载 latest；固定 Token 日志未输出 hostname 时不再误报，公网 WS 探测超时也不再阻断安装。新增 UUID 文件索引、可输入备份文件夹、WARP 添加前展示已有域名，并调整节点表格和终端输出间距。
+
+v2.10.1 修复 UUID 配置索引的 Nginx 500 错误；节点文件迁入 `/etc/asb/nodes.txt`；备份和恢复默认使用 `/etc/asb/backup/`；Argo/cloudflared 与 Sing-box 核心改为分别询问是否更新；运行检查、完成信息和明文节点之间增加分区空行。
 
 下载具有总超时、重试、GitHub 代理回退和 GitHub Release SHA256 digest 校验；二进制还会执行基本版本检查。sing-box 版本优先采用上游 `force_version`，不可用时回退到 GitHub releases，再失败才使用脚本预设版本。
 
@@ -109,8 +114,8 @@ sudo ./argo-singbox.sh -i
 | `sudo asb -x` | 执行完整诊断、WS 检查并显示最近日志 |
 | `sudo asb -v` | 比较版本并更新 Argo/cloudflared 与 sing-box 核心 |
 | `sudo asb -k [文件夹或文件.tar.gz]` | 备份到指定文件夹或完整归档路径 |
-| `sudo asb -k /root/my-asb.tar.gz` | 备份到指定文件 |
-| `sudo asb -l /root/my-asb.tar.gz` | 从指定备份恢复并验证服务 |
+| `sudo asb -k /etc/asb/backup/my-asb.tar.gz` | 备份到指定文件 |
+| `sudo asb -l /etc/asb/backup/my-asb.tar.gz` | 从指定备份恢复并验证服务 |
 | `sudo asb -b` | 启动第三方 Linux-NetSpeed BBR/DD 工具 |
 | `sudo asb -u` | 彻底卸载本项目，并选择是否卸载共享依赖 |
 
@@ -173,10 +178,10 @@ WARP 只覆盖匹配的网址，不会替换其他节点的 SOCKS5 配置。`asb
 ## 诊断、备份与恢复
 
 - `asb -x`：检查配置与 Token 同步、三个服务、全部动态监听端口、每条公网 WS 路径、核心版本，并输出最近 30 条项目日志。
-- `asb -k [文件夹或文件.tar.gz]`：备份 `/etc/asb`。省略参数时会询问保存位置；输入 `/root/back` 会自动创建目录并生成 `asb-backup-时间.tar.gz`，也可直接输入完整 `.tar.gz` 路径。
-- `asb -l [文件.tar.gz]`：验证备份中的项目所有权标记和核心文件后恢复 `/etc/asb`，重新生成 Nginx 与 systemd 配置并验证服务；失败自动回滚。
+- `asb -k [文件夹或文件.tar.gz]`：备份 `/etc/asb`，默认保存到 `/etc/asb/backup/asb-backup-时间.tar.gz`。归档会排除 `backup/` 自身，避免递归包含历史备份；也可指定其他绝对路径。
+- `asb -l [文件夹或文件.tar.gz]`：默认从 `/etc/asb/backup/` 选择最新归档，也可指定目录或完整文件。验证所有权标记和核心文件后恢复 `/etc/asb`，重新生成 Nginx 与 systemd 配置并验证服务；失败自动回滚。
 
-`asb -v` 会先比较本地和远端版本并请求确认，然后下载到临时文件、校验 SHA256/可执行性、执行 `sing-box check`、备份旧核心、原子替换并重启验证。验证失败会自动恢复两个旧核心。
+`asb -v` 会分别显示 Argo/cloudflared 与 Sing-box 的本地、目标版本，并分别询问是否更新。只下载、备份、替换和重启用户确认更新的核心；下载文件会校验 SHA256/可执行性，Sing-box 还会执行配置检查。验证失败时只回滚本次选择的核心。
 
 核心更新的备份只用于本次回滚，验证成功后立即删除；失败时保留，便于核对和恢复。
 
@@ -196,7 +201,7 @@ https://你的域名/你的UUID/sing-box
 https://你的域名/你的UUID/shadowrocket
 ```
 
-`/你的UUID` 会跳转到文件索引；`/auto` 根据 User-Agent 为 Clash/Mihomo、sing-box 和 Shadowrocket 返回对应格式，其他客户端返回 Base64 通用订阅。`/raw` 以及 `/root/argo-singbox_nodes.txt` 保留逐行明文 `vless://`、`vmess://`、`trojan://` 节点协议。旧的 `/asb-sub` 与 `/asb-sub-base64` 入口继续可用。
+`/你的UUID` 会跳转到文件索引；索引 HTML 由 Nginx 直接返回，避免目录 URL 使用文件 `alias` 导致 500。`/auto` 根据 User-Agent 为 Clash/Mihomo、sing-box 和 Shadowrocket 返回对应格式，其他客户端返回 Base64 通用订阅。`/raw` 以及 `/etc/asb/nodes.txt` 保留逐行明文 `vless://`、`vmess://`、`trojan://` 节点协议。旧的 `/asb-sub` 与 `/asb-sub-base64` 入口继续可用。
 
 二维码只为“自动适配订阅地址”和每条可直接导入的明文节点生成。Clash、sing-box 等配置文件地址不单独生成二维码，避免用户把客户端不支持的文件 URL 当成通用订阅扫描。
 
@@ -213,7 +218,7 @@ https://你的域名/你的UUID/shadowrocket
 - `/etc/asb` 中的项目核心、配置、订阅和项目备份；
 - `asb-sing-box.service`、`asb-cloudflared.service` 以及确认属于本项目的旧服务；
 - `/etc/nginx/conf.d/argo-singbox.conf`、项目旧 Nginx 配置、`/usr/local/bin/asb`；
-- `/root/argo-singbox_nodes.txt`、项目迁移链接和兼容节点文件。
+- `/etc/asb/nodes.txt`、旧版 `/root` 节点文件、项目迁移链接和兼容节点文件。
 
 私有 `/etc/asb/bin/cloudflared`（Argo）和 `/etc/asb/bin/sing-box` 一定随项目删除。卸载完成后脚本立即退出，不会重新显示管理面板。
 

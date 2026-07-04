@@ -18,6 +18,8 @@
 - `/etc/asb/bin/cloudflared`
 - `/etc/asb/asb.env`
 - `/etc/asb/nodes.conf`
+- `/etc/asb/nodes.txt`
+- `/etc/asb/backup/`
 - `/usr/local/bin/asb`
 
 ## 产品边界
