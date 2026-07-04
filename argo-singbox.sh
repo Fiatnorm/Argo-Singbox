@@ -40,25 +40,29 @@ DEFAULT_ORIGIN_PORT=3010
 ORIGIN_PORT="$DEFAULT_ORIGIN_PORT"
 
 if [[ -t 1 && -z "${NO_COLOR:-}" && "${TERM:-dumb}" != "dumb" ]]; then
-  C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'; C_DIM=$'\033[2m'; C_UNDERLINE=$'\033[4m'
-  C_RED=$'\033[31m'; C_GREEN=$'\033[32m'; C_YELLOW=$'\033[33m'
-  C_BLUE=$'\033[34m'; C_MAGENTA=$'\033[35m'; C_CYAN=$'\033[36m'; C_WHITE=$'\033[37m'
-  C_BRIGHT_RED=$'\033[91m'; C_BRIGHT_GREEN=$'\033[92m'; C_BRIGHT_YELLOW=$'\033[93m'
-  C_BRIGHT_BLUE=$'\033[94m'; C_BRIGHT_MAGENTA=$'\033[95m'; C_BRIGHT_CYAN=$'\033[96m'
+  C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'; C_DIM=$'\033[2m'
+  C_ACCENT=$'\033[96m'; C_SUCCESS=$'\033[92m'
+  C_WARNING=$'\033[93m'; C_ERROR=$'\033[91m'
 else
-  C_RESET=""; C_BOLD=""; C_DIM=""; C_UNDERLINE=""; C_RED=""; C_GREEN=""; C_YELLOW=""
-  C_BLUE=""; C_MAGENTA=""; C_CYAN=""; C_WHITE=""; C_BRIGHT_RED=""; C_BRIGHT_GREEN=""
-  C_BRIGHT_YELLOW=""; C_BRIGHT_BLUE=""; C_BRIGHT_MAGENTA=""; C_BRIGHT_CYAN=""
+  C_RESET=""; C_BOLD=""; C_DIM=""
+  C_ACCENT=""; C_SUCCESS=""; C_WARNING=""; C_ERROR=""
 fi
-green() { printf '%s✓ %s%s\n' "$C_BRIGHT_GREEN" "$*" "$C_RESET"; }
-yellow() { printf '%s! %s%s\n' "$C_BRIGHT_YELLOW" "$*" "$C_RESET"; }
-red() { printf '%s✗ %s%s\n' "$C_BRIGHT_RED" "$*" "$C_RESET" >&2; }
-info() { printf '%s• %s%s\n' "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
-section() { printf '\n%s%s%s%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET"; }
-prompt() { printf '%s› %s%s' "$C_BRIGHT_MAGENTA" "$*" "$C_RESET"; }
+gap() { printf '\n'; }
+green() { printf '%s✓%s %s\n' "$C_SUCCESS" "$C_RESET" "$*"; }
+yellow() { printf '%s!%s %s\n' "$C_WARNING" "$C_RESET" "$*"; }
+red() { printf '%s✗%s %s\n' "$C_ERROR" "$C_RESET" "$*" >&2; }
+info() { printf '%s•%s %s\n' "$C_ACCENT" "$C_RESET" "$*"; }
+section() { printf '%s%s%s%s\n' "$C_BOLD" "$C_ACCENT" "$*" "$C_RESET"; }
+prompt() { printf '%s›%s %s' "$C_ACCENT" "$C_RESET" "$*"; }
+prompt_read() {
+  local variable="$1" text="$2"
+  prompt "$text"
+  IFS= read -r "$variable"
+}
 menu_item() {
-  printf '%s%2s%s  %s%s%s%s%s%s\n' "$C_BRIGHT_CYAN" "$1" "$C_RESET" "$C_WHITE" "$2" \
-    "$C_RESET" "$C_DIM" "${3:+  [$3]}" "$C_RESET"
+  printf '  %s%2s%s  %-34s' "$C_ACCENT" "$1" "$C_RESET" "$2"
+  [[ -n "${3:-}" ]] && printf '  %s%s%s' "$C_DIM" "$3" "$C_RESET"
+  printf '\n'
 }
 die() { red "$*"; exit 1; }
 
@@ -223,7 +227,7 @@ install_dependencies() {
 install_cloudflare_warp() {
   local answer codename key_file fingerprint
   command -v warp-cli >/dev/null 2>&1 && return
-  read -rp "未安装官方 Cloudflare WARP 客户端，立即自动安装？[Y/n]: " answer
+  prompt_read answer "未安装官方 Cloudflare WARP 客户端，立即自动安装？[Y/n]: "
   [[ ! "$answer" =~ ^[Nn]$ ]] || die "已取消安装 Cloudflare WARP 客户端。"
   command -v apt-get >/dev/null 2>&1 ||
     die "无法自动安装：当前系统没有 apt-get。"
@@ -275,7 +279,7 @@ ensure_warp_registration() {
   if grep -qi "Old registration is still around" "$output"; then
     cat "$output" >&2
     rm -f "$output"
-    read -rp "检测到无法使用的旧 WARP 注册，删除并重新注册？[y/N]: " answer
+    prompt_read answer "检测到无法使用的旧 WARP 注册，删除并重新注册？[y/N]: "
     [[ "$answer" =~ ^[Yy]$ ]] ||
       die "未清理旧 WARP 注册，已取消启用。"
     warp-cli --accept-tos registration delete >/dev/null 2>&1 ||
@@ -662,6 +666,7 @@ wait_for_services() {
 health_check() {
   local failed=0 public_code public_headers curl_status port path tag protocol socks
   ensure_nodes_config
+  gap
   section "运行检查"
   for service in nginx "$SING_SERVICE" "$ARGO_SERVICE"; do
     if systemctl is-active --quiet "$service"; then
@@ -711,19 +716,19 @@ health_check() {
 
 prompt_install_values() {
   local value endpoint
-  read -rp "请输入 Argo Token（必填）: " value
+  prompt_read value "请输入 Argo Token（必填）: "
   [[ -n "$value" ]] || die "Argo Token 不能为空。"
   ARGO_TOKEN="$value"
-  read -rp "请输入 Argo 域名（必填）${ARGO_DOMAIN:+ [${ARGO_DOMAIN}]}: " value
+  prompt_read value "请输入 Argo 域名（必填）${ARGO_DOMAIN:+ [${ARGO_DOMAIN}]}: "
   ARGO_DOMAIN="${value:-$ARGO_DOMAIN}"
   [[ -n "$ARGO_DOMAIN" ]] || die "Argo 域名不能为空。"
   [[ -n "$UUID" ]] || UUID="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || true)"
   [[ -n "$UUID" ]] || UUID="$(openssl rand -hex 16 | sed 's/^\(........\)\(....\)\(....\)\(....\)\(............\)$/\1-\2-\3-\4-\5/')"
-  read -rp "请输入 UUID [${UUID}]: " value
+  prompt_read value "请输入 UUID [${UUID}]: "
   UUID="${value:-$UUID}"
   [[ "${UUID,,}" =~ ^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$ ]] ||
     die "UUID 格式不正确。"
-  read -rp "请输入 Cloudflare 优选入口 域名/IP:端口 [${SERVER}:${SERVER_PORT}]: " endpoint
+  prompt_read endpoint "请输入 Cloudflare 优选入口 域名/IP:端口 [${SERVER}:${SERVER_PORT}]: "
   endpoint="${endpoint:-${SERVER}:${SERVER_PORT}}"
   parse_endpoint "$endpoint"
   [[ "$ARGO_DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || die "Argo 域名格式不正确。"
@@ -961,6 +966,7 @@ install_project() {
   else
     yellow "${PROJECT_NAME} 文件已安装，但健康检查未全部通过；请先处理上述错误再使用节点。"
   fi
+  gap
   section "明文节点"
   cat "$NODES_FILE"
 }
@@ -1010,13 +1016,13 @@ add_node_profile() {
   local tag protocol path port socks default_port
   begin_config_change
   default_port="$(next_node_port)"
-  read -rp "节点标签（字母/数字/_/-）: " tag
-  read -rp "协议（vless/vmess/trojan）: " protocol
+  prompt_read tag "节点标签（字母/数字/_/-）: "
+  prompt_read protocol "协议（vless/vmess/trojan）: "
   protocol="${protocol,,}"
-  read -rp "WS 路径（以 / 开头）: " path
-  read -rp "本地监听端口 [${default_port}]: " port
+  prompt_read path "WS 路径（以 / 开头）: "
+  prompt_read port "本地监听端口 [${default_port}]: "
   port="${port:-$default_port}"
-  read -rp "SOCKS5 出站（主机:端口:用户名:密码，留空为直连）: " socks
+  prompt_read socks "SOCKS5 出站（主机:端口:用户名:密码，留空为直连）: "
   [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || die "节点标签格式错误。"
   [[ "$protocol" =~ ^(vless|vmess|trojan)$ ]] || die "协议不受支持。"
   valid_path "$path" || die "WS 路径格式错误。"
@@ -1033,7 +1039,7 @@ add_node_profile() {
 change_origin_port() {
   local value temp next_port
   begin_config_change
-  read -rp "新的 Argo Tunnel 回源端口 [${ORIGIN_PORT}]: " value
+  prompt_read value "新的 Argo Tunnel 回源端口 [${ORIGIN_PORT}]: "
   value="${value:-$ORIGIN_PORT}"
   valid_port "$value" || die "端口格式错误。"
   next_port="$((10#$value + 1))"
@@ -1052,7 +1058,7 @@ delete_node_profile() {
   local tag temp
   list_node_profiles
   begin_config_change
-  read -rp "要删除的节点标签: " tag
+  prompt_read tag "要删除的节点标签: "
   grep -Fq "${tag}|" "$NODES_CONFIG" || die "未找到节点标签：${tag}"
   [[ "$(wc -l <"$NODES_CONFIG")" -gt 1 ]] || die "至少必须保留一个节点。"
   temp="$(mktemp)"
@@ -1065,17 +1071,17 @@ delete_node_profile() {
 edit_node_profile() {
   local wanted tag protocol path port socks new_tag new_protocol new_path new_port new_socks temp
   list_node_profiles
-  read -rp "要修改的节点标签: " wanted
+  prompt_read wanted "要修改的节点标签: "
   while IFS='|' read -r tag protocol path port socks; do
     [[ "$tag" == "$wanted" ]] && break
   done <"$NODES_CONFIG"
   [[ "${tag:-}" == "$wanted" ]] || die "未找到节点标签：${wanted}"
   begin_config_change
-  read -rp "新节点标签 [${tag}]: " new_tag
-  read -rp "新协议 [${protocol}]（vless/vmess/trojan）: " new_protocol
-  read -rp "新 WS 路径 [${path}]: " new_path
-  read -rp "新本地端口 [${port}]: " new_port
-  read -rp "新 SOCKS5 [${socks:-direct}]（留空保持，输入 - 改为直连）: " new_socks
+  prompt_read new_tag "新节点标签 [${tag}]: "
+  prompt_read new_protocol "新协议 [${protocol}]（vless/vmess/trojan）: "
+  prompt_read new_path "新 WS 路径 [${path}]: "
+  prompt_read new_port "新本地端口 [${port}]: "
+  prompt_read new_socks "新 SOCKS5 [${socks:-direct}]（留空保持，输入 - 改为直连）: "
   tag="${new_tag:-$tag}"; protocol="${new_protocol:-$protocol}"
   protocol="${protocol,,}"; path="${new_path:-$path}"; port="${new_port:-$port}"
   [[ "$new_socks" == "-" ]] && socks="" || socks="${new_socks:-$socks}"
@@ -1099,6 +1105,7 @@ edit_node_profile() {
 configure_warp() {
   local choice port targets domain normalized output item old_ifs
   while true; do
+    gap
     printf '当前状态：%s；代理端口：%s；目标：%s\n' \
       "$([[ "$WARP_ENABLED" == "1" ]] && echo 已启用 || echo 未启用)" \
       "$WARP_PROXY_PORT" "${WARP_DOMAINS:-无}"
@@ -1107,14 +1114,15 @@ configure_warp() {
     menu_item 3 "删除域名"
     menu_item 4 "停用 WARP 分流"
     menu_item 0 "返回"
-    read -rp "请选择: " choice
+    gap
+    prompt_read choice "请选择 [0-4]: "
     case "$choice" in
       1)
         install_cloudflare_warp
-        read -rp "WARP 本地 SOCKS5 端口 [${WARP_PROXY_PORT}]: " port
+        prompt_read port "WARP 本地 SOCKS5 端口 [${WARP_PROXY_PORT}]: "
         port="${port:-$WARP_PROXY_PORT}"
         valid_port "$port" || die "WARP 代理端口无效。"
-        read -rp "走 WARP 的网址/域名（逗号分隔）[${WARP_DOMAINS:-无}]: " targets
+        prompt_read targets "走 WARP 的网址/域名（逗号分隔）[${WARP_DOMAINS:-无}]: "
         targets="${targets:-$WARP_DOMAINS}"
         targets="$(normalize_warp_domains "$targets")"
         systemctl enable --now warp-svc >/dev/null 2>&1 || die "无法启动 warp-svc。"
@@ -1130,7 +1138,7 @@ configure_warp() {
       2)
         [[ "$WARP_ENABLED" == "1" ]] || die "请先启用 WARP 分流。"
         printf '已有 WARP 域名：%s\n' "$WARP_DOMAINS"
-        read -rp "要添加的网址/域名（可用逗号分隔）: " targets
+        prompt_read targets "要添加的网址/域名（可用逗号分隔）: "
         targets="$(normalize_warp_domains "$targets")"
         begin_config_change
         WARP_DOMAINS="$(normalize_warp_domains "${WARP_DOMAINS},${targets}")"
@@ -1138,7 +1146,7 @@ configure_warp() {
         ;;
       3)
         [[ "$WARP_ENABLED" == "1" ]] || die "WARP 分流尚未启用。"
-        read -rp "要删除的网址或域名: " domain
+        prompt_read domain "要删除的网址或域名: "
         normalized="$(normalize_warp_domains "$domain")"
         [[ "$normalized" != *,* ]] || die "每次只能删除一个域名。"
         output=""; old_ifs="$IFS"; IFS=','
@@ -1170,11 +1178,13 @@ manage_config() {
   [[ -f "$ENV_FILE" ]] || die "${PROJECT_NAME} 尚未安装。"
   ensure_nodes_config
   while true; do
+    gap
     section "基础配置"
     menu_item 1 "Token / Argo 域名"
     menu_item 2 "Cloudflare 优选入口"
     menu_item 3 "Argo Tunnel 回源端口（节点端口依次顺延）"
     menu_item 4 "全局 UUID"
+    gap
     section "节点与分流"
     menu_item 5 "查看节点"
     menu_item 6 "添加节点"
@@ -1182,18 +1192,19 @@ manage_config() {
     menu_item 8 "删除节点"
     menu_item 9 "WARP 网址分流"
     menu_item 0 "返回"
-    read -rp "请选择: " choice
+    gap
+    prompt_read choice "请选择 [0-9]: "
     case "$choice" in
       1)
         begin_config_change
-        read -rp "新 Token [留空保持]: " value; ARGO_TOKEN="${value:-$ARGO_TOKEN}"
-        read -rp "新 Argo 域名 [${ARGO_DOMAIN}]: " value; ARGO_DOMAIN="${value:-$ARGO_DOMAIN}"
+        prompt_read value "新 Token [留空保持]: "; ARGO_TOKEN="${value:-$ARGO_TOKEN}"
+        prompt_read value "新 Argo 域名 [${ARGO_DOMAIN}]: "; ARGO_DOMAIN="${value:-$ARGO_DOMAIN}"
         [[ -n "$ARGO_TOKEN" && "$ARGO_DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || die "Token 或域名无效。"
         apply_runtime_config
         ;;
-      2) begin_config_change; read -rp "新优选入口 域名/IP:端口: " endpoint; parse_endpoint "$endpoint"; apply_runtime_config ;;
+      2) begin_config_change; prompt_read endpoint "新优选入口 域名/IP:端口: "; parse_endpoint "$endpoint"; apply_runtime_config ;;
       3) change_origin_port ;;
-      4) begin_config_change; read -rp "新 UUID: " value; valid_uuid "$value" || die "UUID 格式错误。"; UUID="$value"; apply_runtime_config ;;
+      4) begin_config_change; prompt_read value "新 UUID: "; valid_uuid "$value" || die "UUID 格式错误。"; UUID="$value"; apply_runtime_config ;;
       5) list_node_profiles ;;
       6) add_node_profile ;;
       7) edit_node_profile ;;
@@ -1210,7 +1221,7 @@ backup_project() {
   require_root
   [[ -f "$MANAGED_FILE" ]] || die "缺少项目所有权标记，拒绝备份。"
   if [[ -z "$output" ]]; then
-    read -rp "请输入备份文件夹或 .tar.gz 路径 [${BACKUP_DIR}]: " output
+    prompt_read output "请输入备份文件夹或 .tar.gz 路径 [${BACKUP_DIR}]: "
     output="${output:-$BACKUP_DIR}"
   fi
   if [[ "$output" != *.tar.gz ]]; then
@@ -1247,7 +1258,7 @@ restore_project() {
   local archive="${1:-}" stage old_dir archive_copy archive_name latest
   require_root
   if [[ -z "$archive" ]]; then
-    read -rp "请输入备份文件或目录 [${BACKUP_DIR}，留空使用最新备份]: " archive
+    prompt_read archive "请输入备份文件或目录 [${BACKUP_DIR}，留空使用最新备份]: "
     archive="${archive:-$BACKUP_DIR}"
   fi
   if [[ -d "$archive" ]]; then
@@ -1355,6 +1366,7 @@ show_nodes() {
     printf '\n自动适配订阅二维码：\n'
     qrencode -t ANSIUTF8 "$auto_url"
   fi
+  gap
   section "明文节点协议"
   while IFS= read -r node; do
     ((index+=1))
@@ -1395,15 +1407,16 @@ sync_versions() {
   section "Argo / cloudflared 核心"
   printf '当前版本：%s\n目标版本：%s\n' "${old_argo:-未安装}" "${new_argo:-未知}"
   if [[ "$old_argo" != "$new_argo" ]]; then
-    read -rp "是否更新 Argo / cloudflared？[y/N]: " answer
+    prompt_read answer "是否更新 Argo / cloudflared？[y/N]: "
     [[ "$answer" =~ ^[Yy]$ ]] && update_argo=1
   else
     green "Argo / cloudflared 已是目标版本。"
   fi
+  gap
   section "Sing-box 核心"
   printf '当前版本：%s\n目标版本：%s\n' "${old_sing:-未安装}" "${new_sing:-未知}"
   if [[ "$old_sing" != "$new_sing" ]]; then
-    read -rp "是否更新 Sing-box？[y/N]: " answer
+    prompt_read answer "是否更新 Sing-box？[y/N]: "
     [[ "$answer" =~ ^[Yy]$ ]] && update_sing=1
   else
     green "Sing-box 已是目标版本。"
@@ -1488,21 +1501,21 @@ uninstall_project() {
   [[ "$resolved_work_dir" == "$WORK_DIR" ]] ||
     die "项目目录解析结果异常，拒绝递归删除：${WORK_DIR}"
   yellow "将删除本项目服务、私有 Argo/cloudflared 与 sing-box 核心、配置、订阅、备份和命令入口。"
-  read -rp "确认彻底卸载 ${PROJECT_NAME}？[y/N]: " answer
+  prompt_read answer "确认彻底卸载 ${PROJECT_NAME}？[y/N]: "
   [[ "$answer" =~ ^[Yy]$ ]] || { yellow "已取消卸载。"; return 0; }
   if command -v nginx >/dev/null 2>&1 ||
     dpkg-query -W -f='${Status}' nginx 2>/dev/null | grep -q 'install ok installed'; then
-    read -rp "同时卸载 Nginx？可能被其他网站使用，默认保留 [y/N]: " answer
+    prompt_read answer "同时卸载 Nginx？可能被其他网站使用，默认保留 [y/N]: "
     [[ "$answer" =~ ^[Yy]$ ]] && remove_nginx=1
   fi
   if command -v warp-cli >/dev/null 2>&1 ||
     dpkg-query -W -f='${Status}' cloudflare-warp 2>/dev/null | grep -q 'install ok installed' ||
     [[ -e /etc/apt/sources.list.d/cloudflare-client.list ||
       -e /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg ]]; then
-    read -rp "同时卸载 Cloudflare WARP 客户端、注册与软件源？默认保留 [y/N]: " answer
+    prompt_read answer "同时卸载 Cloudflare WARP 客户端、注册与软件源？默认保留 [y/N]: "
     [[ "$answer" =~ ^[Yy]$ ]] && remove_warp=1
   fi
-  read -rp "同时卸载脚本使用的通用工具 curl/ca-certificates/openssl/tar/qrencode/gnupg？可能被其他程序使用，默认保留 [y/N]: " answer
+  prompt_read answer "同时卸载脚本使用的通用工具 curl/ca-certificates/openssl/tar/qrencode/gnupg？可能被其他程序使用，默认保留 [y/N]: "
   [[ "$answer" =~ ^[Yy]$ ]] && remove_tools=1
 
   systemctl disable --now "$SING_SERVICE" "$ARGO_SERVICE" 2>/dev/null || true
@@ -1550,7 +1563,9 @@ uninstall_project() {
 
 menu() {
   while true; do
+    gap
     section "${PROJECT_NAME} v${VERSION}"
+    gap
     section "日常管理"
     menu_item 1 "查看节点信息" "${COMMAND_NAME} -n"
     menu_item 2 "开启/关闭 Argo" "${COMMAND_NAME} -a"
@@ -1558,6 +1573,7 @@ menu() {
     menu_item 4 "集中配置" "${COMMAND_NAME} -c"
     menu_item 5 "重启全部服务" "${COMMAND_NAME} -r"
     menu_item 6 "完整诊断" "${COMMAND_NAME} -x"
+    gap
     section "维护工具"
     menu_item 7 "安装 / 更新 ${PROJECT_NAME}" "${COMMAND_NAME} -i"
     menu_item 8 "更新 Argo / Sing-box 核心" "${COMMAND_NAME} -v"
@@ -1566,7 +1582,8 @@ menu() {
     menu_item 11 "第三方 BBR / DD 工具" "${COMMAND_NAME} -b"
     menu_item 12 "卸载 ${PROJECT_NAME}" "${COMMAND_NAME} -u"
     menu_item 0 "退出"
-    read -rp "请选择: " choice
+    gap
+    prompt_read choice "请选择 [0-12]: "
     case "$choice" in
       1) show_nodes ;;
       2) toggle_service "$ARGO_SERVICE" Argo ;;
