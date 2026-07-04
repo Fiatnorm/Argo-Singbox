@@ -229,24 +229,23 @@ download() {
 }
 
 fetch_latest_installer() {
-  local target="$1" metadata checksum commit expected
-  metadata="$(mktemp)"
+  local target="$1" checksum expected attempt
   checksum="$(mktemp)"
-  download "https://api.github.com/repos/${PROJECT_REPO}/commits/${PROJECT_BRANCH}" "$metadata"
-  commit="$(sed -n 's/^[[:space:]]*"sha":[[:space:]]*"\([a-f0-9]\{40\}\)",*$/\1/p' "$metadata" | head -n1)"
-  rm -f "$metadata"
-  [[ "$commit" =~ ^[a-f0-9]{40}$ ]] ||
-    die "无法确定 ${PROJECT_REPO} ${PROJECT_BRANCH} 的提交版本。"
-  download "https://raw.githubusercontent.com/${PROJECT_REPO}/${commit}/argo-singbox.sh" "$target"
-  download "https://raw.githubusercontent.com/${PROJECT_REPO}/${commit}/argo-singbox.sh.sha256" "$checksum"
-  expected="$(awk '$2 == "argo-singbox.sh" {print $1; exit}' "$checksum")"
+  for attempt in {1..3}; do
+    download "https://raw.githubusercontent.com/${PROJECT_REPO}/${PROJECT_BRANCH}/argo-singbox.sh.sha256" "$checksum"
+    download "https://raw.githubusercontent.com/${PROJECT_REPO}/${PROJECT_BRANCH}/argo-singbox.sh" "$target"
+    expected="$(awk '$2 == "argo-singbox.sh" {print $1; exit}' "$checksum")"
+    if [[ "$expected" =~ ^[a-fA-F0-9]{64}$ ]] &&
+      printf '%s  %s\n' "$expected" "$target" | sha256sum -c - >/dev/null; then
+      rm -f "$checksum"
+      bash -n "$target" || die "最新安装脚本 Bash 语法检查失败。"
+      chmod 755 "$target"
+      return 0
+    fi
+    yellow "安装脚本与校验值暂不一致，正在重新获取（${attempt}/3）。"
+  done
   rm -f "$checksum"
-  [[ "$expected" =~ ^[a-fA-F0-9]{64}$ ]] ||
-    die "最新安装脚本缺少有效的 SHA256 校验值。"
-  printf '%s  %s\n' "$expected" "$target" | sha256sum -c - >/dev/null ||
-    die "最新安装脚本 SHA256 校验失败。"
-  bash -n "$target" || die "最新安装脚本 Bash 语法检查失败。"
-  chmod 755 "$target"
+  die "最新安装脚本 SHA256 校验失败。"
 }
 
 install_dependencies() {
