@@ -8,6 +8,7 @@
 
 - `argo-singbox.sh`：唯一安装和管理入口。
 - `argo-singbox.env.example`：配置格式示例，不会被脚本自动读取。
+- `argo-singbox.sh.sha256`：GitHub 模式安装时用于校验入口脚本，修改脚本后必须同步更新。
 - `README.md`：面向用户的安装、更新和运维说明。
 - `sba/`：原版 SBA 本地对照树。除非任务明确要求更新对照版本，否则不得修改、删除或提交该目录。
 
@@ -19,8 +20,39 @@
 - `/etc/asb/asb.env`
 - `/etc/asb/nodes.conf`
 - `/etc/asb/nodes.txt`
+- `/etc/asb/subscription.*`
 - `/etc/asb/backup/`
+- `/etc/nginx/conf.d/argo-singbox.conf`
+- `/etc/systemd/system/asb-sing-box.service`
+- `/etc/systemd/system/asb-cloudflared.service`
 - `/usr/local/bin/asb`
+
+## 配置与数据格式
+
+`/etc/asb/asb.env` 由脚本生成并通过 Bash `source` 读取，保存 UUID、Argo 域名、优选入口、Token、回源端口和 WARP 配置。必须使用安全转义、`600` 权限和同目录临时文件原子替换；不得把未经验证的用户输入直接拼入该文件或 systemd unit。
+
+`/etc/asb/nodes.conf` 每行格式为：
+
+```text
+标签|协议|WS路径|本地端口|SOCKS5
+```
+
+其中协议仅允许 `vless`、`vmess`、`trojan`；SOCKS5 留空表示 direct，否则格式为 `主机:端口:用户名:密码`。标签、WS 路径和本地端口必须全局唯一。改变该格式时必须同时迁移旧文件，不能静默破坏已有节点。
+
+生成文件包括明文节点、Base64、Clash/Mihomo、Clash Provider、sing-box 和 Shadowrocket 订阅。它们是派生数据，应由 `generate_nodes()` 统一重建，不应成为独立配置源。
+
+## 关键函数职责
+
+- `load_env()` / `save_env()`：读取和原子保存项目环境配置。
+- `ensure_nodes_config()` / `validate_nodes_config()`：创建默认节点并校验动态节点数据。
+- `write_sing_box_config()`：生成并执行 `sing-box check`，保持 `WARP → 节点 SOCKS5 → direct` 路由顺序。
+- `write_nginx_config()`：生成本地 WS 反代和 UUID 订阅入口，并执行 `nginx -t`。
+- `write_services()`：只写项目专属 systemd unit；包含 Token 的文件必须仅 root 可读。
+- `generate_nodes()`：从环境配置和 `nodes.conf` 生成全部节点及订阅文件。
+- `apply_runtime_config()`：配置修改事务；验证失败必须恢复快照。
+- `sync_versions()`：核心版本比较、确认、暂存、校验、原子替换和失败回滚。
+- `backup_project()` / `restore_project()`：项目归档与恢复；解压前必须拒绝路径穿越、符号链接和特殊文件。
+- `uninstall_project()`：所有权检查后的项目范围卸载，不得扩大删除边界。
 
 ## 产品边界
 
@@ -61,11 +93,13 @@
 - 不得在脚本或示例文件中加入固定公共 UUID、Token 或项目公共域名。
 - 不得嵌入公共 WARP WireGuard 私钥、固定 WARP 账户或非官方 WARP 注册凭据；WARP 使用用户 VPS 上安装的 Cloudflare 官方客户端。
 - Argo 域名必须由用户输入；首次安装 UUID 应自动随机生成。
+- Argo Token 必须拒绝空白、换行和 systemd 控制字符；包含 Token 的配置和 unit 权限不得宽于 `600`。
+- 恢复用户指定的归档前必须先检查 gzip、成员路径和文件类型，并使用 `--no-same-owner --no-same-permissions` 解压。
 
 ## 交互和运行语义
 
 - 优选入口使用单行 `域名/IP:端口` 输入；IPv6 使用 `[地址]:端口`。
-- `asb -n` 必须输出当前全部动态节点、二维码、原始订阅和 Base64 订阅地址。
+- `asb -n` 必须输出当前全部动态节点、二维码，以及明文、Base64、Clash、Clash Provider、sing-box、Shadowrocket 和自动适配订阅地址。
 - 节点连接地址使用优选入口，WebSocket Host 与 TLS SNI 使用 Argo 域名。
 - 修改 Token 或优选入口后，应重新生成节点并执行健康检查。
 - 健康检查必须测试 `/etc/asb/nodes.conf` 中的全部 WS 路径，默认包括 `/argo-vl`、`/argo-vm`、`/argo-tr`。
@@ -85,8 +119,24 @@
 - 所有变量引用都应正确加引号，临时文件使用 `mktemp`。
 - 保持脚本为 LF 行尾；不要引入 CRLF。
 - 修改命令、菜单、路径或行为时，同步更新 `README.md`。
+- 修改 `argo-singbox.sh` 后必须同步更新脚本内 `VERSION`、`README.md` 版本记录和 `argo-singbox.sh.sha256`；纯文档修改且脚本字节未变化时不得伪造版本变更。
 - 不要修改用户已有的无关文件或清理未跟踪的 `sba/` 对照树。
 - 未在真实 VPS 上验证时，不得宣称 systemd、Nginx、Cloudflare 或公网 WS 已端到端通过。
+
+## 版本与发布
+
+Git 远端可能同时包含原版 SBA 和本项目仓库。发布前必须执行 `git remote -v`，确认目标为 `https://github.com/Fiatnorm/Argo-Singbox.git`，不得把本项目改动推送到 `fscarmen/sba`。
+
+发布范围默认只包含：
+
+- `argo-singbox.sh`
+- `argo-singbox.env.example`（格式确有变化时）
+- `argo-singbox.sh.sha256`
+- `README.md`
+- `AGENTS.md`
+- 其他明确属于本项目的新文件
+
+不得使用会顺带提交 `sba/` 或用户无关文件的宽泛暂存命令。发布前核对 `git diff --cached --stat` 和 `git diff --cached`。
 
 ## 最低验证
 
@@ -108,3 +158,21 @@ journalctl -u asb-sing-box -u asb-cloudflared -n 100 --no-pager
 ```
 
 如果没有 VPS 环境，应明确列出未完成的运行时验证，不得用静态检查替代运行证明。
+
+脚本发生变化时还必须验证发布哈希和行尾：
+
+```bash
+sha256sum -c argo-singbox.sh.sha256
+if grep -n $'\r' argo-singbox.sh; then
+  echo "检测到 CRLF"
+  exit 1
+fi
+```
+
+输入解析或安全边界变更至少覆盖对应回归用例：
+
+- IPv4、域名和 `[IPv6]:端口`，包括带前导零端口。
+- Token 合法字符，以及空格、换行和控制字符拒绝。
+- 节点标签的精确添加、修改和删除。
+- 合法备份可恢复；越界路径、符号链接、硬链接和特殊文件必须被拒绝。
+- 非 TTY、`TERM=dumb`、`NO_COLOR` 下无 ANSI 控制符。
