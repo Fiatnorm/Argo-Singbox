@@ -54,10 +54,22 @@ green() { printf '%s✓ %s%s\n' "$C_BRIGHT_GREEN" "$*" "$C_RESET"; }
 yellow() { printf '%s! %s%s\n' "$C_BRIGHT_YELLOW" "$*" "$C_RESET"; }
 red() { printf '%s✗ %s%s\n' "$C_BRIGHT_RED" "$*" "$C_RESET" >&2; }
 info() { printf '%s• %s%s\n' "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
-section() { printf '\n%s%s%s%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET"; }
+brand() {
+  printf '\n%s%s◆ %s%s\n%s%s%s\n' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$*" "$C_RESET" \
+    "$C_DIM" "────────────────────────────────────────" "$C_RESET"
+}
+section() { printf '\n%s%s▸ %s%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET"; }
+subsection() { printf '%s%s%s%s\n' "$C_BOLD" "$C_CYAN" "$*" "$C_RESET"; }
+key_value() {
+  printf '%s%-14s%s %s%s%s\n' "$C_CYAN" "$1" "$C_RESET" "$C_WHITE" "$2" "$C_RESET"
+}
+link_value() {
+  printf '%s%-14s%s %s%s%s\n' "$C_CYAN" "$1" "$C_RESET" "$C_UNDERLINE" "$2" "$C_RESET"
+}
 prompt() { printf '%s› %s%s' "$C_BRIGHT_MAGENTA" "$*" "$C_RESET"; }
+read_choice() { prompt "$1"; IFS= read -r REPLY; }
 menu_item() {
-  printf '%s%2s%s  %s%s%s%s%s%s\n' "$C_BRIGHT_CYAN" "$1" "$C_RESET" "$C_WHITE" "$2" \
+  printf '  %s%2s%s  %s%s%s%s%s%s\n' "$C_BRIGHT_CYAN" "$1" "$C_RESET" "$C_WHITE" "$2" \
     "$C_RESET" "$C_DIM" "${3:+  [$3]}" "$C_RESET"
 }
 die() { red "$*"; exit 1; }
@@ -674,7 +686,6 @@ health_check() {
     fi
   done
 
-  printf '\n'
   while read -r port; do
     if ! ss -lnt | grep -q "127.0.0.1:${port} "; then
       red "本地端口 ${port} 未监听。"
@@ -703,7 +714,6 @@ health_check() {
       failed=1
     fi
   done <"$NODES_CONFIG"
-  printf '\n'
   [[ "$failed" -eq 0 ]] || yellow "请确认 Public Hostname 指向 http://localhost:${ORIGIN_PORT}，并跳过全部代理路径的 Challenge/WAF。"
 
   return "$failed"
@@ -998,11 +1008,13 @@ apply_runtime_config() {
 
 list_node_profiles() {
   local tag protocol path port socks
-  printf '标签              协议    WS 路径              端口    出站\n'
-  printf '%s\n' '----------------  ------  --------------------  ------  ------'
+  printf '%s%s%-16s  %-6s  %-20s  %-6s  %s%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" \
+    "标签" "协议" "WS 路径" "端口" "出站" "$C_RESET"
+  printf '%s%s%s\n' "$C_DIM" '────────────────  ──────  ────────────────────  ──────  ──────' "$C_RESET"
   while IFS='|' read -r tag protocol path port socks; do
-    printf '%-16s  %-6s  %-20s  %-6s  %s\n' \
-      "$tag" "$protocol" "$path" "$port" "${socks:-direct}"
+    printf '%s%-16s%s  %s%-6s%s  %-20s  %s%-6s%s  %s\n' \
+      "$C_WHITE" "$tag" "$C_RESET" "$C_MAGENTA" "$protocol" "$C_RESET" "$path" \
+      "$C_YELLOW" "$port" "$C_RESET" "${socks:-direct}"
   done <"$NODES_CONFIG"
 }
 
@@ -1099,15 +1111,17 @@ edit_node_profile() {
 configure_warp() {
   local choice port targets domain normalized output item old_ifs
   while true; do
-    printf '当前状态：%s；代理端口：%s；目标：%s\n' \
-      "$([[ "$WARP_ENABLED" == "1" ]] && echo 已启用 || echo 未启用)" \
-      "$WARP_PROXY_PORT" "${WARP_DOMAINS:-无}"
+    section "WARP 网址分流"
+    key_value "当前状态" "$([[ "$WARP_ENABLED" == "1" ]] && echo 已启用 || echo 未启用)"
+    key_value "代理端口" "$WARP_PROXY_PORT"
+    key_value "目标域名" "${WARP_DOMAINS:-无}"
+    subsection "操作"
     menu_item 1 "启用 / 修改代理端口和全部域名"
     menu_item 2 "添加域名"
     menu_item 3 "删除域名"
     menu_item 4 "停用 WARP 分流"
     menu_item 0 "返回"
-    read -rp "请选择: " choice
+    read_choice "请选择："; choice="$REPLY"
     case "$choice" in
       1)
         install_cloudflare_warp
@@ -1170,7 +1184,8 @@ manage_config() {
   [[ -f "$ENV_FILE" ]] || die "${PROJECT_NAME} 尚未安装。"
   ensure_nodes_config
   while true; do
-    section "基础配置"
+    brand "${PROJECT_NAME} · 集中配置"
+    subsection "基础配置"
     menu_item 1 "Token / Argo 域名"
     menu_item 2 "Cloudflare 优选入口"
     menu_item 3 "Argo Tunnel 回源端口（节点端口依次顺延）"
@@ -1182,7 +1197,7 @@ manage_config() {
     menu_item 8 "删除节点"
     menu_item 9 "WARP 网址分流"
     menu_item 0 "返回"
-    read -rp "请选择: " choice
+    read_choice "请选择："; choice="$REPLY"
     case "$choice" in
       1)
         begin_config_change
@@ -1306,16 +1321,26 @@ doctor() {
   ip="$(curl -4fsS --connect-timeout 3 --max-time 5 https://api.ipify.org 2>/dev/null ||
     hostname -I 2>/dev/null | awk '{print $1}')"
   memory="$(free -m | awk '/^Mem:/{printf "%s/%s MiB (%.0f%%)",$3,$2,$3*100/$2}')"
-  printf '公网 IP：%s\n脚本版本：v%s\n内存：%s\n优选入口：%s:%s\nArgo 回源：127.0.0.1:%s\n' \
-    "${ip:-未知}" "$VERSION" "${memory:-未知}" "${SERVER:-未知}" "${SERVER_PORT:-未知}" "$ORIGIN_PORT"
-  printf '配置文件：'
-  if validate_nodes_config && valid_uuid "$UUID" && [[ -n "$ARGO_DOMAIN" && -n "$ARGO_TOKEN" ]]; then green "有效"; else red "无效"; failed=1; fi
+  brand "${PROJECT_NAME} · 完整诊断"
+  subsection "系统概览"
+  key_value "公网 IP" "${ip:-未知}"
+  key_value "脚本版本" "v${VERSION}"
+  key_value "内存" "${memory:-未知}"
+  key_value "优选入口" "${SERVER:-未知}:${SERVER_PORT:-未知}"
+  key_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
+  section "配置与组件"
+  if validate_nodes_config && valid_uuid "$UUID" && [[ -n "$ARGO_DOMAIN" && -n "$ARGO_TOKEN" ]]; then
+    green "项目配置：有效"
+  else
+    red "项目配置：无效"
+    failed=1
+  fi
   if "$BIN_DIR/sing-box" check -c "$SING_BOX_CONFIG" >/dev/null 2>&1; then green "Sing-box 配置：有效"; else red "Sing-box 配置：无效"; failed=1; fi
   if nginx -t >/dev/null 2>&1; then green "Nginx 配置：有效"; else red "Nginx 配置：无效"; failed=1; fi
   [[ -f "/etc/systemd/system/${ARGO_SERVICE}.service" ]] &&
     grep -Fq -- "--token ${ARGO_TOKEN}" "/etc/systemd/system/${ARGO_SERVICE}.service" && token_in_unit=1
   ((token_in_unit)) && green "Token：已配置且服务文件一致" || { red "Token：缺失或服务文件未同步"; failed=1; }
-  printf '脚本 v%s；Sing-box %s；Cloudflared %s\n' "$VERSION" "$(local_sing_box_version || echo 未安装)" "$(local_cloudflared_version || echo 未安装)"
+  key_value "组件版本" "脚本 v${VERSION} · Sing-box $(local_sing_box_version || echo 未安装) · Cloudflared $(local_cloudflared_version || echo 未安装)"
   if [[ "$WARP_ENABLED" == "1" ]]; then
     if systemctl is-active --quiet warp-svc &&
       ss -lntH "sport = :${WARP_PROXY_PORT}" | grep -q .; then
@@ -1336,7 +1361,7 @@ doctor() {
     info "WARP：未启用"
   fi
   health_check || failed=1
-  printf '\n最近日志：\n'
+  section "最近日志"
   journalctl -u "$SING_SERVICE" -u "$ARGO_SERVICE" -n 30 --no-pager -o short-iso 2>/dev/null || true
   return "$failed"
 }
@@ -1346,19 +1371,25 @@ show_nodes() {
   load_env
   [[ -f "$NODES_FILE" ]] || die "节点文件不存在，请先安装。"
   auto_url="https://${ARGO_DOMAIN}/${UUID}/auto"
-  section "配置文件索引"
-  printf '文件索引：https://%s/%s/\n自动适配：%s\n原始明文：https://%s/%s/raw\nBase64：https://%s/%s/base64\nClash：https://%s/%s/clash\nClash Provider：https://%s/%s/proxies\nsing-box：https://%s/%s/sing-box\nShadowrocket：https://%s/%s/shadowrocket\n' \
-    "$ARGO_DOMAIN" "$UUID" "$auto_url" \
-    "$ARGO_DOMAIN" "$UUID" "$ARGO_DOMAIN" "$UUID" "$ARGO_DOMAIN" "$UUID" \
-    "$ARGO_DOMAIN" "$UUID" "$ARGO_DOMAIN" "$UUID" "$ARGO_DOMAIN" "$UUID"
+  brand "${PROJECT_NAME} · 节点与订阅"
+  subsection "配置文件索引"
+  link_value "文件索引" "https://${ARGO_DOMAIN}/${UUID}/"
+  link_value "自动适配" "$auto_url"
+  link_value "原始明文" "https://${ARGO_DOMAIN}/${UUID}/raw"
+  link_value "Base64" "https://${ARGO_DOMAIN}/${UUID}/base64"
+  link_value "Clash" "https://${ARGO_DOMAIN}/${UUID}/clash"
+  link_value "Clash Provider" "https://${ARGO_DOMAIN}/${UUID}/proxies"
+  link_value "sing-box" "https://${ARGO_DOMAIN}/${UUID}/sing-box"
+  link_value "Shadowrocket" "https://${ARGO_DOMAIN}/${UUID}/shadowrocket"
   if command -v qrencode >/dev/null 2>&1; then
-    printf '\n自动适配订阅二维码：\n'
+    section "自动适配订阅二维码"
     qrencode -t ANSIUTF8 "$auto_url"
   fi
   section "明文节点协议"
   while IFS= read -r node; do
     ((index+=1))
-    printf '\n[节点 %d]\n%s\n' "$index" "$node"
+    ((index > 1)) && printf '\n'
+    printf '%s%s[节点 %d]%s\n%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$index" "$C_RESET" "$node"
     command -v qrencode >/dev/null 2>&1 && qrencode -t ANSIUTF8 "$node"
   done <"$NODES_FILE"
 }
@@ -1550,8 +1581,8 @@ uninstall_project() {
 
 menu() {
   while true; do
-    section "${PROJECT_NAME} v${VERSION}"
-    section "日常管理"
+    brand "${PROJECT_NAME} v${VERSION}"
+    subsection "日常管理"
     menu_item 1 "查看节点信息" "${COMMAND_NAME} -n"
     menu_item 2 "开启/关闭 Argo" "${COMMAND_NAME} -a"
     menu_item 3 "开启/关闭 Sing-box" "${COMMAND_NAME} -s"
@@ -1566,7 +1597,7 @@ menu() {
     menu_item 11 "第三方 BBR / DD 工具" "${COMMAND_NAME} -b"
     menu_item 12 "卸载 ${PROJECT_NAME}" "${COMMAND_NAME} -u"
     menu_item 0 "退出"
-    read -rp "请选择: " choice
+    read_choice "请选择："; choice="$REPLY"
     case "$choice" in
       1) show_nodes ;;
       2) toggle_service "$ARGO_SERVICE" Argo ;;
