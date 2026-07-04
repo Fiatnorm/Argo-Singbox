@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.10.4"
+VERSION="2.10.5"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
 PROJECT_REPO="Fiatnorm/Argo-Singbox"
@@ -103,27 +103,31 @@ load_env() {
 }
 
 save_env() {
-  local old_umask
+  local old_umask temp
   old_umask="$(umask)"
   install -d -m 755 "$WORK_DIR"
   umask 077
-  cat >"$ENV_FILE" <<EOF
-UUID='${UUID}'
-ARGO_DOMAIN='${ARGO_DOMAIN}'
-SERVER='${SERVER}'
-SERVER_PORT='${SERVER_PORT}'
-ARGO_TOKEN='${ARGO_TOKEN}'
-ORIGIN_PORT='${ORIGIN_PORT}'
-WARP_ENABLED='${WARP_ENABLED}'
-WARP_PROXY_PORT='${WARP_PROXY_PORT}'
-WARP_DOMAINS='${WARP_DOMAINS}'
-EOF
+  temp="$(mktemp "${ENV_FILE}.tmp.XXXXXX")"
+  {
+    printf 'UUID=%q\n' "$UUID"
+    printf 'ARGO_DOMAIN=%q\n' "$ARGO_DOMAIN"
+    printf 'SERVER=%q\n' "$SERVER"
+    printf 'SERVER_PORT=%q\n' "$SERVER_PORT"
+    printf 'ARGO_TOKEN=%q\n' "$ARGO_TOKEN"
+    printf 'ORIGIN_PORT=%q\n' "$ORIGIN_PORT"
+    printf 'WARP_ENABLED=%q\n' "$WARP_ENABLED"
+    printf 'WARP_PROXY_PORT=%q\n' "$WARP_PROXY_PORT"
+    printf 'WARP_DOMAINS=%q\n' "$WARP_DOMAINS"
+  } >"$temp"
+  chmod 600 "$temp"
+  mv -f "$temp" "$ENV_FILE"
   umask "$old_umask"
 }
 
 valid_uuid() { [[ "${1,,}" =~ ^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$ ]]; }
 valid_path() { [[ "$1" =~ ^/[A-Za-z0-9._~-]+$ ]]; }
 valid_port() { [[ "$1" =~ ^[0-9]+$ ]] && ((10#$1 >= 1 && 10#$1 <= 65535)); }
+valid_argo_token() { [[ "$1" =~ ^[A-Za-z0-9._~+/=-]+$ ]]; }
 
 normalize_warp_domains() {
   local input="$1" item host output="" seen="," old_ifs="$IFS"
@@ -564,6 +568,7 @@ NoNewPrivileges=true
 [Install]
 WantedBy=multi-user.target
 EOF
+  chmod 600 "/etc/systemd/system/${SING_SERVICE}.service"
 
   cat >"/etc/systemd/system/${ARGO_SERVICE}.service" <<EOF
 [Unit]
@@ -581,22 +586,25 @@ NoNewPrivileges=true
 [Install]
 WantedBy=multi-user.target
 EOF
+  chmod 600 "/etc/systemd/system/${ARGO_SERVICE}.service"
 }
 
 generate_nodes() {
-  local old_umask vmess_json vmess_link tag protocol path port socks encoded_path first
+  local old_umask vmess_json vmess_link tag protocol path port socks encoded_path first uri_server
   ensure_nodes_config
   validate_nodes_config
   old_umask="$(umask)"
   umask 077
+  uri_server="$SERVER"
+  [[ "$uri_server" == *:* ]] && uri_server="[${uri_server}]"
   : >"$NODES_FILE"
   while IFS='|' read -r tag protocol path port socks; do
     encoded_path="%2F${path#/}%3Fed%3D2560"
     case "$protocol" in
       vless) printf 'vless://%s@%s:%s?encryption=none&security=tls&sni=%s&insecure=0&allowInsecure=0&type=ws&host=%s&path=%s#%s\n' \
-        "$UUID" "$SERVER" "$SERVER_PORT" "$ARGO_DOMAIN" "$ARGO_DOMAIN" "$encoded_path" "$tag" >>"$NODES_FILE" ;;
+        "$UUID" "$uri_server" "$SERVER_PORT" "$ARGO_DOMAIN" "$ARGO_DOMAIN" "$encoded_path" "$tag" >>"$NODES_FILE" ;;
       trojan) printf 'trojan://%s@%s:%s?security=tls&sni=%s&insecure=0&allowInsecure=0&type=ws&host=%s&path=%s#%s\n' \
-        "$UUID" "$SERVER" "$SERVER_PORT" "$ARGO_DOMAIN" "$ARGO_DOMAIN" "$encoded_path" "$tag" >>"$NODES_FILE" ;;
+        "$UUID" "$uri_server" "$SERVER_PORT" "$ARGO_DOMAIN" "$ARGO_DOMAIN" "$encoded_path" "$tag" >>"$NODES_FILE" ;;
       vmess)
         vmess_json="{\"v\":\"2\",\"ps\":\"${tag}\",\"add\":\"${SERVER}\",\"port\":\"${SERVER_PORT}\",\"id\":\"${UUID}\",\"aid\":\"0\",\"scy\":\"auto\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"${ARGO_DOMAIN}\",\"path\":\"${path}?ed=2560\",\"tls\":\"tls\",\"sni\":\"${ARGO_DOMAIN}\",\"alpn\":\"\"}"
         vmess_link="$(printf '%s' "$vmess_json" | base64 -w 0)"
@@ -610,11 +618,11 @@ generate_nodes() {
   printf 'proxies:\n' >"$SUB_CLASH_PROVIDER_FILE"
   while IFS='|' read -r tag protocol path port socks; do
     case "$protocol" in
-      vless) printf '  - {name: "%s", type: vless, server: %s, port: %s, uuid: %s, encryption: none, udp: true, tls: true, servername: %s, skip-cert-verify: false, network: ws, ws-opts: {path: "%s", headers: {Host: %s}, max-early-data: 2560, early-data-header-name: Sec-WebSocket-Protocol}}\n' \
+      vless) printf '  - {name: "%s", type: vless, server: "%s", port: %s, uuid: %s, encryption: none, udp: true, tls: true, servername: %s, skip-cert-verify: false, network: ws, ws-opts: {path: "%s", headers: {Host: %s}, max-early-data: 2560, early-data-header-name: Sec-WebSocket-Protocol}}\n' \
         "$tag" "$SERVER" "$SERVER_PORT" "$UUID" "$ARGO_DOMAIN" "$path" "$ARGO_DOMAIN" ;;
-      vmess) printf '  - {name: "%s", type: vmess, server: %s, port: %s, uuid: %s, alterId: 0, cipher: auto, udp: true, tls: true, servername: %s, skip-cert-verify: false, network: ws, ws-opts: {path: "%s", headers: {Host: %s}, max-early-data: 2560, early-data-header-name: Sec-WebSocket-Protocol}}\n' \
+      vmess) printf '  - {name: "%s", type: vmess, server: "%s", port: %s, uuid: %s, alterId: 0, cipher: auto, udp: true, tls: true, servername: %s, skip-cert-verify: false, network: ws, ws-opts: {path: "%s", headers: {Host: %s}, max-early-data: 2560, early-data-header-name: Sec-WebSocket-Protocol}}\n' \
         "$tag" "$SERVER" "$SERVER_PORT" "$UUID" "$ARGO_DOMAIN" "$path" "$ARGO_DOMAIN" ;;
-      trojan) printf '  - {name: "%s", type: trojan, server: %s, port: %s, password: %s, udp: true, tls: true, sni: %s, skip-cert-verify: false, network: ws, ws-opts: {path: "%s", headers: {Host: %s}, max-early-data: 2560, early-data-header-name: Sec-WebSocket-Protocol}}\n' \
+      trojan) printf '  - {name: "%s", type: trojan, server: "%s", port: %s, password: %s, udp: true, tls: true, sni: %s, skip-cert-verify: false, network: ws, ws-opts: {path: "%s", headers: {Host: %s}, max-early-data: 2560, early-data-header-name: Sec-WebSocket-Protocol}}\n' \
         "$tag" "$SERVER" "$SERVER_PORT" "$UUID" "$ARGO_DOMAIN" "$path" "$ARGO_DOMAIN" ;;
     esac
   done <"$NODES_CONFIG" >>"$SUB_CLASH_PROVIDER_FILE"
@@ -709,7 +717,7 @@ health_check() {
   done
 
   while read -r port; do
-    if ! ss -lnt | grep -q "127.0.0.1:${port} "; then
+    if ! ss -lntH "sport = :${port}" 2>/dev/null | grep -q .; then
       red "本地端口 ${port} 未监听。"
       failed=1
     fi
@@ -744,7 +752,7 @@ health_check() {
 prompt_install_values() {
   local value endpoint
   read -rp "请输入 Argo Token（必填）: " value
-  [[ -n "$value" ]] || die "Argo Token 不能为空。"
+  valid_argo_token "$value" || die "Argo Token 格式不正确。"
   ARGO_TOKEN="$value"
   read -rp "请输入 Argo 域名（必填）${ARGO_DOMAIN:+ [${ARGO_DOMAIN}]}: " value
   ARGO_DOMAIN="${value:-$ARGO_DOMAIN}"
@@ -771,9 +779,9 @@ parse_endpoint() {
     die "优选入口格式必须为 域名/IP:端口（IPv6 使用 [地址]:端口）。"
   fi
   [[ "$host" =~ ^[A-Za-z0-9._:-]+$ ]] || die "优选域名或 IP 格式不正确。"
-  ((port >= 1 && port <= 65535)) || die "端口必须是 1 到 65535。"
+  valid_port "$port" || die "端口必须是 1 到 65535。"
   SERVER="$host"
-  SERVER_PORT="$port"
+  SERVER_PORT="$((10#$port))"
 }
 
 assert_service_names_available() {
@@ -1060,8 +1068,8 @@ apply_runtime_config() {
   [[ -f "$snapshot/nodes.conf" ]] && install -m 600 "$snapshot/nodes.conf" "$NODES_CONFIG"
   [[ -f "$snapshot/sing-box.json" ]] && install -m 600 "$snapshot/sing-box.json" "$SING_BOX_CONFIG"
   [[ -f "$snapshot/argo-singbox.conf" ]] && install -m 644 "$snapshot/argo-singbox.conf" "$NGINX_CONFIG"
-  [[ -f "$snapshot/${SING_SERVICE}.service" ]] && install -m 644 "$snapshot/${SING_SERVICE}.service" "/etc/systemd/system/${SING_SERVICE}.service"
-  [[ -f "$snapshot/${ARGO_SERVICE}.service" ]] && install -m 644 "$snapshot/${ARGO_SERVICE}.service" "/etc/systemd/system/${ARGO_SERVICE}.service"
+  [[ -f "$snapshot/${SING_SERVICE}.service" ]] && install -m 600 "$snapshot/${SING_SERVICE}.service" "/etc/systemd/system/${SING_SERVICE}.service"
+  [[ -f "$snapshot/${ARGO_SERVICE}.service" ]] && install -m 600 "$snapshot/${ARGO_SERVICE}.service" "/etc/systemd/system/${ARGO_SERVICE}.service"
   rm -rf "$snapshot"
   systemctl daemon-reload
   systemctl restart nginx "$SING_SERVICE" "$ARGO_SERVICE" 2>/dev/null || true
@@ -1127,7 +1135,8 @@ delete_node_profile() {
   list_node_profiles
   begin_config_change
   read -rp "要删除的节点标签: " tag
-  grep -Fq "${tag}|" "$NODES_CONFIG" || die "未找到节点标签：${tag}"
+  awk -F'|' -v wanted="$tag" '$1 == wanted {found=1} END {exit !found}' "$NODES_CONFIG" ||
+    die "未找到节点标签：${tag}"
   [[ "$(wc -l <"$NODES_CONFIG")" -gt 1 ]] || die "至少必须保留一个节点。"
   temp="$(mktemp)"
   awk -F'|' -v wanted="$tag" '$1 != wanted' "$NODES_CONFIG" >"$temp"
@@ -1265,7 +1274,8 @@ manage_config() {
         begin_config_change
         read -rp "新 Token [留空保持]: " value; ARGO_TOKEN="${value:-$ARGO_TOKEN}"
         read -rp "新 Argo 域名 [${ARGO_DOMAIN}]: " value; ARGO_DOMAIN="${value:-$ARGO_DOMAIN}"
-        [[ -n "$ARGO_TOKEN" && "$ARGO_DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || die "Token 或域名无效。"
+        valid_argo_token "$ARGO_TOKEN" && [[ "$ARGO_DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] ||
+          die "Token 或域名无效。"
         apply_runtime_config
         ;;
       2) begin_config_change; read -rp "新优选入口 域名/IP:端口: " endpoint; parse_endpoint "$endpoint"; apply_runtime_config ;;
@@ -1320,6 +1330,20 @@ backup_project() {
   green "备份完成：${output}"
 }
 
+validate_backup_archive() {
+  local archive="$1" members
+  gzip -t "$archive" 2>/dev/null || die "备份归档 gzip 校验失败。"
+  members="$(tar -tzf "$archive" 2>/dev/null)" || die "无法读取备份归档目录。"
+  [[ -n "$members" ]] || die "备份归档为空。"
+  if grep -Ev "^${WORK_DIR_NAME}(/|$)" <<<"$members" | grep -q . ||
+    grep -E '(^|/)\.\.(/|$)|^/' <<<"$members" | grep -q .; then
+    die "备份归档包含项目目录之外的路径，拒绝恢复。"
+  fi
+  if tar -tvzf "$archive" 2>/dev/null | awk 'substr($1,1,1) !~ /^[-d]$/ {bad=1} END {exit !bad}'; then
+    die "备份归档包含符号链接或其他特殊文件，拒绝恢复。"
+  fi
+}
+
 restore_project() {
   local archive="${1:-}" stage old_dir archive_copy archive_name latest
   require_root
@@ -1339,8 +1363,9 @@ restore_project() {
   archive_name="$(basename "$archive")"
   archive_copy="$(mktemp --suffix=.tar.gz)"
   cp -a "$archive" "$archive_copy"
+  validate_backup_archive "$archive_copy"
   stage="$(mktemp -d)"
-  tar -xzf "$archive_copy" -C "$stage"
+  tar --no-same-owner --no-same-permissions -xzf "$archive_copy" -C "$stage"
   [[ -f "$stage/${WORK_DIR_NAME}/managed" && -f "$stage/${WORK_DIR_NAME}/asb.env" &&
     -x "$stage/${WORK_DIR_NAME}/bin/sing-box" && -x "$stage/${WORK_DIR_NAME}/bin/cloudflared" ]] ||
     { rm -rf "$stage"; rm -f "$archive_copy"; die "备份结构或所有权标记无效。"; }
@@ -1391,7 +1416,8 @@ doctor() {
   key_value "优选入口" "${SERVER:-未知}:${SERVER_PORT:-未知}"
   key_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
   section "配置与组件"
-  if validate_nodes_config && valid_uuid "$UUID" && [[ -n "$ARGO_DOMAIN" && -n "$ARGO_TOKEN" ]]; then
+  if validate_nodes_config && valid_uuid "$UUID" && valid_argo_token "$ARGO_TOKEN" &&
+    [[ -n "$ARGO_DOMAIN" ]]; then
     green "项目配置：有效"
   else
     red "项目配置：无效"
