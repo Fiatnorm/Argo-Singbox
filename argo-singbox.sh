@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.10.1"
+VERSION="2.10.2"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
+PROJECT_REPO="Fiatnorm/Argo-Singbox"
+PROJECT_BRANCH="main"
 WORK_DIR="/etc/asb"
 WORK_DIR_NAME="${WORK_DIR##*/}"
 LEGACY_WORK_DIR="/etc/sba"
@@ -50,27 +52,27 @@ else
   C_BLUE=""; C_MAGENTA=""; C_CYAN=""; C_WHITE=""; C_BRIGHT_RED=""; C_BRIGHT_GREEN=""
   C_BRIGHT_YELLOW=""; C_BRIGHT_BLUE=""; C_BRIGHT_MAGENTA=""; C_BRIGHT_CYAN=""
 fi
-green() { printf '%s%s✓ %s%s\n' "$C_BOLD" "$C_GREEN" "$*" "$C_RESET"; }
-yellow() { printf '%s%s! %s%s\n' "$C_BOLD" "$C_YELLOW" "$*" "$C_RESET"; }
-red() { printf '%s%s✗ %s%s\n' "$C_BOLD" "$C_RED" "$*" "$C_RESET" >&2; }
-info() { printf '%s• %s%s\n' "$C_CYAN" "$*" "$C_RESET"; }
+green() { printf '%s✓ %s%s\n' "$C_BRIGHT_GREEN" "$*" "$C_RESET"; }
+yellow() { printf '%s! %s%s\n' "$C_BRIGHT_YELLOW" "$*" "$C_RESET"; }
+red() { printf '%s✗ %s%s\n' "$C_BRIGHT_RED" "$*" "$C_RESET" >&2; }
+info() { printf '%s• %s%s\n' "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
 brand() {
   printf '\n%s%s◆ %s%s\n%s%s%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$*" "$C_RESET" \
     "$C_DIM" "----------------------------------------" "$C_RESET"
 }
 section() { printf '\n%s%s▸ %s%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET"; }
-subsection() { printf '%s%s%s%s\n' "$C_BOLD" "$C_CYAN" "$*" "$C_RESET"; }
+subsection() { printf '%s%s%s%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
 key_value() {
-  printf '%s%-14s%s %s%s%s\n' "$C_CYAN" "$1" "$C_RESET" "$C_WHITE" "$2" "$C_RESET"
+  printf '%s%-14s%s %s%s%s\n' "$C_BRIGHT_CYAN" "$1" "$C_RESET" "$C_WHITE" "$2" "$C_RESET"
 }
 link_value() {
-  printf '%s%-14s%s %s%s%s%s\n' "$C_CYAN" "$1" "$C_RESET" "$C_BLUE" "$C_UNDERLINE" "$2" "$C_RESET"
+  printf '%s%-14s%s %s%s%s%s\n' "$C_BRIGHT_CYAN" "$1" "$C_RESET" "$C_BRIGHT_BLUE" "$C_UNDERLINE" "$2" "$C_RESET"
 }
-prompt() { printf '%s%s› %s%s' "$C_BOLD" "$C_YELLOW" "$*" "$C_RESET"; }
+prompt() { printf '%s%s› %s%s' "$C_BOLD" "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
 read_choice() { prompt "$1"; IFS= read -r REPLY; }
 menu_item() {
-  printf '  %s%2s%s  %s%s%s%s%s%s\n' "$C_GREEN" "$1" "$C_RESET" "$C_WHITE" "$2" \
-    "$C_RESET" "$C_DIM" "${3:+  [$3]}" "$C_RESET"
+  printf '  %s%2s%s  %s%s%s%s%s%s\n' "$C_BRIGHT_CYAN" "$1" "$C_RESET" "$C_WHITE" "$2" \
+    "$C_RESET" "$C_BRIGHT_BLUE" "${3:+  [$3]}" "$C_RESET"
 }
 die() { red "$*"; exit 1; }
 
@@ -224,6 +226,27 @@ download() {
     rm -f "${output}.part"
   done
   die "下载失败（已尝试直连和 GitHub 代理）：${url}"
+}
+
+fetch_latest_installer() {
+  local target="$1" metadata checksum commit expected
+  metadata="$(mktemp)"
+  checksum="$(mktemp)"
+  download "https://api.github.com/repos/${PROJECT_REPO}/commits/${PROJECT_BRANCH}" "$metadata"
+  commit="$(sed -n 's/^[[:space:]]*"sha":[[:space:]]*"\([a-f0-9]\{40\}\)",*$/\1/p' "$metadata" | head -n1)"
+  rm -f "$metadata"
+  [[ "$commit" =~ ^[a-f0-9]{40}$ ]] ||
+    die "无法确定 ${PROJECT_REPO} ${PROJECT_BRANCH} 的提交版本。"
+  download "https://raw.githubusercontent.com/${PROJECT_REPO}/${commit}/argo-singbox.sh" "$target"
+  download "https://raw.githubusercontent.com/${PROJECT_REPO}/${commit}/argo-singbox.sh.sha256" "$checksum"
+  expected="$(awk '$2 == "argo-singbox.sh" {print $1; exit}' "$checksum")"
+  rm -f "$checksum"
+  [[ "$expected" =~ ^[a-fA-F0-9]{64}$ ]] ||
+    die "最新安装脚本缺少有效的 SHA256 校验值。"
+  printf '%s  %s\n' "$expected" "$target" | sha256sum -c - >/dev/null ||
+    die "最新安装脚本 SHA256 校验失败。"
+  bash -n "$target" || die "最新安装脚本 Bash 语法检查失败。"
+  chmod 755 "$target"
 }
 
 install_dependencies() {
@@ -899,8 +922,22 @@ report_node_port_owners() {
 }
 
 install_project() {
-  local installer_source work_backup="" sing_stage argo_stage file
+  local installer_source latest_installer work_backup="" sing_stage argo_stage file refresh_status
   require_root
+  if [[ "${ASB_INSTALLER_REFRESHED:-0}" != "1" ]]; then
+    latest_installer="$(mktemp)"
+    info "正在获取 ${PROJECT_REPO} ${PROJECT_BRANCH} 的最新安装脚本。"
+    fetch_latest_installer "$latest_installer"
+    if ! cmp -s "$latest_installer" "$0"; then
+      green "已取得并校验最新安装脚本，切换到最新版本继续安装。"
+      refresh_status=0
+      ASB_INSTALLER_REFRESHED=1 bash "$latest_installer" -i || refresh_status=$?
+      rm -f "$latest_installer"
+      return "$refresh_status"
+    fi
+    rm -f "$latest_installer"
+    green "当前安装脚本已是 GitHub 最新版本。"
+  fi
   migrate_legacy_install
   load_env
   prompt_install_values
@@ -1385,13 +1422,14 @@ show_nodes() {
     section "自动适配订阅二维码"
     qrencode -t ANSIUTF8 "$auto_url"
   fi
-  section "明文节点协议"
+  section "明文节点"
   while IFS= read -r node; do
     ((index+=1))
     ((index > 1)) && printf '\n'
     printf '%s%s[节点 %d]%s\n%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$index" "$C_RESET" "$node"
     command -v qrencode >/dev/null 2>&1 && qrencode -t ANSIUTF8 "$node"
   done <"$NODES_FILE"
+  printf '\n'
 }
 
 toggle_service() {

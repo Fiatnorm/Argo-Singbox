@@ -1,4 +1,4 @@
-# Argo-Singbox v2.10.1
+# Argo-Singbox v2.10.2
 
 面向固定 Argo Token 隧道的中文轻量安装脚本，提供：
 
@@ -66,17 +66,19 @@ v2.10.0 首次安装固定使用 sing-box `1.13.0-rc.4`，cloudflared 与原版 
 
 v2.10.1 修复 UUID 配置索引的 Nginx 500 错误；节点文件迁入 `/etc/asb/nodes.txt`；备份和恢复默认使用 `/etc/asb/backup/`；Argo/cloudflared 与 Sing-box 核心改为分别询问是否更新；运行检查、完成信息和明文节点之间增加分区空行。
 
+v2.10.2 调整面板为高亮蓝、青和白色主视觉，明文节点块末尾固定保留一行；`asb -i` 会先获取并校验 `Fiatnorm/Argo-Singbox` 的最新 `main` 脚本，再由最新脚本继续安装或更新。
+
 下载具有总超时、重试、GitHub 代理回退和 GitHub Release SHA256 digest 校验；二进制还会执行基本版本检查。sing-box 版本优先采用上游 `force_version`，不可用时回退到 GitHub releases，再失败才使用脚本预设版本。
 
 首次安装使用经过项目确认的 sing-box `1.13.0-rc.4`，避免安装时因远端版本变化产生不一致；cloudflared 首次安装按原版 SBA 逻辑使用 GitHub latest。后续执行 `asb -v` 时，sing-box 仍按 `force_version`、GitHub releases、预设版本的顺序查询更新。
 
 ## 是否需要反复拉取 GitHub
 
-仓库只需在首次部署或需要取得新版安装脚本时拉取一次。安装完成后，脚本会复制到 `/etc/asb/argo-singbox.sh`，并建立本地命令 `/usr/local/bin/asb`。查看节点、修改 Token/优选入口、启停或重启服务、查看状态和卸载都直接使用 VPS 上的本地文件，不会重新拉取本仓库。
+安装完成后，脚本会保存在 `/etc/asb/argo-singbox.sh`，并建立本地命令 `/usr/local/bin/asb`。查看节点、修改 Token/优选入口、启停或重启服务、查看状态和卸载都直接使用 VPS 上的本地文件，不会重新拉取仓库。只有用户明确执行 `asb -i` 时，才会获取 `Fiatnorm/Argo-Singbox` 的最新 `main` 提交，校验随仓库发布的 SHA256 和 Bash 语法，然后切换到最新脚本继续安装。
 
 以下操作仍会主动访问网络：
 
-- 首次安装或再次执行“安装 / 更新”：查询并下载 sing-box、cloudflared 官方发布物。
+- 首次安装或再次执行“安装 / 更新”：获取并校验最新 Argo-Singbox 脚本，再查询并下载 sing-box、cloudflared 官方发布物。
 - `asb -v`：查询 GitHub Release/`force_version`，有更新并确认后下载核心。
 - 健康检查：访问 Cloudflare 公网入口。
 - 状态诊断：尝试访问 `api.ipify.org` 获取公网 IP，失败时自动使用本机地址。
@@ -105,7 +107,7 @@ sudo ./argo-singbox.sh -i
 | 指令 | 功能 |
 |---|---|
 | `sudo asb` | 打开完整中文管理面板 |
-| `sudo asb -i` | 安装或更新脚本、配置和两个私有核心 |
+| `sudo asb -i` | 从项目 GitHub 获取并校验最新脚本，再更新配置和两个私有核心 |
 | `sudo asb -n` | 显示全部节点、二维码及所有订阅地址 |
 | `sudo asb -a` | 开启或关闭 Argo/cloudflared 服务 |
 | `sudo asb -s` | 开启或关闭 sing-box 服务 |
