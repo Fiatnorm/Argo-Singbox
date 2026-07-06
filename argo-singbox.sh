@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.10.5"
+VERSION="2.10.6"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
 PROJECT_REPO="Fiatnorm/Argo-Singbox"
@@ -47,10 +47,11 @@ if [[ -t 1 && -z "${NO_COLOR:-}" && "${TERM:-dumb}" != "dumb" ]]; then
   C_BLUE=$'\033[34m'; C_MAGENTA=$'\033[35m'; C_CYAN=$'\033[36m'; C_WHITE=$'\033[37m'
   C_BRIGHT_RED=$'\033[91m'; C_BRIGHT_GREEN=$'\033[92m'; C_BRIGHT_YELLOW=$'\033[93m'
   C_BRIGHT_BLUE=$'\033[94m'; C_BRIGHT_MAGENTA=$'\033[95m'; C_BRIGHT_CYAN=$'\033[96m'
+  C_BRIGHT_WHITE=$'\033[97m'
 else
   C_RESET=""; C_BOLD=""; C_DIM=""; C_UNDERLINE=""; C_RED=""; C_GREEN=""; C_YELLOW=""
   C_BLUE=""; C_MAGENTA=""; C_CYAN=""; C_WHITE=""; C_BRIGHT_RED=""; C_BRIGHT_GREEN=""
-  C_BRIGHT_YELLOW=""; C_BRIGHT_BLUE=""; C_BRIGHT_MAGENTA=""; C_BRIGHT_CYAN=""
+  C_BRIGHT_YELLOW=""; C_BRIGHT_BLUE=""; C_BRIGHT_MAGENTA=""; C_BRIGHT_CYAN=""; C_BRIGHT_WHITE=""
 fi
 green() { printf '%s✓ %s%s\n' "$C_BRIGHT_GREEN" "$*" "$C_RESET"; }
 yellow() { printf '%s! %s%s\n' "$C_BRIGHT_YELLOW" "$*" "$C_RESET"; }
@@ -60,19 +61,19 @@ brand() {
   printf '\n%s%s◆ %s%s\n%s%s%s\n' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$*" "$C_RESET" \
     "$C_BRIGHT_BLUE" "----------------------------------------" "$C_RESET"
 }
-section() { printf '\n%s%s▸ %s%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
-subsection() { printf '%s%s%s%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET"; }
+section() { printf '\n%s%s▸ %s%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET"; }
+subsection() { printf '%s%s%s%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
 key_value() {
-  printf '%s%-14s%s %s%s%s\n' "$C_BRIGHT_BLUE" "$1" "$C_RESET" "$C_WHITE" "$2" "$C_RESET"
+  printf '%s%-16s%s %s%s%s\n' "$C_BRIGHT_CYAN" "$1" "$C_RESET" "$C_BRIGHT_WHITE" "$2" "$C_RESET"
 }
 link_value() {
-  printf '%s%-14s%s %s%s%s%s\n' "$C_BRIGHT_BLUE" "$1" "$C_RESET" "$C_WHITE" "$C_UNDERLINE" "$2" "$C_RESET"
+  printf '%s%-16s%s %s%s%s%s\n' "$C_BRIGHT_YELLOW" "$1" "$C_RESET" "$C_BRIGHT_WHITE" "$C_UNDERLINE" "$2" "$C_RESET"
 }
 prompt() { printf '%s%s› %s%s' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$*" "$C_RESET"; }
 read_choice() { prompt "$1"; IFS= read -r REPLY; }
 menu_item() {
-  printf '  %s%2s%s  %s%s%s%s%s%s\n' "$C_BRIGHT_YELLOW" "$1" "$C_RESET" "$C_WHITE" "$2" \
-    "$C_RESET" "$C_BRIGHT_CYAN" "${3:+  [$3]}" "$C_RESET"
+  printf '  %s%2s%s  %s%s%s%s%s%s\n' "$C_BRIGHT_YELLOW" "$1" "$C_RESET" "$C_BRIGHT_WHITE" "$2" \
+    "$C_RESET" "$C_DIM$C_BRIGHT_CYAN" "${3:+  [$3]}" "$C_RESET"
 }
 die() { red "$*"; exit 1; }
 
@@ -503,7 +504,7 @@ EOF
     }
     location = /${UUID}/ {
         default_type text/html;
-        return 200 '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Argo-Singbox 配置文件</title><style>body{max-width:720px;margin:40px auto;padding:0 20px;font:16px/1.6 system-ui,sans-serif;color:#202124}h1{font-size:24px}li{margin:8px 0}a{color:#0969da;text-decoration:none}a:hover{text-decoration:underline}code{background:#f6f8fa;padding:2px 6px;border-radius:4px}</style></head><body><h1>Argo-Singbox 配置文件</h1><p>按客户端选择订阅；查看明文节点请打开 <code>raw</code>。</p><ul><li><a href="auto">自动适配订阅</a></li><li><a href="raw">明文节点协议</a></li><li><a href="base64">Base64 通用订阅</a></li><li><a href="clash">Clash / Mihomo 配置</a></li><li><a href="proxies">Clash Proxy Provider</a></li><li><a href="sing-box">sing-box 配置</a></li><li><a href="shadowrocket">Shadowrocket 订阅</a></li></ul></body></html>';
+        return 200 '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Argo-Singbox 订阅配置索引</title><style>:root{color-scheme:light dark;--bg:#f7f9fc;--panel:#fff;--text:#172033;--muted:#5e6b80;--line:#d9e1ef;--brand:#7c3aed;--blue:#0969da;--cyan:#087ea4;--green:#16794c;--amber:#9a6700}body{margin:0;background:linear-gradient(135deg,#f7f9fc 0%,#eef7ff 45%,#f8f0ff 100%);font:16px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text)}main{max-width:860px;margin:36px auto;padding:0 18px 42px}h1{margin:0;color:var(--brand);font-size:28px;letter-spacing:0}p{color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:20px}.item{display:block;border:1px solid var(--line);border-left:5px solid var(--blue);background:var(--panel);border-radius:8px;padding:14px 16px;text-decoration:none;color:var(--text);box-shadow:0 8px 24px rgba(23,32,51,.06)}.item:nth-child(2n){border-left-color:var(--cyan)}.item:nth-child(3n){border-left-color:var(--green)}.item:nth-child(4n){border-left-color:var(--amber)}.name{display:block;font-weight:700}.desc{display:block;margin-top:4px;color:var(--muted);font-size:13px}code{background:rgba(9,105,218,.1);color:var(--blue);padding:2px 6px;border-radius:5px}@media (prefers-color-scheme:dark){:root{--bg:#101827;--panel:#172033;--text:#edf3ff;--muted:#a8b5c9;--line:#334155;--blue:#60a5fa;--cyan:#22d3ee;--green:#4ade80;--amber:#facc15}body{background:linear-gradient(135deg,#101827 0%,#102235 50%,#211530 100%)}.item{box-shadow:none}}</style></head><body><main><h1>Argo-Singbox 订阅配置索引</h1><p>按客户端选择对应配置。终端执行 <code>asb -n</code> 可查看这些订阅地址的 QR 二维码和明文节点二维码。</p><div class="grid"><a class="item" href="auto"><span class="name">自动适配订阅</span><span class="desc">根据客户端 User-Agent 返回合适格式</span></a><a class="item" href="raw"><span class="name">明文节点链接</span><span class="desc">逐行 vless / vmess / trojan 原始链接</span></a><a class="item" href="base64"><span class="name">Base64 通用订阅</span><span class="desc">V2rayN、NekoBox 等通用导入</span></a><a class="item" href="clash"><span class="name">Clash / Mihomo 完整配置</span><span class="desc">含代理组和 MATCH 规则</span></a><a class="item" href="proxies"><span class="name">Clash Proxy Provider</span><span class="desc">仅代理节点列表，供外部配置引用</span></a><a class="item" href="sing-box"><span class="name">sing-box 出站配置</span><span class="desc">JSON outbounds 配置片段</span></a><a class="item" href="shadowrocket"><span class="name">Shadowrocket 订阅</span><span class="desc">兼容 Shadowrocket 的 Base64 订阅</span></a></div></main></body></html>';
     }
     location = /${UUID}/auto {
         default_type text/plain;
@@ -1255,18 +1256,18 @@ manage_config() {
   [[ -f "$ENV_FILE" ]] || die "${PROJECT_NAME} 尚未安装。"
   ensure_nodes_config
   while true; do
-    brand "${PROJECT_NAME} · 集中配置"
+    brand "${PROJECT_NAME} · 配置管理"
     subsection "基础配置"
-    menu_item 1 "Token / Argo 域名"
-    menu_item 2 "Cloudflare 优选入口"
+    menu_item 1 "Argo Token / 隧道域名"
+    menu_item 2 "Cloudflare 优选入口地址"
     menu_item 3 "Argo Tunnel 回源端口（节点端口依次顺延）"
     menu_item 4 "全局 UUID"
     section "节点与分流"
-    menu_item 5 "查看节点"
-    menu_item 6 "添加节点"
-    menu_item 7 "修改节点"
-    menu_item 8 "删除节点"
-    menu_item 9 "WARP 网址分流"
+    menu_item 5 "查看节点配置"
+    menu_item 6 "添加 WS 节点"
+    menu_item 7 "修改 WS 节点"
+    menu_item 8 "删除 WS 节点"
+    menu_item 9 "WARP 目标网址分流"
     menu_item 0 "返回"
     read_choice "请选择："; choice="$REPLY"
     case "$choice" in
@@ -1408,7 +1409,7 @@ doctor() {
   ip="$(curl -4fsS --connect-timeout 3 --max-time 5 https://api.ipify.org 2>/dev/null ||
     hostname -I 2>/dev/null | awk '{print $1}')"
   memory="$(free -m | awk '/^Mem:/{printf "%s/%s MiB (%.0f%%)",$3,$2,$3*100/$2}')"
-  brand "${PROJECT_NAME} · 完整诊断"
+  brand "${PROJECT_NAME} · 运行诊断"
   subsection "系统概览"
   key_value "公网 IP" "${ip:-未知}"
   key_value "脚本版本" "v${VERSION}"
@@ -1455,23 +1456,43 @@ doctor() {
 }
 
 show_nodes() {
-  local node index=0 auto_url
+  local node index=0 index_url auto_url raw_url base64_url clash_url proxies_url sing_box_url shadowrocket_url
   load_env
   [[ -f "$NODES_FILE" ]] || die "节点文件不存在，请先安装。"
+  index_url="https://${ARGO_DOMAIN}/${UUID}/"
   auto_url="https://${ARGO_DOMAIN}/${UUID}/auto"
+  raw_url="https://${ARGO_DOMAIN}/${UUID}/raw"
+  base64_url="https://${ARGO_DOMAIN}/${UUID}/base64"
+  clash_url="https://${ARGO_DOMAIN}/${UUID}/clash"
+  proxies_url="https://${ARGO_DOMAIN}/${UUID}/proxies"
+  sing_box_url="https://${ARGO_DOMAIN}/${UUID}/sing-box"
+  shadowrocket_url="https://${ARGO_DOMAIN}/${UUID}/shadowrocket"
   brand "${PROJECT_NAME} · 节点与订阅"
-  subsection "配置文件索引"
-  link_value "文件索引" "https://${ARGO_DOMAIN}/${UUID}/"
-  link_value "自动适配" "$auto_url"
-  link_value "原始明文" "https://${ARGO_DOMAIN}/${UUID}/raw"
-  link_value "Base64" "https://${ARGO_DOMAIN}/${UUID}/base64"
-  link_value "Clash" "https://${ARGO_DOMAIN}/${UUID}/clash"
-  link_value "Clash Provider" "https://${ARGO_DOMAIN}/${UUID}/proxies"
-  link_value "sing-box" "https://${ARGO_DOMAIN}/${UUID}/sing-box"
-  link_value "Shadowrocket" "https://${ARGO_DOMAIN}/${UUID}/shadowrocket"
+  subsection "订阅配置入口"
+  link_value "配置索引页" "$index_url"
+  link_value "自动适配订阅" "$auto_url"
+  link_value "明文节点链接" "$raw_url"
+  link_value "Base64 通用订阅" "$base64_url"
+  link_value "Clash/Mihomo 配置" "$clash_url"
+  link_value "Clash Provider" "$proxies_url"
+  link_value "sing-box 配置" "$sing_box_url"
+  link_value "Shadowrocket 订阅" "$shadowrocket_url"
   if command -v qrencode >/dev/null 2>&1; then
-    section "自动适配订阅二维码"
+    section "订阅 QR 二维码"
+    printf '%s%s[自动适配订阅]%s\n%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$C_RESET" "$auto_url"
     qrencode -t ANSIUTF8 "$auto_url"
+    printf '\n%s%s[明文节点链接]%s\n%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$C_RESET" "$raw_url"
+    qrencode -t ANSIUTF8 "$raw_url"
+    printf '\n%s%s[Base64 通用订阅]%s\n%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$C_RESET" "$base64_url"
+    qrencode -t ANSIUTF8 "$base64_url"
+    printf '\n%s%s[Clash/Mihomo 配置]%s\n%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$C_RESET" "$clash_url"
+    qrencode -t ANSIUTF8 "$clash_url"
+    printf '\n%s%s[Clash Provider]%s\n%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$C_RESET" "$proxies_url"
+    qrencode -t ANSIUTF8 "$proxies_url"
+    printf '\n%s%s[sing-box 配置]%s\n%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$C_RESET" "$sing_box_url"
+    qrencode -t ANSIUTF8 "$sing_box_url"
+    printf '\n%s%s[Shadowrocket 订阅]%s\n%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$C_RESET" "$shadowrocket_url"
+    qrencode -t ANSIUTF8 "$shadowrocket_url"
   fi
   section "明文节点"
   while IFS= read -r node; do
@@ -1672,15 +1693,15 @@ menu() {
   while true; do
     brand "${PROJECT_NAME} v${VERSION}"
     subsection "日常管理"
-    menu_item 1 "查看节点信息" "${COMMAND_NAME} -n"
-    menu_item 2 "开启/关闭 Argo" "${COMMAND_NAME} -a"
-    menu_item 3 "开启/关闭 Sing-box" "${COMMAND_NAME} -s"
-    menu_item 4 "集中配置" "${COMMAND_NAME} -c"
+    menu_item 1 "节点与订阅" "${COMMAND_NAME} -n"
+    menu_item 2 "开启/关闭 cloudflared 隧道" "${COMMAND_NAME} -a"
+    menu_item 3 "开启/关闭 sing-box 代理" "${COMMAND_NAME} -s"
+    menu_item 4 "配置管理" "${COMMAND_NAME} -c"
     menu_item 5 "重启全部服务" "${COMMAND_NAME} -r"
-    menu_item 6 "完整诊断" "${COMMAND_NAME} -x"
+    menu_item 6 "运行诊断" "${COMMAND_NAME} -x"
     section "维护工具"
-    menu_item 7 "安装 / 更新 ${PROJECT_NAME}" "${COMMAND_NAME} -i"
-    menu_item 8 "更新 Argo / Sing-box 核心" "${COMMAND_NAME} -v"
+    menu_item 7 "安装 / 重装 ${PROJECT_NAME}" "${COMMAND_NAME} -i"
+    menu_item 8 "更新 cloudflared / sing-box 核心" "${COMMAND_NAME} -v"
     menu_item 9 "备份 ${WORK_DIR}" "${COMMAND_NAME} -k"
     menu_item 10 "恢复 ${WORK_DIR}" "${COMMAND_NAME} -l"
     menu_item 11 "第三方 BBR / DD 工具" "${COMMAND_NAME} -b"
@@ -1689,8 +1710,8 @@ menu() {
     read_choice "请选择："; choice="$REPLY"
     case "$choice" in
       1) show_nodes ;;
-      2) toggle_service "$ARGO_SERVICE" Argo ;;
-      3) toggle_service "$SING_SERVICE" Sing-box ;;
+      2) toggle_service "$ARGO_SERVICE" "cloudflared 隧道" ;;
+      3) toggle_service "$SING_SERVICE" "sing-box 代理" ;;
       4) manage_config ;;
       5) restart_services ;;
       6) doctor ;;
@@ -1709,8 +1730,8 @@ menu() {
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   case "${1:-}" in
     -n) show_nodes ;;
-    -a) toggle_service "$ARGO_SERVICE" Argo ;;
-    -s) toggle_service "$SING_SERVICE" Sing-box ;;
+    -a) toggle_service "$ARGO_SERVICE" "cloudflared 隧道" ;;
+    -s) toggle_service "$SING_SERVICE" "sing-box 代理" ;;
     -c) manage_config ;;
     -r) restart_services ;;
     -x) doctor ;;
