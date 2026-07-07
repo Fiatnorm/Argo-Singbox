@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.10.6"
+VERSION="2.10.7"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
 PROJECT_REPO="Fiatnorm/Argo-Singbox"
@@ -27,6 +27,7 @@ SUB_CLASH_FILE="${WORK_DIR}/subscription.clash.yaml"
 SUB_CLASH_PROVIDER_FILE="${WORK_DIR}/subscription.proxies.yaml"
 SUB_SING_BOX_FILE="${WORK_DIR}/subscription.sing-box.json"
 SUB_SHADOWROCKET_FILE="${WORK_DIR}/subscription.shadowrocket"
+SUB_AUTO_QR_FILE="${WORK_DIR}/subscription.auto.svg"
 SING_SERVICE="asb-sing-box"
 ARGO_SERVICE="asb-cloudflared"
 LEGACY_SING_SERVICE="sba-sing-box"
@@ -58,7 +59,7 @@ yellow() { printf '%s! %s%s\n' "$C_BRIGHT_YELLOW" "$*" "$C_RESET"; }
 red() { printf '%s✗ %s%s\n' "$C_BRIGHT_RED" "$*" "$C_RESET" >&2; }
 info() { printf '%s• %s%s\n' "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
 brand() {
-  printf '\n%s%s◆ %s%s\n%s%s%s\n' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$*" "$C_RESET" \
+  printf '\n%s%s◆ %s%s\n%s%s%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET" \
     "$C_BRIGHT_BLUE" "----------------------------------------" "$C_RESET"
 }
 section() { printf '\n%s%s▸ %s%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET"; }
@@ -67,9 +68,9 @@ key_value() {
   printf '%s%-16s%s %s%s%s\n' "$C_BRIGHT_CYAN" "$1" "$C_RESET" "$C_BRIGHT_WHITE" "$2" "$C_RESET"
 }
 link_value() {
-  printf '%s%-16s%s %s%s%s%s\n' "$C_BRIGHT_YELLOW" "$1" "$C_RESET" "$C_BRIGHT_WHITE" "$C_UNDERLINE" "$2" "$C_RESET"
+  printf '%s%-18s%s %s%s%s%s\n' "$C_BRIGHT_CYAN" "$1" "$C_RESET" "$C_BRIGHT_WHITE" "$C_UNDERLINE" "$2" "$C_RESET"
 }
-prompt() { printf '%s%s› %s%s' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$*" "$C_RESET"; }
+prompt() { printf '%s%s› %s%s' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET"; }
 read_choice() { prompt "$1"; IFS= read -r REPLY; }
 menu_item() {
   printf '  %s%2s%s  %s%s%s%s%s%s\n' "$C_BRIGHT_YELLOW" "$1" "$C_RESET" "$C_BRIGHT_WHITE" "$2" \
@@ -504,7 +505,11 @@ EOF
     }
     location = /${UUID}/ {
         default_type text/html;
-        return 200 '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Argo-Singbox 订阅配置索引</title><style>:root{color-scheme:light dark;--bg:#f7f9fc;--panel:#fff;--text:#172033;--muted:#5e6b80;--line:#d9e1ef;--brand:#7c3aed;--blue:#0969da;--cyan:#087ea4;--green:#16794c;--amber:#9a6700}body{margin:0;background:linear-gradient(135deg,#f7f9fc 0%,#eef7ff 45%,#f8f0ff 100%);font:16px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text)}main{max-width:860px;margin:36px auto;padding:0 18px 42px}h1{margin:0;color:var(--brand);font-size:28px;letter-spacing:0}p{color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:20px}.item{display:block;border:1px solid var(--line);border-left:5px solid var(--blue);background:var(--panel);border-radius:8px;padding:14px 16px;text-decoration:none;color:var(--text);box-shadow:0 8px 24px rgba(23,32,51,.06)}.item:nth-child(2n){border-left-color:var(--cyan)}.item:nth-child(3n){border-left-color:var(--green)}.item:nth-child(4n){border-left-color:var(--amber)}.name{display:block;font-weight:700}.desc{display:block;margin-top:4px;color:var(--muted);font-size:13px}code{background:rgba(9,105,218,.1);color:var(--blue);padding:2px 6px;border-radius:5px}@media (prefers-color-scheme:dark){:root{--bg:#101827;--panel:#172033;--text:#edf3ff;--muted:#a8b5c9;--line:#334155;--blue:#60a5fa;--cyan:#22d3ee;--green:#4ade80;--amber:#facc15}body{background:linear-gradient(135deg,#101827 0%,#102235 50%,#211530 100%)}.item{box-shadow:none}}</style></head><body><main><h1>Argo-Singbox 订阅配置索引</h1><p>按客户端选择对应配置。终端执行 <code>asb -n</code> 可查看这些订阅地址的 QR 二维码和明文节点二维码。</p><div class="grid"><a class="item" href="auto"><span class="name">自动适配订阅</span><span class="desc">根据客户端 User-Agent 返回合适格式</span></a><a class="item" href="raw"><span class="name">明文节点链接</span><span class="desc">逐行 vless / vmess / trojan 原始链接</span></a><a class="item" href="base64"><span class="name">Base64 通用订阅</span><span class="desc">V2rayN、NekoBox 等通用导入</span></a><a class="item" href="clash"><span class="name">Clash / Mihomo 完整配置</span><span class="desc">含代理组和 MATCH 规则</span></a><a class="item" href="proxies"><span class="name">Clash Proxy Provider</span><span class="desc">仅代理节点列表，供外部配置引用</span></a><a class="item" href="sing-box"><span class="name">sing-box 出站配置</span><span class="desc">JSON outbounds 配置片段</span></a><a class="item" href="shadowrocket"><span class="name">Shadowrocket 订阅</span><span class="desc">兼容 Shadowrocket 的 Base64 订阅</span></a></div></main></body></html>';
+        return 200 '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Argo-Singbox 订阅面板</title><style>:root{color-scheme:light;--blue:#0969da;--blue2:#1d4ed8;--text:#172033;--muted:#5f6f89;--line:#d8e3f5;--bg:#fff}*{box-sizing:border-box}body{margin:0;background:var(--bg);font:16px/1.6 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text)}main{max-width:860px;margin:32px auto;padding:0 18px 40px}h1{margin:0 0 8px;color:var(--blue);font-size:28px;letter-spacing:0}p{margin:0 0 18px;color:var(--muted)}.qr{display:flex;gap:18px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:16px;margin:18px 0 20px}.qr img{width:168px;height:168px;image-rendering:pixelated}.qr a,.item{color:var(--blue);text-decoration:none}.qr a:hover,.item:hover{text-decoration:underline}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.item{display:block;border:1px solid var(--line);border-radius:8px;padding:12px 14px}.name{display:block;font-weight:700;color:var(--blue2)}.desc{display:block;margin-top:3px;color:var(--muted);font-size:13px}code{color:var(--blue);background:#eef6ff;padding:2px 6px;border-radius:5px}@media (max-width:560px){.qr{display:block}.qr img{width:150px;height:150px;margin-bottom:10px}}</style></head><body><main><h1>Argo-Singbox 订阅面板</h1><p>按客户端选择订阅。终端执行 <code>asb -n</code> 仅输出订阅链接和明文节点。</p><section class="qr"><a href="auto"><img src="auto-qr.svg" alt="自动适配订阅 QR"></a><div><span class="name">自动适配订阅 QR</span><span class="desc">扫码导入自动适配订阅；点击二维码打开订阅链接。</span><p><a href="auto">打开自动适配订阅</a></p></div></section><div class="grid"><a class="item" href="auto"><span class="name">自动适配订阅</span><span class="desc">根据客户端 User-Agent 返回合适格式</span></a><a class="item" href="raw"><span class="name">明文节点链接</span><span class="desc">逐行 vless / vmess / trojan 原始链接</span></a><a class="item" href="base64"><span class="name">Base64 通用订阅</span><span class="desc">V2rayN、NekoBox 等通用导入</span></a><a class="item" href="clash"><span class="name">Clash/Mihomo 订阅</span><span class="desc">完整 YAML 配置</span></a><a class="item" href="proxies"><span class="name">Clash Provider 订阅</span><span class="desc">仅代理节点列表</span></a><a class="item" href="sing-box"><span class="name">sing-box 订阅</span><span class="desc">JSON 出站配置</span></a><a class="item" href="shadowrocket"><span class="name">Shadowrocket 订阅</span><span class="desc">兼容 Shadowrocket 的 Base64 订阅</span></a></div></main></body></html>';
+    }
+    location = /${UUID}/auto-qr.svg {
+        default_type image/svg+xml;
+        alias ${SUB_AUTO_QR_FILE};
     }
     location = /${UUID}/auto {
         default_type text/plain;
@@ -591,7 +596,7 @@ EOF
 }
 
 generate_nodes() {
-  local old_umask vmess_json vmess_link tag protocol path port socks encoded_path first uri_server
+  local old_umask vmess_json vmess_link tag protocol path port socks encoded_path first uri_server auto_url
   ensure_nodes_config
   validate_nodes_config
   old_umask="$(umask)"
@@ -616,6 +621,8 @@ generate_nodes() {
   install -m 644 "$NODES_FILE" "$SUB_FILE"
   base64 -w 0 "$NODES_FILE" >"$SUB_BASE64_FILE"
   cp -f "$SUB_BASE64_FILE" "$SUB_SHADOWROCKET_FILE"
+  auto_url="https://${ARGO_DOMAIN}/${UUID}/auto"
+  qrencode -t SVG -o "$SUB_AUTO_QR_FILE" "$auto_url"
   printf 'proxies:\n' >"$SUB_CLASH_PROVIDER_FILE"
   while IFS='|' read -r tag protocol path port socks; do
     case "$protocol" in
@@ -651,7 +658,7 @@ generate_nodes() {
   printf ']}\n' >>"$SUB_SING_BOX_FILE"
   chmod 644 "$SUB_BASE64_FILE"
   chmod 644 "$SUB_CLASH_FILE" "$SUB_CLASH_PROVIDER_FILE" "$SUB_SING_BOX_FILE" \
-    "$SUB_SHADOWROCKET_FILE"
+    "$SUB_SHADOWROCKET_FILE" "$SUB_AUTO_QR_FILE"
   umask "$old_umask"
 }
 
@@ -1468,38 +1475,20 @@ show_nodes() {
   sing_box_url="https://${ARGO_DOMAIN}/${UUID}/sing-box"
   shadowrocket_url="https://${ARGO_DOMAIN}/${UUID}/shadowrocket"
   brand "${PROJECT_NAME} · 节点与订阅"
-  subsection "订阅配置入口"
-  link_value "配置索引页" "$index_url"
+  subsection "订阅链接"
+  link_value "网页订阅面板" "$index_url"
   link_value "自动适配订阅" "$auto_url"
   link_value "明文节点链接" "$raw_url"
   link_value "Base64 通用订阅" "$base64_url"
-  link_value "Clash/Mihomo 配置" "$clash_url"
-  link_value "Clash Provider" "$proxies_url"
-  link_value "sing-box 配置" "$sing_box_url"
+  link_value "Clash/Mihomo 订阅" "$clash_url"
+  link_value "Clash Provider 订阅" "$proxies_url"
+  link_value "sing-box 订阅" "$sing_box_url"
   link_value "Shadowrocket 订阅" "$shadowrocket_url"
-  if command -v qrencode >/dev/null 2>&1; then
-    section "订阅 QR 二维码"
-    printf '%s%s[自动适配订阅]%s\n%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$C_RESET" "$auto_url"
-    qrencode -t ANSIUTF8 "$auto_url"
-    printf '\n%s%s[明文节点链接]%s\n%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$C_RESET" "$raw_url"
-    qrencode -t ANSIUTF8 "$raw_url"
-    printf '\n%s%s[Base64 通用订阅]%s\n%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$C_RESET" "$base64_url"
-    qrencode -t ANSIUTF8 "$base64_url"
-    printf '\n%s%s[Clash/Mihomo 配置]%s\n%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$C_RESET" "$clash_url"
-    qrencode -t ANSIUTF8 "$clash_url"
-    printf '\n%s%s[Clash Provider]%s\n%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$C_RESET" "$proxies_url"
-    qrencode -t ANSIUTF8 "$proxies_url"
-    printf '\n%s%s[sing-box 配置]%s\n%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$C_RESET" "$sing_box_url"
-    qrencode -t ANSIUTF8 "$sing_box_url"
-    printf '\n%s%s[Shadowrocket 订阅]%s\n%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$C_RESET" "$shadowrocket_url"
-    qrencode -t ANSIUTF8 "$shadowrocket_url"
-  fi
   section "明文节点"
   while IFS= read -r node; do
     ((index+=1))
     ((index > 1)) && printf '\n'
     printf '%s%s[节点 %d]%s\n%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$index" "$C_RESET" "$node"
-    command -v qrencode >/dev/null 2>&1 && qrencode -t ANSIUTF8 "$node"
   done <"$NODES_FILE"
   printf '\n'
 }
@@ -1659,7 +1648,7 @@ uninstall_project() {
   remove_legacy_symlink
   rm -f "$ENV_FILE" "$NODES_CONFIG" "$SING_BOX_CONFIG" "$LOCAL_SCRIPT" "$MANAGED_FILE" \
     "$SUB_FILE" "$SUB_BASE64_FILE" "$SUB_CLASH_FILE" "$SUB_CLASH_PROVIDER_FILE" \
-    "$SUB_SING_BOX_FILE" "$SUB_SHADOWROCKET_FILE" \
+    "$SUB_SING_BOX_FILE" "$SUB_SHADOWROCKET_FILE" "$SUB_AUTO_QR_FILE" \
     "$BIN_DIR/sing-box" "$BIN_DIR/cloudflared"
   rm -rf "$BACKUP_DIR"
   rm -rf "$resolved_work_dir"

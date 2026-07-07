@@ -39,7 +39,7 @@
 
 其中协议仅允许 `vless`、`vmess`、`trojan`；SOCKS5 留空表示 direct，否则格式为 `主机:端口:用户名:密码`。标签、WS 路径和本地端口必须全局唯一。改变该格式时必须同时迁移旧文件，不能静默破坏已有节点。
 
-生成文件包括明文节点、Base64、Clash/Mihomo、Clash Provider、sing-box 和 Shadowrocket 订阅。它们是派生数据，应由 `generate_nodes()` 统一重建，不应成为独立配置源。
+生成文件包括明文节点、Base64、Clash/Mihomo、Clash Provider、sing-box、Shadowrocket 订阅和自动适配订阅 QR。它们是派生数据，应由 `generate_nodes()` 统一重建，不应成为独立配置源。
 
 ## 关键函数职责
 
@@ -99,7 +99,7 @@
 ## 交互和运行语义
 
 - 优选入口使用单行 `域名/IP:端口` 输入；IPv6 使用 `[地址]:端口`。
-- `asb -n` 必须输出当前全部动态节点、二维码，以及明文、Base64、Clash、Clash Provider、sing-box、Shadowrocket 和自动适配订阅地址。
+- `asb -n` 必须输出当前全部订阅链接和明文节点，不在终端输出 QR；自动适配订阅 QR 必须显示在网页订阅面板中，并作为单独的 `/auto-qr.svg` 订阅面板资源提供。
 - 节点连接地址使用优选入口，WebSocket Host 与 TLS SNI 使用 Argo 域名。
 - 修改 Token 或优选入口后，应重新生成节点并执行健康检查。
 - 健康检查必须测试 `/etc/asb/nodes.conf` 中的全部 WS 路径，默认包括 `/argo-vl`、`/argo-vm`、`/argo-tr`。

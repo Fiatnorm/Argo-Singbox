@@ -1,11 +1,11 @@
-# Argo-Singbox v2.10.6
+# Argo-Singbox v2.10.7
 
 面向固定 Argo Token 隧道的中文轻量安装脚本，提供：
 
 - VLESS + WS + TLS：`/argo-vl`
 - VMess + WS + TLS：`/argo-vm`
 - Trojan + WS + TLS：`/argo-tr`
-- 原始节点、订阅二维码、原始订阅与 Base64 通用订阅
+- 明文节点、网页订阅面板、自动适配订阅 QR 与多客户端订阅
 
 TLS 由 Cloudflare 边缘终止；VPS 本机 Nginx 和 sing-box 仅监听回环地址。固定隧道必须在 Cloudflare Zero Trust 添加 Public Hostname，Service 指向 `http://localhost:3010`。Public Hostname 域名必须由安装者输入，项目不再提供公共默认域名。
 
@@ -76,6 +76,8 @@ v2.10.5 对现有功能进行可靠性与安全加固：环境配置改为同目
 
 v2.10.6 将 `asb -n` 的 QR 二维码扩展到自动适配、明文节点、Base64、Clash/Mihomo、Clash Provider、sing-box 和 Shadowrocket 全部订阅入口；配置索引页改为清晰的客户端卡片布局；终端菜单、配置页和诊断页统一命名，并优化为亮紫品牌、蓝色分区、青色键名、黄色订阅标签和亮白内容的高对比配色。
 
+v2.10.7 将 QR 二维码从终端输出移入网页订阅面板，仅保留自动适配订阅 QR；`asb -n` 改为只输出订阅链接和明文节点；网页面板调整为白底蓝字的简约布局，终端输出命名统一为“订阅链接 / 明文节点”，配色调整为亮蓝品牌、亮青键名和亮白内容。
+
 下载具有总超时、重试、GitHub 代理回退和 GitHub Release SHA256 digest 校验；二进制还会执行基本版本检查。sing-box 版本优先采用上游 `force_version`，不可用时回退到 GitHub releases，再失败才使用脚本预设版本。
 
 首次安装使用经过项目确认的 sing-box `1.13.0-rc.4`，避免安装时因远端版本变化产生不一致；cloudflared 首次安装按原版 SBA 逻辑使用 GitHub latest。后续执行 `asb -v` 时，sing-box 仍按 `force_version`、GitHub releases、预设版本的顺序查询更新。
@@ -116,7 +118,7 @@ sudo ./argo-singbox.sh -i
 |---|---|
 | `sudo asb` | 打开完整中文管理面板 |
 | `sudo asb -i` | 选择使用 VPS 本地脚本重装，或从 GitHub 获取最新脚本后安装 |
-| `sudo asb -n` | 显示全部节点、订阅地址及对应 QR 二维码 |
+| `sudo asb -n` | 显示订阅链接和全部明文节点 |
 | `sudo asb -a` | 开启或关闭 Argo/cloudflared 服务 |
 | `sudo asb -s` | 开启或关闭 sing-box 服务 |
 | `sudo asb -c` | 修改 Token、域名、优选入口、端口、UUID、节点、SOCKS5 和 WARP 域名 |
@@ -183,7 +185,7 @@ https://chatgpt.com,api.openai.com,example.com
 
 WARP 只覆盖匹配的网址，不会替换其他节点的 SOCKS5 配置。`asb -x` 会检查 `warp-svc`、本地代理端口，并通过 WARP 访问第一个目标域名。WARP 不提供匿名保证，也不保证指定国家或地区的落地 IP。
 
-终端输出使用高亮配色：亮紫色标识品牌和输入提示，亮蓝色标识分区，亮青色标识键名，亮黄色标识菜单序号和订阅标签，亮白色承载主要内容，绿/黄/红分别表示成功、警告和错误。菜单、诊断、节点订阅与表格统一采用内容块布局：区块之间保留一行，区块内部保持紧凑。表格使用 ASCII `-` 分隔线并按固定列宽对齐；重定向输出、`TERM=dumb` 或设置 `NO_COLOR=1` 时自动关闭全部颜色和文本装饰。
+终端输出使用高亮配色：亮蓝色标识品牌、输入提示和分区，亮青色标识键名和链接标签，亮白色承载主要内容，亮黄色标识菜单序号，绿/黄/红分别表示成功、警告和错误。菜单、诊断、节点订阅与表格统一采用内容块布局：区块之间保留一行，区块内部保持紧凑。表格使用 ASCII `-` 分隔线并按固定列宽对齐；重定向输出、`TERM=dumb` 或设置 `NO_COLOR=1` 时自动关闭全部颜色和文本装饰。
 
 ## 诊断、备份与恢复
 
@@ -199,7 +201,7 @@ WARP 只覆盖匹配的网址，不会替换其他节点的 SOCKS5 配置。`asb
 
 ## 节点、订阅和检查
 
-`asb -n` 输出配置索引、全部订阅入口、全部订阅 QR 二维码、原始节点链接和节点二维码。浏览器访问 `https://你的域名/你的UUID/` 可进入订阅配置索引，再打开不同客户端配置：
+`asb -n` 输出网页订阅面板、全部订阅链接和明文节点，不在终端输出 QR 二维码。浏览器访问 `https://你的域名/你的UUID/` 可进入白底蓝字的订阅面板，面板中包含自动适配订阅 QR，并可打开不同客户端订阅：
 
 ```text
 https://你的域名/你的UUID/auto
@@ -213,7 +215,7 @@ https://你的域名/你的UUID/shadowrocket
 
 `/你的UUID` 会跳转到订阅配置索引；索引 HTML 由 Nginx 直接返回，避免目录 URL 使用文件 `alias` 导致 500。`/auto` 根据 User-Agent 为 Clash/Mihomo、sing-box 和 Shadowrocket 返回对应格式，其他客户端返回 Base64 通用订阅。`/raw` 以及 `/etc/asb/nodes.txt` 保留逐行明文 `vless://`、`vmess://`、`trojan://` 节点协议。旧的 `/asb-sub` 与 `/asb-sub-base64` 入口继续可用。
 
-终端二维码覆盖自动适配、明文节点、Base64、Clash/Mihomo、Clash Provider、sing-box 和 Shadowrocket 全部订阅入口；明文节点仍会逐条输出可直接导入的节点二维码。
+自动适配订阅 QR 由脚本生成到 `/etc/asb/subscription.auto.svg`，并通过 `/你的UUID/auto-qr.svg` 在订阅面板展示；终端只保留文本链接和明文节点，便于复制和日志查看。
 
 默认标签使用接近原版 SBA 的 `Argo-Vl`、`Argo-Vm`、`Argo-Tr` 后缀形式。`asb -c` 修改节点时可直接修改标签和协议；标签同时作为 sing-box inbound tag 和各客户端显示名称。
 
