@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.10.7"
+VERSION="2.10.8"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
 PROJECT_REPO="Fiatnorm/Argo-Singbox"
@@ -54,27 +54,27 @@ else
   C_BLUE=""; C_MAGENTA=""; C_CYAN=""; C_WHITE=""; C_BRIGHT_RED=""; C_BRIGHT_GREEN=""
   C_BRIGHT_YELLOW=""; C_BRIGHT_BLUE=""; C_BRIGHT_MAGENTA=""; C_BRIGHT_CYAN=""; C_BRIGHT_WHITE=""
 fi
-green() { printf '%s✓ %s%s\n' "$C_BRIGHT_GREEN" "$*" "$C_RESET"; }
-yellow() { printf '%s! %s%s\n' "$C_BRIGHT_YELLOW" "$*" "$C_RESET"; }
-red() { printf '%s✗ %s%s\n' "$C_BRIGHT_RED" "$*" "$C_RESET" >&2; }
-info() { printf '%s• %s%s\n' "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
+green() { printf '%s[OK]%s %s\n' "$C_BRIGHT_GREEN" "$C_RESET" "$*"; }
+yellow() { printf '%s[WARN]%s %s\n' "$C_BRIGHT_YELLOW" "$C_RESET" "$*"; }
+red() { printf '%s[ERR]%s %s\n' "$C_BRIGHT_RED" "$C_RESET" "$*" >&2; }
+info() { printf '%s[INFO]%s %s\n' "$C_BRIGHT_CYAN" "$C_RESET" "$*"; }
 brand() {
-  printf '\n%s%s◆ %s%s\n%s%s%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET" \
-    "$C_BRIGHT_BLUE" "----------------------------------------" "$C_RESET"
+  printf '\n%s%s%s%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET"
+  printf '%s%s%s\n' "$C_BLUE" "────────────────────────────────────────" "$C_RESET"
 }
-section() { printf '\n%s%s▸ %s%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET"; }
-subsection() { printf '%s%s%s%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
+section() { printf '\n%s%s[%s]%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET"; }
+subsection() { printf '%s%s%s%s\n' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$*" "$C_RESET"; }
 key_value() {
-  printf '%s%-16s%s %s%s%s\n' "$C_BRIGHT_CYAN" "$1" "$C_RESET" "$C_BRIGHT_WHITE" "$2" "$C_RESET"
+  printf '  %s%-18s%s %s%s%s\n' "$C_BRIGHT_CYAN" "$1" "$C_RESET" "$C_BRIGHT_WHITE" "$2" "$C_RESET"
 }
 link_value() {
-  printf '%s%-18s%s %s%s%s%s\n' "$C_BRIGHT_CYAN" "$1" "$C_RESET" "$C_BRIGHT_WHITE" "$C_UNDERLINE" "$2" "$C_RESET"
+  printf '  %s%-18s%s %s%s%s%s\n' "$C_BRIGHT_CYAN" "$1" "$C_RESET" "$C_BRIGHT_WHITE" "$C_UNDERLINE" "$2" "$C_RESET"
 }
-prompt() { printf '%s%s› %s%s' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET"; }
+prompt() { printf '%s%s> %s%s' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$*" "$C_RESET"; }
 read_choice() { prompt "$1"; IFS= read -r REPLY; }
 menu_item() {
-  printf '  %s%2s%s  %s%s%s%s%s%s\n' "$C_BRIGHT_YELLOW" "$1" "$C_RESET" "$C_BRIGHT_WHITE" "$2" \
-    "$C_RESET" "$C_DIM$C_BRIGHT_CYAN" "${3:+  [$3]}" "$C_RESET"
+  printf '  %s%2s.%s %s%-24s%s%s%s%s\n' "$C_BRIGHT_YELLOW" "$1" "$C_RESET" "$C_BRIGHT_WHITE" "$2" \
+    "$C_RESET" "$C_DIM$C_CYAN" "${3:+  $3}" "$C_RESET"
 }
 die() { red "$*"; exit 1; }
 
@@ -944,18 +944,18 @@ show_install_nodes() {
 
 install_project() {
   local install_mode="${1:-local}" installer_source latest_installer
-  local work_backup="" sing_stage argo_stage file refresh_status
+  local work_backup="" sing_stage argo_stage file
   require_root
   if [[ "$install_mode" == "github" ]]; then
     latest_installer="$(mktemp)"
     info "正在获取 ${PROJECT_REPO} ${PROJECT_BRANCH} 的最新安装脚本。"
     fetch_latest_installer "$latest_installer"
     if ! cmp -s "$latest_installer" "$0"; then
-      green "已取得并校验最新安装脚本，切换到最新版本继续安装。"
-      refresh_status=0
-      bash "$latest_installer" -i --github-refreshed || refresh_status=$?
+      install -d -m 755 "$WORK_DIR"
+      create_local_command "$latest_installer"
       rm -f "$latest_installer"
-      return "$refresh_status"
+      green "本地脚本已更新，正在切换到新版继续安装。"
+      exec bash "$LOCAL_SCRIPT" -i --github-refreshed
     fi
     rm -f "$latest_installer"
     green "当前安装脚本已是 GitHub 最新版本。"
@@ -1028,7 +1028,7 @@ install_project() {
   generate_nodes
   rm -f "$LEGACY_NODES_FILE" "$LEGACY_SBA_NODES_FILE"
   if health_check; then
-    green "${PROJECT_NAME} 安装 / 更新完成，核心链路检查通过。节点文件：${NODES_FILE}"
+    green "${PROJECT_NAME} 安装完成，核心链路检查通过。节点文件：${NODES_FILE}"
   else
     yellow "${PROJECT_NAME} 文件已安装，但健康检查未全部通过；请先处理上述错误再使用节点。"
   fi
@@ -1038,10 +1038,10 @@ install_project() {
 install_menu() {
   local choice
   while true; do
-    brand "${PROJECT_NAME} · 安装 / 更新"
-    subsection "请选择安装来源"
-    menu_item 1 "使用当前 VPS 本地脚本重装" "不更新项目脚本"
-    menu_item 2 "从 GitHub 获取最新脚本安装" "可更新项目脚本"
+    brand "${PROJECT_NAME} v${VERSION} - 安装"
+    subsection "安装方式"
+    menu_item 1 "本地重装" "使用当前 VPS 脚本"
+    menu_item 2 "在线更新安装" "先更新脚本再安装"
     menu_item 0 "返回"
     read_choice "请选择："; choice="$REPLY"
     case "$choice" in
@@ -1263,18 +1263,18 @@ manage_config() {
   [[ -f "$ENV_FILE" ]] || die "${PROJECT_NAME} 尚未安装。"
   ensure_nodes_config
   while true; do
-    brand "${PROJECT_NAME} · 配置管理"
+    brand "${PROJECT_NAME} v${VERSION} - 配置"
     subsection "基础配置"
-    menu_item 1 "Argo Token / 隧道域名"
-    menu_item 2 "Cloudflare 优选入口地址"
-    menu_item 3 "Argo Tunnel 回源端口（节点端口依次顺延）"
-    menu_item 4 "全局 UUID"
+    menu_item 1 "Token / 域名"
+    menu_item 2 "优选入口"
+    menu_item 3 "回源端口"
+    menu_item 4 "UUID"
     section "节点与分流"
-    menu_item 5 "查看节点配置"
-    menu_item 6 "添加 WS 节点"
-    menu_item 7 "修改 WS 节点"
-    menu_item 8 "删除 WS 节点"
-    menu_item 9 "WARP 目标网址分流"
+    menu_item 5 "查看节点"
+    menu_item 6 "添加节点"
+    menu_item 7 "修改节点"
+    menu_item 8 "删除节点"
+    menu_item 9 "WARP 分流"
     menu_item 0 "返回"
     read_choice "请选择："; choice="$REPLY"
     case "$choice" in
@@ -1416,7 +1416,7 @@ doctor() {
   ip="$(curl -4fsS --connect-timeout 3 --max-time 5 https://api.ipify.org 2>/dev/null ||
     hostname -I 2>/dev/null | awk '{print $1}')"
   memory="$(free -m | awk '/^Mem:/{printf "%s/%s MiB (%.0f%%)",$3,$2,$3*100/$2}')"
-  brand "${PROJECT_NAME} · 运行诊断"
+  brand "${PROJECT_NAME} v${VERSION} - 诊断"
   subsection "系统概览"
   key_value "公网 IP" "${ip:-未知}"
   key_value "脚本版本" "v${VERSION}"
@@ -1474,7 +1474,7 @@ show_nodes() {
   proxies_url="https://${ARGO_DOMAIN}/${UUID}/proxies"
   sing_box_url="https://${ARGO_DOMAIN}/${UUID}/sing-box"
   shadowrocket_url="https://${ARGO_DOMAIN}/${UUID}/shadowrocket"
-  brand "${PROJECT_NAME} · 节点与订阅"
+  brand "${PROJECT_NAME} v${VERSION} - 节点"
   subsection "订阅链接"
   link_value "网页订阅面板" "$index_url"
   link_value "自动适配订阅" "$auto_url"
@@ -1682,19 +1682,19 @@ menu() {
   while true; do
     brand "${PROJECT_NAME} v${VERSION}"
     subsection "日常管理"
-    menu_item 1 "节点与订阅" "${COMMAND_NAME} -n"
-    menu_item 2 "开启/关闭 cloudflared 隧道" "${COMMAND_NAME} -a"
-    menu_item 3 "开启/关闭 sing-box 代理" "${COMMAND_NAME} -s"
+    menu_item 1 "节点订阅" "${COMMAND_NAME} -n"
+    menu_item 2 "Argo 开关" "${COMMAND_NAME} -a"
+    menu_item 3 "Sing-box 开关" "${COMMAND_NAME} -s"
     menu_item 4 "配置管理" "${COMMAND_NAME} -c"
-    menu_item 5 "重启全部服务" "${COMMAND_NAME} -r"
+    menu_item 5 "重启服务" "${COMMAND_NAME} -r"
     menu_item 6 "运行诊断" "${COMMAND_NAME} -x"
     section "维护工具"
-    menu_item 7 "安装 / 重装 ${PROJECT_NAME}" "${COMMAND_NAME} -i"
-    menu_item 8 "更新 cloudflared / sing-box 核心" "${COMMAND_NAME} -v"
-    menu_item 9 "备份 ${WORK_DIR}" "${COMMAND_NAME} -k"
-    menu_item 10 "恢复 ${WORK_DIR}" "${COMMAND_NAME} -l"
-    menu_item 11 "第三方 BBR / DD 工具" "${COMMAND_NAME} -b"
-    menu_item 12 "卸载 ${PROJECT_NAME}" "${COMMAND_NAME} -u"
+    menu_item 7 "安装重装" "${COMMAND_NAME} -i"
+    menu_item 8 "更新核心" "${COMMAND_NAME} -v"
+    menu_item 9 "备份配置" "${COMMAND_NAME} -k"
+    menu_item 10 "恢复配置" "${COMMAND_NAME} -l"
+    menu_item 11 "BBR / DD" "${COMMAND_NAME} -b"
+    menu_item 12 "卸载项目" "${COMMAND_NAME} -u"
     menu_item 0 "退出"
     read_choice "请选择："; choice="$REPLY"
     case "$choice" in

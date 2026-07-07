@@ -1,4 +1,4 @@
-# Argo-Singbox v2.10.7
+# Argo-Singbox v2.10.8
 
 面向固定 Argo Token 隧道的中文轻量安装脚本，提供：
 
@@ -78,17 +78,19 @@ v2.10.6 将 `asb -n` 的 QR 二维码扩展到自动适配、明文节点、Base
 
 v2.10.7 将 QR 二维码从终端输出移入网页订阅面板，仅保留自动适配订阅 QR；`asb -n` 改为只输出订阅链接和明文节点；网页面板调整为白底蓝字的简约布局，终端输出命名统一为“订阅链接 / 明文节点”，配色调整为亮蓝品牌、亮青键名和亮白内容。
 
+v2.10.8 修复 `asb -i` 在线更新安装后仍回到旧脚本进程的问题：GitHub 模式会先原子替换 VPS 本地脚本，再切换到新版继续安装。终端输出改为紧凑分区格式，统一使用短菜单名、`[OK] / [WARN] / [ERR] / [INFO]` 状态前缀，以及蓝、青、紫、黄、绿、红的清晰配色。
+
 下载具有总超时、重试、GitHub 代理回退和 GitHub Release SHA256 digest 校验；二进制还会执行基本版本检查。sing-box 版本优先采用上游 `force_version`，不可用时回退到 GitHub releases，再失败才使用脚本预设版本。
 
 首次安装使用经过项目确认的 sing-box `1.13.0-rc.4`，避免安装时因远端版本变化产生不一致；cloudflared 首次安装按原版 SBA 逻辑使用 GitHub latest。后续执行 `asb -v` 时，sing-box 仍按 `force_version`、GitHub releases、预设版本的顺序查询更新。
 
 ## 是否需要反复拉取 GitHub
 
-安装完成后，脚本会保存在 `/etc/asb/argo-singbox.sh`，并建立本地命令 `/usr/local/bin/asb`。查看节点、修改 Token/优选入口、启停或重启服务、查看状态和卸载都直接使用 VPS 上的本地文件，不会重新拉取仓库。执行 `asb -i` 后可选择本地重装或 GitHub 安装：本地重装直接使用 `/etc/asb/argo-singbox.sh`；GitHub 安装会获取 `Fiatnorm/Argo-Singbox` 的最新 `main` 脚本，校验随仓库发布的 SHA256 和 Bash 语法，然后切换到最新脚本继续安装。脚本与清单若因分支正在更新而暂时不一致，会自动重新获取。
+安装完成后，脚本会保存在 `/etc/asb/argo-singbox.sh`，并建立本地命令 `/usr/local/bin/asb`。查看节点、修改 Token/优选入口、启停或重启服务、查看状态和卸载都直接使用 VPS 上的本地文件，不会重新拉取仓库。执行 `asb -i` 后可选择本地重装或在线更新安装：本地重装直接使用 `/etc/asb/argo-singbox.sh`；在线更新安装会获取 `Fiatnorm/Argo-Singbox` 的最新 `main` 脚本，校验随仓库发布的 SHA256 和 Bash 语法，先替换 VPS 本地脚本，再由新版脚本继续安装。脚本与清单若因分支正在更新而暂时不一致，会自动重新获取。
 
 以下操作仍会主动访问网络：
 
-- 首次安装或再次执行“安装 / 更新”：获取并校验最新 Argo-Singbox 脚本，再查询并下载 sing-box、cloudflared 官方发布物。
+- 首次安装或执行“在线更新安装”：获取并校验最新 Argo-Singbox 脚本，再查询并下载 sing-box、cloudflared 官方发布物。
 - `asb -v`：查询 GitHub Release/`force_version`，有更新并确认后下载核心。
 - 健康检查：访问 Cloudflare 公网入口。
 - 状态诊断：尝试访问 `api.ipify.org` 获取公网 IP，失败时自动使用本机地址。
@@ -117,7 +119,7 @@ sudo ./argo-singbox.sh -i
 | 指令 | 功能 |
 |---|---|
 | `sudo asb` | 打开完整中文管理面板 |
-| `sudo asb -i` | 选择使用 VPS 本地脚本重装，或从 GitHub 获取最新脚本后安装 |
+| `sudo asb -i` | 选择本地重装，或在线更新脚本后安装 |
 | `sudo asb -n` | 显示订阅链接和全部明文节点 |
 | `sudo asb -a` | 开启或关闭 Argo/cloudflared 服务 |
 | `sudo asb -s` | 开启或关闭 sing-box 服务 |
@@ -138,18 +140,18 @@ sudo ./argo-singbox.sh -i
 ## 菜单
 
 ```text
-1. 节点与订阅 (asb -n)
-2. 开启/关闭 cloudflared 隧道 (asb -a)
-3. 开启/关闭 sing-box 代理 (asb -s)
+1. 节点订阅 (asb -n)
+2. Argo 开关 (asb -a)
+3. Sing-box 开关 (asb -s)
 4. 配置管理 (asb -c)
-5. 重启全部服务 (asb -r)
+5. 重启服务 (asb -r)
 6. 运行诊断 (asb -x)
-7. 安装 / 重装 Argo-Singbox (asb -i)
-8. 更新 cloudflared / sing-box 核心 (asb -v)
-9. 备份 /etc/asb (asb -k)
-10. 恢复 /etc/asb (asb -l)
-11. 第三方 BBR / DD 工具 (asb -b)
-12. 卸载 Argo-Singbox (asb -u)
+7. 安装重装 (asb -i)
+8. 更新核心 (asb -v)
+9. 备份配置 (asb -k)
+10. 恢复配置 (asb -l)
+11. BBR / DD (asb -b)
+12. 卸载项目 (asb -u)
 0. 退出
 ```
 
@@ -185,7 +187,7 @@ https://chatgpt.com,api.openai.com,example.com
 
 WARP 只覆盖匹配的网址，不会替换其他节点的 SOCKS5 配置。`asb -x` 会检查 `warp-svc`、本地代理端口，并通过 WARP 访问第一个目标域名。WARP 不提供匿名保证，也不保证指定国家或地区的落地 IP。
 
-终端输出使用高亮配色：亮蓝色标识品牌、输入提示和分区，亮青色标识键名和链接标签，亮白色承载主要内容，亮黄色标识菜单序号，绿/黄/红分别表示成功、警告和错误。菜单、诊断、节点订阅与表格统一采用内容块布局：区块之间保留一行，区块内部保持紧凑。表格使用 ASCII `-` 分隔线并按固定列宽对齐；重定向输出、`TERM=dumb` 或设置 `NO_COLOR=1` 时自动关闭全部颜色和文本装饰。
+终端输出采用紧凑分区布局：标题下方使用单行分隔线，区块标题使用 `[名称]`，菜单项使用 `序号. 名称  命令`，状态使用 `[OK] / [WARN] / [ERR] / [INFO]` 前缀。配色使用蓝色标题与分区、紫色提示、青色键名、黄色序号、亮白正文、绿/黄/红状态。重定向输出、`TERM=dumb` 或设置 `NO_COLOR=1` 时自动关闭全部颜色和文本装饰。
 
 ## 诊断、备份与恢复
 
