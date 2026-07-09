@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.11.4"
+VERSION="2.11.5"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
 PROJECT_REPO="Fiatnorm/Argo-Singbox"
@@ -42,6 +42,7 @@ SING_BOX_FORCE_VERSION_URL="https://raw.githubusercontent.com/fscarmen/sing-box/
 DEFAULT_ORIGIN_PORT=3010
 ORIGIN_PORT="$DEFAULT_ORIGIN_PORT"
 
+UI_WIDTH=66
 if [[ -t 1 && -z "${NO_COLOR:-}" && "${TERM:-dumb}" != "dumb" ]]; then
   C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'; C_DIM=$'\033[2m'; C_UNDERLINE=$'\033[4m'
   C_RED=$'\033[31m'; C_GREEN=$'\033[32m'; C_YELLOW=$'\033[33m'
@@ -53,13 +54,30 @@ else
   C_BLUE=""; C_MAGENTA=""; C_CYAN=""; C_WHITE=""; C_BRIGHT_RED=""; C_BRIGHT_GREEN=""
   C_BRIGHT_YELLOW=""; C_BRIGHT_BLUE=""; C_BRIGHT_MAGENTA=""; C_BRIGHT_CYAN=""
 fi
+ui_line() {
+  local char="${1:--}"
+  printf '%s%*s%s\n' "$C_BRIGHT_BLUE" "$UI_WIDTH" '' "$C_RESET" | tr ' ' "$char"
+}
 green() { printf '%s✓ %s%s\n' "$C_BRIGHT_GREEN" "$*" "$C_RESET"; }
 yellow() { printf '%s! %s%s\n' "$C_BRIGHT_YELLOW" "$*" "$C_RESET"; }
 red() { printf '%s✗ %s%s\n' "$C_BRIGHT_RED" "$*" "$C_RESET" >&2; }
 info() { printf '%s• %s%s\n' "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
+display_width() {
+  local text="$1" bytes chars
+  bytes="$(printf '%s' "$text" | wc -c)"
+  chars="$(printf '%s' "$text" | wc -m)"
+  printf '%s' "$((chars + (bytes - chars) / 2))"
+}
+pad_right() {
+  local text="$1" target="$2" width pad
+  width="$(display_width "$text")"
+  pad=$((target - width))
+  ((pad < 0)) && pad=0
+  printf '%s%*s' "$text" "$pad" ''
+}
 brand() {
-  printf '\n%s%s◆ %s%s\n%s%s%s\n' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$*" "$C_RESET" \
-    "$C_BRIGHT_BLUE" "----------------------------------------" "$C_RESET"
+  printf '\n%s%s◆ %s%s\n' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$*" "$C_RESET"
+  ui_line
 }
 system_summary() {
   local os="Linux" arch ip
@@ -81,18 +99,16 @@ system_summary() {
 }
 control_panel() {
   printf '\n%s%s' "$C_BOLD" "$C_BRIGHT_BLUE"
-  printf '%s\n' '    ___                  _____ _             _'
-  printf '%s\n' '   / _ \ _ __ __ _  ___/  ___(_)_ __   __ _| |__   _____  __'
-  printf '%s\n' '  / /_)/ |__/ _` |/ _ \___ \| | `_ \ / _` | `_ \ / _ \ \/ /'
-  printf '%s\n' ' / ___/| | | (_| | (_) |__) | | | | | (_| | |_) | (_) >  <'
-  printf '%s\n' ' \/    |_|  \__, |\___/_____/|_|_| |_|\__, |_.__/ \___/_/\_\'
-  printf '%s\n' '           |___/                       |___/'
-  printf '%s%s  %s%s%s  %s%s固定 Argo Token · WS 多协议 · WARP 分流%s\n' \
-    "$C_BRIGHT_MAGENTA" "$PROJECT_NAME" "$C_BRIGHT_YELLOW" "v${VERSION}" \
-    "$C_RESET" "$C_DIM" "$C_WHITE" "$C_RESET"
-  printf '%s  系统环境%s  %s\n' "$C_BRIGHT_CYAN" "$C_RESET" "$(system_summary)"
-  printf '%s%s%s\n' "$C_BRIGHT_BLUE" \
-    '----------------------------------------------------------------' "$C_RESET"
+  printf '%s\n' '    ___                     _____ _             __'
+  printf '%s\n' '   /   |  _________ _____  / ___/(_)___  ____ _/ /_  ____  _  __'
+  printf '%s\n' '  / /| | / ___/ __ `/ __ \ \__ \/ / __ \/ __ `/ __ \/ __ \| |/_/'
+  printf '%s\n' ' / ___ |/ /  / /_/ / /_/ /___/ / / / / / /_/ / /_/ / /_/ />  <'
+  printf '%s\n' '/_/  |_/_/   \__, /\____//____/_/_/ /_/\__, /_.___/\____/_/|_|'
+  printf '%s\n' '            /____/                    /____/'
+  printf '\n%s%s v%s%s  %sArgo Tunnel · Sing-box Core · WSS Proxy%s\n' \
+    "$C_BRIGHT_MAGENTA" "$PROJECT_NAME" "$VERSION" "$C_RESET" "$C_DIM" "$C_RESET"
+  printf '%s%-10s%s %s\n' "$C_BRIGHT_CYAN" "系统环境" "$C_RESET" "$(system_summary)"
+  ui_line
 }
 service_status() {
   local service="$1"
@@ -121,9 +137,11 @@ component_versions() {
     "$(local_cloudflared_version 2>/dev/null || printf '未安装')"
 }
 section() { printf '\n%s%s▸ %s%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
-subsection() { printf '%s%s%s%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET"; }
+subsection() { section "$*"; }
 key_value() {
-  printf '%s%-14s%s %s%s%s\n' "$C_BRIGHT_BLUE" "$1" "$C_RESET" "$C_WHITE" "$2" "$C_RESET"
+  printf '%s' "$C_BRIGHT_BLUE"
+  pad_right "$1" 14
+  printf '%s %s%s%s\n' "$C_RESET" "$C_WHITE" "$2" "$C_RESET"
 }
 state_value() {
   local color="$C_BRIGHT_YELLOW"
@@ -132,17 +150,22 @@ state_value() {
     未启用|已停止|未安装) color="$C_BRIGHT_YELLOW" ;;
     *异常*) color="$C_BRIGHT_RED" ;;
   esac
-  printf '%s%-14s%s %s%s%s\n' "$C_BRIGHT_BLUE" "$1" "$C_RESET" "$color" "$2" "$C_RESET"
+  printf '%s' "$C_BRIGHT_BLUE"
+  pad_right "$1" 14
+  printf '%s %s%s%s\n' "$C_RESET" "$color" "$2" "$C_RESET"
 }
 link_value() {
-  printf '%s%-14s%s %s%s%s%s\n' "$C_BRIGHT_BLUE" "$1" "$C_RESET" "$C_WHITE" "$C_UNDERLINE" "$2" "$C_RESET"
+  printf '%s' "$C_BRIGHT_BLUE"
+  pad_right "$1" 15
+  printf '%s %s%s%s\n' "$C_RESET" "$C_WHITE" "$2" "$C_RESET"
 }
 prompt() { printf '%s%s› %s%s' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$*" "$C_RESET"; }
 read_choice() { prompt "$1"; IFS= read -r REPLY; }
 read_input() { prompt "$1"; IFS= read -r "$2"; }
 menu_item() {
-  printf '  %s%2s%s  %s%s%s%s%s%s\n' "$C_BRIGHT_YELLOW" "$1" "$C_RESET" "$C_WHITE" "$2" \
-    "$C_RESET" "$C_BRIGHT_CYAN" "${3:+  [$3]}" "$C_RESET"
+  printf '  %s%2s%s  %s' "$C_BRIGHT_YELLOW" "$1" "$C_RESET" "$C_WHITE"
+  pad_right "$2" 34
+  printf '%s%s%s%s\n' "$C_RESET" "$C_BRIGHT_CYAN" "${3:+[$3]}" "$C_RESET"
 }
 die() { red "$*"; exit 1; }
 
@@ -818,7 +841,7 @@ health_check() {
     elif [[ "$public_code" == "101" ]]; then
       green "${path}：公网 WebSocket 握手正常"
     elif [[ "$curl_status" -eq 28 ]]; then
-      info "${path}：公网握手探测超时，未作为安装失败（请用客户端实测）"
+      yellow "${path}：公网握手探测超时，未作为安装失败（请用客户端实测）"
     else
       red "${path}：公网 WebSocket 握手失败（HTTP ${public_code:-000}）"
       failed=1
@@ -1127,6 +1150,7 @@ install_menu() {
     menu_item 1 "使用当前 VPS 本地脚本重装" "不更新项目脚本"
     menu_item 2 "从 GitHub 获取最新脚本安装" "可更新项目脚本"
     menu_item 0 "返回"
+    ui_line
     read_choice "请选择："; choice="$REPLY"
     case "$choice" in
       1) install_project local; return ;;
@@ -1360,6 +1384,7 @@ manage_config() {
     menu_item 8 "删除节点"
     menu_item 9 "WARP 网址分流"
     menu_item 0 "返回"
+    ui_line
     read_choice "请选择："; choice="$REPLY"
     case "$choice" in
       1)
@@ -1385,11 +1410,13 @@ manage_config() {
 }
 
 backup_project() {
-  local output="${1:-}" backup_dir temp_archive
+  local output="${1:-}" backup_dir temp_archive stage manifest_dir
   require_root
   [[ -f "$MANAGED_FILE" ]] || die "缺少项目所有权标记，拒绝备份。"
+  [[ -f "$NODES_CONFIG" ]] || die "节点配置不存在：${NODES_CONFIG}"
+  validate_nodes_config
   if [[ -z "$output" ]]; then
-    read_input "请输入备份文件夹或 .tar.gz 路径 [${BACKUP_DIR}]: " output
+    read_input "请输入节点备份文件夹或 .tar.gz 路径 [${BACKUP_DIR}]: " output
     output="${output:-$BACKUP_DIR}"
   fi
   if [[ "$output" != *.tar.gz ]]; then
@@ -1401,7 +1428,7 @@ backup_project() {
       die "项目目录内仅允许使用默认备份目录 ${BACKUP_DIR}。"
     fi
     install -d -m 700 "$backup_dir"
-    output="${backup_dir}/asb-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+    output="${backup_dir}/asb-nodes-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
   fi
   [[ "$output" == /* ]] || die "备份路径必须使用绝对路径。"
   [[ "$output" != "$WORK_DIR" ]] || die "备份不能直接保存到项目根目录。"
@@ -1410,16 +1437,29 @@ backup_project() {
   fi
   install -d -m 700 "$(dirname "$output")"
   [[ "$output" == *.tar.gz ]] || die "备份文件必须以 .tar.gz 结尾。"
+  stage="$(mktemp -d)"
+  manifest_dir="${stage}/asb-nodes-backup"
+  install -d -m 700 "$manifest_dir"
+  install -m 600 "$NODES_CONFIG" "${manifest_dir}/nodes.conf"
+  {
+    printf 'type=nodes\n'
+    printf 'project=%s\n' "$PROJECT_NAME"
+    printf 'version=%s\n' "$VERSION"
+    printf 'created_at=%s\n' "$(date -Iseconds)"
+    printf 'source=%s\n' "$NODES_CONFIG"
+  } >"${manifest_dir}/manifest"
+  chmod 600 "${manifest_dir}/manifest"
   temp_archive="$(mktemp --suffix=.tar.gz)"
-  if ! tar --exclude="${WORK_DIR_NAME}/backup" -C "$(dirname "$WORK_DIR")" \
-    -czf "$temp_archive" "$WORK_DIR_NAME"; then
+  if ! tar -C "$stage" -czf "$temp_archive" "asb-nodes-backup"; then
+    rm -rf "$stage"
     rm -f "$temp_archive"
     die "备份归档创建失败。"
   fi
+  rm -rf "$stage"
   mv -f "$temp_archive" "$output"
   chmod 600 "$output"
   printf '\n'
-  green "备份完成：${output}"
+  green "节点配置备份完成：${output}"
 }
 
 validate_backup_archive() {
@@ -1427,69 +1467,62 @@ validate_backup_archive() {
   gzip -t "$archive" 2>/dev/null || die "备份归档 gzip 校验失败。"
   members="$(tar -tzf "$archive" 2>/dev/null)" || die "无法读取备份归档目录。"
   [[ -n "$members" ]] || die "备份归档为空。"
-  if grep -Ev "^${WORK_DIR_NAME}(/|$)" <<<"$members" | grep -q . ||
-    grep -E '(^|/)\.\.(/|$)|^/' <<<"$members" | grep -q .; then
-    die "备份归档包含项目目录之外的路径，拒绝恢复。"
+  if grep -E '(^|/)\.\.(/|$)|^/' <<<"$members" | grep -q .; then
+    die "备份归档包含越界路径，拒绝恢复。"
   fi
   if tar -tvzf "$archive" 2>/dev/null | awk 'substr($1,1,1) !~ /^[-d]$/ {bad=1} END {exit !bad}'; then
     die "备份归档包含符号链接或其他特殊文件，拒绝恢复。"
   fi
+  if ! grep -Eq '^(asb-nodes-backup|asb)/nodes\.conf$' <<<"$members"; then
+    die "备份归档不包含可恢复的节点配置 nodes.conf。"
+  fi
 }
 
 restore_project() {
-  local archive="${1:-}" stage old_dir archive_copy archive_name latest
+  local archive="${1:-}" stage archive_copy latest nodes_source
   require_root
   if [[ -z "$archive" ]]; then
-    read_input "请输入备份文件或目录 [${BACKUP_DIR}，留空使用最新备份]: " archive
+    read_input "请输入节点备份文件或目录 [${BACKUP_DIR}，留空使用最新备份]: " archive
     archive="${archive:-$BACKUP_DIR}"
   fi
   if [[ -d "$archive" ]]; then
-    latest="$(find "$archive" -maxdepth 1 -type f -name 'asb-backup-*.tar.gz' \
+    latest="$(find "$archive" -maxdepth 1 -type f \
+      \( -name 'asb-nodes-backup-*.tar.gz' -o -name 'asb-backup-*.tar.gz' \) \
       -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -n1 | cut -d' ' -f2-)"
     [[ -n "$latest" ]] || die "备份目录中没有可恢复的归档：${archive}"
     archive="$latest"
     info "使用最新备份：${archive}"
   fi
   [[ -f "$archive" ]] || die "备份文件不存在：${archive}"
-  [[ -f "$MANAGED_FILE" ]] || die "当前 ${WORK_DIR} 缺少项目所有权标记，拒绝覆盖。"
-  archive_name="$(basename "$archive")"
+  [[ -f "$MANAGED_FILE" ]] || die "当前 ${WORK_DIR} 缺少项目所有权标记，拒绝恢复节点配置。"
   archive_copy="$(mktemp --suffix=.tar.gz)"
   cp -a "$archive" "$archive_copy"
   validate_backup_archive "$archive_copy"
   stage="$(mktemp -d)"
   tar --no-same-owner --no-same-permissions -xzf "$archive_copy" -C "$stage"
-  [[ -f "$stage/${WORK_DIR_NAME}/managed" && -f "$stage/${WORK_DIR_NAME}/asb.env" &&
-    -x "$stage/${WORK_DIR_NAME}/bin/sing-box" && -x "$stage/${WORK_DIR_NAME}/bin/cloudflared" ]] ||
-    { rm -rf "$stage"; rm -f "$archive_copy"; die "备份结构或所有权标记无效。"; }
-  old_dir="${WORK_DIR}.restore-old-$(date +%Y%m%d-%H%M%S)"
-  systemctl stop "$SING_SERVICE" "$ARGO_SERVICE" 2>/dev/null || true
-  mv "$WORK_DIR" "$old_dir"
-  if mv "$stage/${WORK_DIR_NAME}" "$WORK_DIR"; then
-    rm -rf "$stage"
-    install -d -m 700 "$BACKUP_DIR"
-    install -m 600 "$archive_copy" "${BACKUP_DIR}/${archive_name}"
-    rm -f "$archive_copy"
-    load_env
-    ensure_nodes_config
-    write_sing_box_config
-    write_nginx_config
-    write_services
-    systemctl daemon-reload
-    if systemctl restart nginx "$SING_SERVICE" "$ARGO_SERVICE" && wait_for_services; then
-      generate_nodes
-      rm -rf "$old_dir"
-      printf '\n'
-      green "恢复完成：${archive}"
-      return 0
-    fi
+  if [[ -f "$stage/asb-nodes-backup/nodes.conf" ]]; then
+    nodes_source="$stage/asb-nodes-backup/nodes.conf"
+  elif [[ -f "$stage/${WORK_DIR_NAME}/nodes.conf" ]]; then
+    nodes_source="$stage/${WORK_DIR_NAME}/nodes.conf"
+    yellow "检测到旧版完整备份，仅恢复其中的节点配置，不替换脚本或核心。"
+  else
+    rm -rf "$stage"; rm -f "$archive_copy"
+    die "备份结构中缺少 nodes.conf。"
   fi
-  red "恢复后验证失败，正在回滚。"
-  rm -rf "$WORK_DIR"
-  mv "$old_dir" "$WORK_DIR"
+  begin_config_change
+  install -m 600 "$nodes_source" "$NODES_CONFIG"
+  if validate_nodes_config && apply_runtime_config; then
+    rm -rf "$stage"
+    rm -f "$archive_copy"
+    printf '\n'
+    green "节点配置恢复完成：${archive}"
+    return 0
+  fi
+  [[ -f "$CONFIG_SNAPSHOT/nodes.conf" ]] && install -m 600 "$CONFIG_SNAPSHOT/nodes.conf" "$NODES_CONFIG"
+  rm -rf "$CONFIG_SNAPSHOT"
   rm -rf "$stage"
   rm -f "$archive_copy"
-  systemctl restart nginx "$SING_SERVICE" "$ARGO_SERVICE" 2>/dev/null || true
-  die "恢复失败，已回滚到恢复前状态。"
+  die "节点配置恢复失败，已回滚到恢复前状态。"
 }
 
 doctor() {
@@ -1501,7 +1534,7 @@ doctor() {
     hostname -I 2>/dev/null | awk '{print $1}')"
   memory="$(free -m | awk '/^Mem:/{printf "%s/%s MiB (%.0f%%)",$3,$2,$3*100/$2}')"
   brand "${PROJECT_NAME} · 完整诊断"
-  subsection "系统概览"
+  subsection "运行概览"
   key_value "公网 IP" "${ip:-未知}"
   key_value "脚本版本" "v${VERSION}"
   key_value "内存" "${memory:-未知}"
@@ -1581,7 +1614,7 @@ toggle_service() {
     die "${label} 尚未安装。"
   if systemctl is-active --quiet "$service"; then
     systemctl disable --now "$service"
-    green "${label} 已关闭。"
+    yellow "${label} 已关闭。"
   else
     systemctl enable --now "$service"
     green "${label} 已开启。"
@@ -1775,6 +1808,7 @@ menu() {
     fi
     key_value "组件版本" "$(component_versions)"
     state_value "WARP 分流" "$(warp_status)"
+    brand "${PROJECT_NAME} · 控制中心"
     section "日常管理"
     menu_item 1 "查看节点信息" "${COMMAND_NAME} -n"
     menu_item 2 "开启/关闭 Argo" "${COMMAND_NAME} -a"
@@ -1785,11 +1819,12 @@ menu() {
     section "维护工具"
     menu_item 7 "安装 / 更新 ${PROJECT_NAME}" "${COMMAND_NAME} -i"
     menu_item 8 "更新 Argo / Sing-box 核心" "${COMMAND_NAME} -v"
-    menu_item 9 "备份 ${WORK_DIR}" "${COMMAND_NAME} -k"
-    menu_item 10 "恢复 ${WORK_DIR}" "${COMMAND_NAME} -l"
+    menu_item 9 "备份节点配置" "${COMMAND_NAME} -k"
+    menu_item 10 "恢复节点配置" "${COMMAND_NAME} -l"
     menu_item 11 "第三方 BBR / DD 工具" "${COMMAND_NAME} -b"
     menu_item 12 "卸载 ${PROJECT_NAME}" "${COMMAND_NAME} -u"
     menu_item 0 "退出"
+    ui_line
     read_choice "请选择："; choice="$REPLY"
     case "$choice" in
       1) show_nodes ;;

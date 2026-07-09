@@ -51,7 +51,7 @@
 - `generate_nodes()`：从环境配置和 `nodes.conf` 生成全部节点及订阅文件。
 - `apply_runtime_config()`：配置修改事务；验证失败必须恢复快照。
 - `sync_versions()`：核心版本比较、确认、暂存、校验、原子替换和失败回滚。
-- `backup_project()` / `restore_project()`：项目归档与恢复；解压前必须拒绝路径穿越、符号链接和特殊文件。
+- `backup_project()` / `restore_project()`：仅归档与恢复节点配置 `nodes.conf`；解压前必须拒绝路径穿越、符号链接和特殊文件，恢复不得替换脚本、核心二进制或整个 `/etc/asb`。
 - `uninstall_project()`：所有权检查后的项目范围卸载，不得扩大删除边界。
 
 ## 产品边界
@@ -106,7 +106,7 @@
 - `asb -c` 必须集中管理 Token、Argo 域名、优选入口、本地端口、UUID、动态节点、节点 SOCKS5 出站和 WARP 目标网址。
 - WARP 域名规则必须位于节点 SOCKS5 规则之前，保持 `目标网址 WARP → 节点 SOCKS5 → direct` 的优先级。
 - `asb -x` 必须检查配置、Token、服务、动态端口、全部公网 WS 路径、核心版本、WARP（启用时）和最近日志。
-- `asb -k/-l` 必须校验 `/etc/asb/managed`；恢复失败必须自动回滚。
+- `asb -k/-l` 必须校验 `/etc/asb/managed`；只备份和恢复 `/etc/asb/nodes.conf` 节点配置，恢复失败必须自动回滚，不得用旧归档覆盖当前脚本、核心或项目目录。
 - 终端配色必须在非 TTY、`TERM=dumb` 或 `NO_COLOR` 环境自动关闭，不得向日志和管道写入 ANSI 控制符。
 - 状态诊断保持简洁，并包含公网 IP、脚本/核心版本、内存、systemd 状态、监听端口和最近错误。
 - 普通启停、查看节点、修改配置和卸载不得执行 `git pull` 或重新下载仓库脚本。

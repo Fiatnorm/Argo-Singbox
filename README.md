@@ -92,6 +92,8 @@ v2.11.3 优化安装与启动终端首页：加入紧凑品牌字标、项目能
 
 v2.11.4 恢复 v2.10.8 风格的白底蓝字订阅面板及自动适配订阅 QR；修复 Debian `/etc/os-release` 覆盖脚本版本号的问题；启动概览增加组件版本、Argo 回源和 WARP 状态，并统一全脚本交互提示与颜色层级。`asb -n` 在终端保留一张自动适配订阅 QR，网页面板同时通过 `/auto-qr.svg` 展示。
 
+v2.11.5 按 `TERMINAL_UI_DESIGN.md` 统一终端输出：更新启动字标、66 列分隔线、运行概览、菜单和订阅索引列宽，停用服务使用黄色提示，公网 WS 探测超时使用黄色警告。备份与恢复改为只处理 `/etc/asb/nodes.conf` 节点配置；恢复旧完整归档时也只提取节点配置，不替换脚本、核心或整个 `/etc/asb`，避免新版本降级。
+
 下载具有总超时、重试、GitHub 代理回退和 GitHub Release SHA256 digest 校验；二进制还会执行基本版本检查。sing-box 版本优先采用上游 `force_version`，不可用时回退到 GitHub releases，再失败才使用脚本预设版本。
 
 首次安装使用经过项目确认的 sing-box `1.13.0-rc.4`，避免安装时因远端版本变化产生不一致；cloudflared 首次安装按原版 SBA 逻辑使用 GitHub latest。后续执行 `asb -v` 时，sing-box 仍按 `force_version`、GitHub releases、预设版本的顺序查询更新。
@@ -139,9 +141,9 @@ sudo ./argo-singbox.sh -i
 | `sudo asb -r` | 重启 Nginx、sing-box 和 Argo 服务 |
 | `sudo asb -x` | 执行完整诊断、WS 检查并显示最近日志 |
 | `sudo asb -v` | 比较版本并更新 Argo/cloudflared 与 sing-box 核心 |
-| `sudo asb -k [文件夹或文件.tar.gz]` | 备份到指定文件夹或完整归档路径 |
-| `sudo asb -k /etc/asb/backup/my-asb.tar.gz` | 备份到指定文件 |
-| `sudo asb -l /etc/asb/backup/my-asb.tar.gz` | 从指定备份恢复并验证服务 |
+| `sudo asb -k [文件夹或文件.tar.gz]` | 备份节点配置到指定文件夹或完整归档路径 |
+| `sudo asb -k /etc/asb/backup/my-asb.tar.gz` | 备份节点配置到指定文件 |
+| `sudo asb -l /etc/asb/backup/my-asb.tar.gz` | 从指定备份恢复节点配置并验证服务 |
 | `sudo asb -b` | 启动第三方 Linux-NetSpeed BBR/DD 工具 |
 | `sudo asb -u` | 彻底卸载本项目，并选择是否卸载共享依赖 |
 
@@ -160,8 +162,8 @@ sudo ./argo-singbox.sh -i
 6. 完整诊断 (asb -x)
 7. 安装 / 更新 Argo-Singbox (asb -i)
 8. 更新 Argo / Sing-box 核心 (asb -v)
-9. 备份 /etc/asb (asb -k)
-10. 恢复 /etc/asb (asb -l)
+9. 备份节点配置 (asb -k)
+10. 恢复节点配置 (asb -l)
 11. 第三方 BBR / DD 工具 (asb -b)
 12. 卸载 Argo-Singbox (asb -u)
 0. 退出
@@ -199,13 +201,13 @@ https://chatgpt.com,api.openai.com,example.com
 
 WARP 只覆盖匹配的网址，不会替换其他节点的 SOCKS5 配置。`asb -x` 会检查 `warp-svc`、本地代理端口，并通过 WARP 访问第一个目标域名。WARP 不提供匿名保证，也不保证指定国家或地区的落地 IP。
 
-终端输出使用高亮配色：亮紫色标识品牌和输入提示，亮蓝/亮青区分分区与键名，亮黄色标识菜单序号，白色承载主要内容，绿/黄/红分别表示成功、警告和错误。菜单、诊断、节点订阅与表格统一采用内容块布局：区块之间保留一行，区块内部保持紧凑。表格使用 ASCII `-` 分隔线并按固定列宽对齐；重定向输出、`TERM=dumb` 或设置 `NO_COLOR=1` 时自动关闭全部颜色和文本装饰。
+终端输出使用高亮配色：亮紫色标识品牌和输入提示，亮蓝/亮青区分分区与键名，亮黄色标识菜单序号和停用状态，白色承载主要内容，绿/黄/红分别表示成功、警告和错误。菜单、诊断、节点订阅与表格统一采用内容块布局：区块之间保留一行，区块内部保持紧凑。分隔线统一为 66 列 ASCII `-`，表格与菜单按固定列宽对齐；重定向输出、`TERM=dumb` 或设置 `NO_COLOR=1` 时自动关闭全部颜色和文本装饰。
 
 ## 诊断、备份与恢复
 
 - `asb -x`：检查配置与 Token 同步、三个服务、全部动态监听端口、每条公网 WS 路径、核心版本，并输出最近 30 条项目日志。
-- `asb -k [文件夹或文件.tar.gz]`：备份 `/etc/asb`，默认保存到 `/etc/asb/backup/asb-backup-时间.tar.gz`。归档会排除 `backup/` 自身，避免递归包含历史备份；也可指定其他绝对路径。
-- `asb -l [文件夹或文件.tar.gz]`：默认从 `/etc/asb/backup/` 选择最新归档，也可指定目录或完整文件。解压前会验证 gzip、成员路径与文件类型，拒绝目录穿越、符号链接和特殊文件；随后验证所有权标记和核心文件，恢复 `/etc/asb`，重新生成 Nginx 与 systemd 配置并验证服务，失败自动回滚。
+- `asb -k [文件夹或文件.tar.gz]`：只备份 `/etc/asb/nodes.conf` 节点配置，默认保存到 `/etc/asb/backup/asb-nodes-backup-时间.tar.gz`；也可指定其他绝对路径。
+- `asb -l [文件夹或文件.tar.gz]`：默认从 `/etc/asb/backup/` 选择最新节点归档，也可指定目录或完整文件。解压前会验证 gzip、成员路径与文件类型，拒绝目录穿越、符号链接和特殊文件；随后只恢复节点配置，重新生成 sing-box、Nginx、订阅文件并验证服务，失败自动回滚。传入旧版完整 `/etc/asb` 归档时，也只读取其中的 `nodes.conf`，不会恢复旧脚本、旧核心或整个项目目录。
 
 `asb -v` 会分别显示 Argo/cloudflared 与 Sing-box 的本地、目标版本，并分别询问是否更新。只下载、备份、替换和重启用户确认更新的核心；下载文件会校验 SHA256/可执行性，Sing-box 还会执行配置检查。验证失败时只回滚本次选择的核心。
 
