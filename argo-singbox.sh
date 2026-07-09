@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.11.1"
+VERSION="2.11.2"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
 PROJECT_REPO="Fiatnorm/Argo-Singbox"
@@ -221,7 +221,7 @@ download() {
   for candidate in "$url" \
     "https://ghproxy.net/${url}" \
     "https://github.moeyy.xyz/${url}"; do
-    if curl -fL --retry 3 --retry-all-errors --connect-timeout 10 --max-time 180 \
+    if curl -fsSL --retry 3 --retry-all-errors --connect-timeout 10 --max-time 180 \
       "$candidate" -o "${output}.part"; then
       [[ -s "${output}.part" ]] || continue
       mv -f "${output}.part" "$output"
@@ -238,7 +238,7 @@ fetch_latest_installer() {
   for attempt in {1..3}; do
     download "https://raw.githubusercontent.com/${PROJECT_REPO}/${PROJECT_BRANCH}/argo-singbox.sh.sha256" "$checksum"
     download "https://raw.githubusercontent.com/${PROJECT_REPO}/${PROJECT_BRANCH}/argo-singbox.sh" "$target"
-    expected="$(awk '$2 == "argo-singbox.sh" {print $1; exit}' "$checksum")"
+    expected="$(awk '$2 == "argo-singbox.sh" || $2 == "*argo-singbox.sh" {print $1; exit}' "$checksum")"
     if [[ "$expected" =~ ^[a-fA-F0-9]{64}$ ]] &&
       printf '%s  %s\n' "$expected" "$target" | sha256sum -c - >/dev/null; then
       rm -f "$checksum"
