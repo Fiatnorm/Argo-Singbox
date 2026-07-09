@@ -1,4 +1,4 @@
-# Argo-Singbox v2.11.6
+# Argo-Singbox v2.11.7
 
 面向固定 Argo Token 隧道的中文轻量安装脚本，提供：
 
@@ -96,6 +96,8 @@ v2.11.5 按 `TERMINAL_UI_DESIGN.md` 统一终端输出：更新启动字标、66
 
 v2.11.6 重新按 `TERMINAL_UI_DESIGN.md` 收敛终端 UI：统一 64 列分隔线、显示宽度对齐、青色下划线订阅链接、蓝色概览标题和独立操作页面标题；备份、恢复、核心更新、重启、BBR 和卸载都补充上下文分区与处理状态。`TERMINAL_UI_DESIGN.md` 中的节点、域名、UUID、IP、SOCKS5 和日志示例已全部替换为占位内容，避免提交真实节点配置。
 
+v2.11.7 根据测试清单继续优化终端 UI：系统 IP 使用紫色、运行分区标题统一为亮青色、组件名统一显示 `Argo-Singbox`，订阅索引链接改为白色，WARP 未启用状态使用黄色。集中配置、节点添加/修改/删除、WARP 分流、备份、恢复、核心更新、重启、第三方工具和卸载等子操作均支持输入 `0`、`q`、`返回` 或 `退出` 返回上级界面。
+
 下载具有总超时、重试、GitHub 代理回退和 GitHub Release SHA256 digest 校验；二进制还会执行基本版本检查。sing-box 版本优先采用上游 `force_version`，不可用时回退到 GitHub releases，再失败才使用脚本预设版本。
 
 首次安装使用经过项目确认的 sing-box `1.13.0-rc.4`，避免安装时因远端版本变化产生不一致；cloudflared 首次安装按原版 SBA 逻辑使用 GitHub latest。后续执行 `asb -v` 时，sing-box 仍按 `force_version`、GitHub releases、预设版本的顺序查询更新。
@@ -182,6 +184,8 @@ sudo ./argo-singbox.sh -i
 ```
 
 路由按节点的 sing-box inbound tag 匹配，因此同一种协议的不同 WS 路径可以使用不同出口。SOCKS5 地址、端口、用户名和密码只写入权限为 `600` 的项目配置；节点分享链接不包含出站凭据。配置变更会依次执行 sing-box 配置检查、`nginx -t`、服务重启和状态验证，失败时恢复修改前文件。
+
+集中配置中的基础项、节点操作和 WARP 子菜单均可输入 `0`、`q`、`返回` 或 `退出` 返回上级界面；返回时不会写入半成品配置。
 
 ### 按网址优先使用 WARP
 
