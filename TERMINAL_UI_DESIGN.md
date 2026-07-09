@@ -1,3 +1,77 @@
+# Argo-Singbox 完整终端输出 UI 设计稿
+
+> 适用版本：Argo-Singbox v2.11.6
+>
+> 设计基础：沿用现有 ASCII 品牌字标、`◆ / ▸ / ✓ / ! / ✗ / • / ›` 视觉语言与当前项目交互逻辑，只进行轻量统一和排版优化。
+>
+> 示例环境：Debian GNU/Linux 13 (trixie) · amd64 · IP 203.0.113.10。域名、UUID、优选入口、版本号、端口和日志均为动态内容，实际输出应读取当前配置。
+
+---
+
+## 1. 最终视觉规范
+
+### 1.1 设计目标
+
+- 保留当前项目辨识度，不重新发明一套视觉语言。
+- 主菜单、子菜单、安装、诊断、配置、更新、备份、恢复、卸载全部采用同一层级结构。
+- 颜色只承担语义，不为了“彩色”而滥用颜色。
+- 中文字段按**终端显示宽度**对齐，而不是按 Bash 字符串长度简单补空格。
+- 默认分隔线固定为 **64 个半角 `-`**。
+- 所有用户输入统一使用洋红色 `›`。
+- 所有成功、警告、错误和普通信息使用固定图标，不混用。
+
+### 1.2 颜色配置
+
+| 语义 | 终端颜色 | ANSI | 用途 |
+|---|---|---:|---|
+| 品牌 ASCII | 亮蓝 | `94` | 顶部 Argo-Singbox 字标 |
+| 主标题 `◆` | 亮洋红 | `95` + Bold | 控制中心、完整诊断、集中配置等 |
+| 一级分区 `▸` | 亮青 | `96` + Bold | 日常管理、维护工具、运行检查等 |
+| 键名 | 亮蓝 | `94` | Argo 服务、优选入口、组件版本等 |
+| 普通值 | 白色 | `37` | 域名、IP、端口、版本等 |
+| 链接 | 亮青 + 下划线 | `96;4` | 所有订阅 URL |
+| 菜单编号 | 亮黄 | `93` | `0`～`12` |
+| 菜单文字 | 白色 | `37` | 菜单项目名称 |
+| 快捷命令 | 亮青 | `96` | `[asb -n]` 等 |
+| 输入提示 `›` | 亮洋红 | `95` + Bold | 所有交互输入 |
+| 成功 `✓` | 亮绿 | `92` | 已开启、验证通过、更新成功 |
+| 警告 `!` | 亮黄 | `93` | 已关闭、已取消、探测超时、非致命异常 |
+| 错误 `✗` | 亮红 | `91` | 校验失败、服务异常、回滚 |
+| 信息 `•` | 亮青 | `96` | 正在下载、正在检测、提示说明 |
+| 次要说明 | Dim 白 | `2;37` | 品牌副标题、非关键说明 |
+
+### 1.3 图标语义
+
+```text
+◆  页面级标题
+▸  页面内分区
+✓  成功 / 正常 / 已开启
+!  警告 / 已关闭 / 已取消 / 非致命异常
+✗  错误 / 失败 / 阻断
+•  普通信息 / 处理中 / 补充说明
+›  等待用户输入
+```
+
+### 1.4 对齐硬规范
+
+```text
+主状态键名列：      13 个显示单元 + 2 个空格
+订阅名称列：        14 个显示单元 + 2 个空格
+菜单编号列：        固定 2 位右对齐
+菜单文字列：        固定显示宽度，快捷命令统一起始列
+节点表：            标签 16 / 协议 8 / 路径 20 / 端口 6 / 出站自适应
+分隔线：            64 个半角 -
+```
+
+> 重点：`系统环境`、`Argo-Singbox` 两行的值必须从同一列开始；状态概览、订阅索引和菜单快捷命令也必须严格对齐。
+
+---
+
+## 2. 启动首页 / 控制中心
+
+### 2.1 正常运行状态
+
+```text
     ___                     _____ _             __
    /   |  _________ _____  / ___/(_)___  ____ _/ /_  ____  _  __
   / /| | / ___/ __ `/ __ \ \__ \/ / __ \/ __ `/ __ \/ __ \| |/_/
@@ -5,51 +79,107 @@
 /_/  |_/_/   \__, /\____//____/_/_/ /_/\__, /_.___/\____/_/|_|
             /____/                    /____/
 
-Argo-Singbox v2.11.4  Argo Tunnel  ·  Sing-box Core  ·  WSS Proxy
-系统环境  Debian GNU/Linux 13 (trixie) · amd64 · IP 173.231.53.138 (这上下两行需要对齐)
-------------------------------------------------------------------
-▸ 运行概览（颜色区别于下面的运行配置）
+Argo-Singbox  v2.11.6 · Argo Tunnel · Sing-box Core · WSS Proxy
+系统环境      Debian GNU/Linux 13 (trixie) · amd64 · IP 203.0.113.10
+----------------------------------------------------------------
+运行概览
 Argo 服务      运行中
 Sing-box 服务  运行中
-Argo 域名      greencloud-asb.fiatnorm.pp.ua
-优选入口       142.248.136.72:443
+Argo 域名      asb.example.com
+优选入口       198.51.100.10:443
 Argo 回源      127.0.0.1:3010
-组件版本       Argo-Singbox v2.11.4 · Sing-box 1.13.0-rc.4 · Cloudflared 2026.7.0
-WARP 分流      未启用 （这一列需要对齐）
-------------------------------------------------------------------
+组件版本       脚本 v2.11.6 · Sing-box 1.13.0-rc.4 · Cloudflared 2026.7.0
+WARP 分流      未启用
+----------------------------------------------------------------
 
 ◆ Argo-Singbox · 控制中心
-------------------------------------------------------------------
+----------------------------------------------------------------
 ▸ 日常管理
-   1  查看节点信息                     [asb -n]
-   2  开启/关闭 Argo                   [asb -a]
-   3  开启/关闭 Sing-box               [asb -s]
-   4  集中配置                         [asb -c]
-   5  重启全部服务                     [asb -r]
-   6  完整诊断                         [asb -x]
+   1  查看节点信息                       [asb -n]
+   2  开启/关闭 Argo                     [asb -a]
+   3  开启/关闭 Sing-box                 [asb -s]
+   4  集中配置                           [asb -c]
+   5  重启全部服务                       [asb -r]
+   6  完整诊断                           [asb -x]
 
 ▸ 维护工具
-   7  安装 / 更新 Argo-Singbox         [asb -i]
-   8  更新 Argo / Sing-box 核心        [asb -v]
-   9  备份 /etc/asb                    [asb -k]
-  10  恢复 /etc/asb                    [asb -l]
-  11  第三方 BBR / DD 工具             [asb -b]
-  12  卸载 Argo-Singbox                [asb -u] (需要严格的列对齐)
+   7  安装 / 更新 Argo-Singbox           [asb -i]
+   8  更新 Argo / Sing-box 核心          [asb -v]
+   9  备份节点配置                       [asb -k]
+  10  恢复节点配置                       [asb -l]
+  11  第三方 BBR / DD 工具               [asb -b]
+  12  卸载 Argo-Singbox                  [asb -u]
    0  退出
-------------------------------------------------------------------
+----------------------------------------------------------------
 › 请选择：
+```
 
+#### 颜色
+
+- ASCII 字标：亮蓝。
+- `Argo-Singbox`：亮洋红加粗。
+- `v2.11.6`：亮黄。
+- `Argo Tunnel · Sing-box Core · WSS Proxy`：Dim 白。
+- `系统环境`：亮青；系统内容：白色。
+- `运行概览`：亮蓝加粗，用于区别下方亮青色 `▸` 分区。
+- 运行中的服务：亮绿。
+- `未启用`：亮黄。
+
+### 2.2 服务停止状态
+
+```text
+运行概览
+Argo 服务      已停止
+Sing-box 服务  已停止
+Argo 域名      asb.example.com
+优选入口       198.51.100.10:443
+Argo 回源      127.0.0.1:3010
+组件版本       脚本 v2.11.6 · Sing-box 1.13.0-rc.4 · Cloudflared 2026.7.0
+WARP 分流      未启用
+```
+
+颜色：`已停止` 与 `未启用` 均使用亮黄；不要使用红色，因为这是可控状态，不是故障。
+
+### 2.3 WARP 正常运行状态
+
+```text
+WARP 分流      运行中 · 127.0.0.1:40000
+```
+
+颜色：整段亮绿。
+
+### 2.4 WARP 异常状态
+
+```text
+WARP 分流      已启用 · 代理异常
+```
+
+颜色：整段亮红。
+
+### 2.5 无效菜单输入
+
+```text
+! 请输入 0 到 12。
+```
+
+颜色：亮黄。
+
+---
+
+## 3. 节点与订阅
+
+```text
 ◆ Argo-Singbox · 节点与订阅
--------------------------------------------------------------------
-▸ 配置文件索引
-文件索引        https://greencloud-asb.fiatnorm.pp.ua/15169e77-3af0-49c7-9aff-54cbb5018ed3/
-自动适配        https://greencloud-asb.fiatnorm.pp.ua/15169e77-3af0-49c7-9aff-54cbb5018ed3/auto
-原始明文        https://greencloud-asb.fiatnorm.pp.ua/15169e77-3af0-49c7-9aff-54cbb5018ed3/raw
-Base64         https://greencloud-asb.fiatnorm.pp.ua/15169e77-3af0-49c7-9aff-54cbb5018ed3/base64
-Clash          https://greencloud-asb.fiatnorm.pp.ua/15169e77-3af0-49c7-9aff-54cbb5018ed3/clash
-Clash Provider https://greencloud-asb.fiatnorm.pp.ua/15169e77-3af0-49c7-9aff-54cbb5018ed3/proxies
-sing-box       https://greencloud-asb.fiatnorm.pp.ua/15169e77-3af0-49c7-9aff-54cbb5018ed3/sing-box
-Shadowrocket   https://greencloud-asb.fiatnorm.pp.ua/15169e77-3af0-49c7-9aff-54cbb5018ed3/shadowrocket (这一列也严格对齐)
+----------------------------------------------------------------
+配置文件索引
+文件索引        https://asb.example.com/00000000-0000-4000-8000-000000000000/
+自动适配        https://asb.example.com/00000000-0000-4000-8000-000000000000/auto
+原始明文        https://asb.example.com/00000000-0000-4000-8000-000000000000/raw
+Base64          https://asb.example.com/00000000-0000-4000-8000-000000000000/base64
+Clash           https://asb.example.com/00000000-0000-4000-8000-000000000000/clash
+Clash Provider  https://asb.example.com/00000000-0000-4000-8000-000000000000/proxies
+sing-box        https://asb.example.com/00000000-0000-4000-8000-000000000000/sing-box
+Shadowrocket    https://asb.example.com/00000000-0000-4000-8000-000000000000/shadowrocket
 
 ▸ 自动适配订阅 QR
 █████████████████████████████████████████████
@@ -78,23 +208,70 @@ Shadowrocket   https://greencloud-asb.fiatnorm.pp.ua/15169e77-3af0-49c7-9aff-54c
 
 ▸ 明文节点
 [节点 1]
-vless://15169e77-3af0-49c7-9aff-54cbb5018ed3@142.248.136.72:443?encryption=none&security=tls&sni=greencloud-asb.fiatnorm.pp.ua&insecure=0&allowInsecure=0&type=ws&host=greencloud-asb.fiatnorm.pp.ua&path=%2Fargo-vl%3Fed%3D2560#Argo-Vl
+vless://<example-vless-node>
 
 [节点 2]
-vless://15169e77-3af0-49c7-9aff-54cbb5018ed3@142.248.136.72:443?encryption=none&security=tls&sni=greencloud-asb.fiatnorm.pp.ua&insecure=0&allowInsecure=0&type=ws&host=greencloud-asb.fiatnorm.pp.ua&path=%2Fargo-vl2%3Fed%3D2560#Argo-Vl2
+vless://<example-vless-node>
 
 [节点 3]
-trojan://15169e77-3af0-49c7-9aff-54cbb5018ed3@142.248.136.72:443?security=tls&sni=greencloud-asb.fiatnorm.pp.ua&insecure=0&allowInsecure=0&type=ws&host=greencloud-asb.fiatnorm.pp.ua&path=%2Fargo-tr%3Fed%3D2560#Argo-Tr
+trojan://<example-trojan-node>
 
 [节点 4]
-vmess://eyJ2IjoiMiIsInBzIjoiQXJnby1WbSIsImFkZCI6IjE0Mi4yNDguMTM2LjcyIiwicG9ydCI6IjQ0MyIsImlkIjoiMTUxNjllNzctM2FmMC00OWM3LTlhZmYtNTRjYmI1MDE4ZWQzIiwiYWlkIjoiMCIsInNjeSI6ImF1dG8iLCJuZXQiOiJ3cyIsInR5cGUiOiJub25lIiwiaG9zdCI6ImdyZWVuY2xvdWQtYXNiLmZpYXRub3JtLnBwLnVhIiwicGF0aCI6Ii9hcmdvLXZtP2VkPTI1NjAiLCJ0bHMiOiJ0bHMiLCJzbmkiOiJncmVlbmNsb3VkLWFzYi5maWF0bm9ybS5wcC51YSIsImFscG4iOiIifQ==
+vmess://<example-vmess-node>
+```
 
-✓ Sing-box 已关闭。
-✓ Argo 已关闭。 (这里都使用黄色，开启都使用绿色)
+#### 颜色
 
+- `配置文件索引`：亮蓝加粗。
+- 左侧名称：亮蓝。
+- URL：亮青 + 下划线。
+- `▸ 自动适配订阅 QR`、`▸ 明文节点`：亮青加粗。
+- `[节点 N]`：亮青加粗。
+- 节点协议正文：白色，不额外染色，避免超长链接视觉过载。
+
+---
+
+## 4. 服务开关反馈
+
+### 4.1 开启成功
+
+```text
+✓ Argo 已开启。
+✓ Sing-box 已开启。
+```
+
+颜色：亮绿。
+
+### 4.2 关闭成功
+
+```text
+! Argo 已关闭。
+! Sing-box 已关闭。
+```
+
+颜色：亮黄。
+
+> 小优化：关闭服务不应继续使用绿色 `✓`。关闭属于用户主动操作后的“非运行状态”，黄色 `!` 更容易与“已开启”区分，但不表示故障。
+
+### 4.3 尚未安装
+
+```text
+✗ Argo 尚未安装。
+✗ Sing-box 尚未安装。
+```
+
+颜色：亮红。
+
+---
+
+## 5. 集中配置
+
+### 5.1 主菜单
+
+```text
 ◆ Argo-Singbox · 集中配置
--------------------------------------------------------------------
-▸ 基础配置
+----------------------------------------------------------------
+基础配置
    1  Token / Argo 域名
    2  Cloudflare 优选入口
    3  Argo Tunnel 回源端口（节点端口依次顺延）
@@ -107,71 +284,887 @@ vmess://eyJ2IjoiMiIsInBzIjoiQXJnby1WbSIsImFkZCI6IjE0Mi4yNDguMTM2LjcyIiwicG9ydCI6
    8  删除节点
    9  WARP 网址分流
    0  返回
--------------------------------------------------------------------
+----------------------------------------------------------------
 › 请选择：
+```
 
+颜色：
+
+- `基础配置`：亮蓝加粗。
+- `▸ 节点与分流`：亮青加粗。
+- 编号：亮黄。
+- 菜单文字：白色。
+
+### 5.2 修改 Token / Argo 域名
+
+```text
+◆ Argo-Singbox · Token / Argo 域名
+----------------------------------------------------------------
+当前配置
+Argo 域名      asb.example.com
+Token 状态     已配置
+
+▸ 修改配置
+› 新 Token [留空保持]：
+› 新 Argo 域名 [asb.example.com]：
+
+• 正在校验配置并重启服务...
+✓ 配置已校验并生效。
+```
+
+> Token 仅显示“已配置 / 未配置”，不要在终端回显完整 Token。
+
+### 5.3 修改 Cloudflare 优选入口
+
+```text
+◆ Argo-Singbox · Cloudflare 优选入口
+----------------------------------------------------------------
+当前入口       198.51.100.10:443
+
+▸ 修改入口
+› 新优选入口 域名/IP:端口：104.16.0.1:443
+
+• 正在校验配置并重启服务...
+✓ 配置已校验并生效。
+```
+
+IPv6 输入示例：
+
+```text
+› 新优选入口 域名/IP:端口：[2606:4700::1111]:443
+```
+
+错误：
+
+```text
+✗ 优选入口格式必须为 域名/IP:端口（IPv6 使用 [地址]:端口）。
+```
+
+### 5.4 修改 Argo Tunnel 回源端口
+
+```text
+◆ Argo-Singbox · Argo Tunnel 回源端口
+----------------------------------------------------------------
+当前回源       127.0.0.1:3010
+节点数量       4
+端口范围       3011-3014
+
+▸ 修改端口
+› 新的 Argo Tunnel 回源端口 [3010]：3020
+
+• 正在顺延全部节点监听端口...
+• 正在校验配置并重启服务...
+✓ 配置已校验并生效。
+• Cloudflare Public Hostname 的 Service 请同步改为 http://localhost:3020。
+```
+
+### 5.5 修改全局 UUID
+
+```text
+◆ Argo-Singbox · 全局 UUID
+----------------------------------------------------------------
+当前 UUID      00000000-0000-4000-8000-000000000000
+
+▸ 修改 UUID
+› 新 UUID：11111111-1111-4111-8111-111111111111
+
+• 正在重新生成配置与订阅...
+✓ 配置已校验并生效。
+```
+
+---
+
+## 6. 节点管理
+
+### 6.1 查看节点
+
+```text
+◆ Argo-Singbox · 节点配置
+----------------------------------------------------------------
+标签              协议      WS 路径               端口    出站
+----------------  --------  --------------------  ------  ----------------
+Argo-Vl           vless     /argo-vl              3011    direct
+Argo-Vl2          vless     /argo-vl2             3012    socks5
+Argo-Tr           trojan    /argo-tr              3013    socks5
+Argo-Vm           vmess     /argo-vm              3014    direct
+```
+
+#### 节点表颜色
+
+- 表头：亮青加粗。
+- 标签：白色。
+- 协议：亮洋红。
+- WS 路径：白色。
+- 端口：亮黄。
+- `direct`：亮绿。
+- `socks5`：亮青。
+- WARP 出站如未来在表格中显示：亮洋红。
+
+### 6.2 添加节点
+
+```text
+◆ Argo-Singbox · 添加节点
+----------------------------------------------------------------
+› 节点标签（字母/数字/_/-）：Argo-Vl2
+› 协议（vless/vmess/trojan）：vless
+› WS 路径（以 / 开头）：/argo-vl2
+› 本地监听端口 [3014]：3014
+› SOCKS5 出站（主机:端口:用户名:密码，留空为直连）：
+
+• 正在校验节点配置...
+• 正在重启 Sing-box 与 Nginx...
+✓ 配置已校验并生效。
+```
+
+带 SOCKS5：
+
+```text
+› SOCKS5 出站（主机:端口:用户名:密码，留空为直连）：198.51.100.30:6305:proxyuser:proxypass
+```
+
+错误：
+
+```text
+✗ 节点标签、路径或端口已存在。
+```
+
+### 6.3 修改节点
+
+```text
+◆ Argo-Singbox · 修改节点
+----------------------------------------------------------------
+标签              协议      WS 路径               端口    出站
+----------------  --------  --------------------  ------  ----------------
+Argo-Vl           vless     /argo-vl              3011    direct
+Argo-Vl2          vless     /argo-vl2             3012    socks5
+Argo-Tr           trojan    /argo-tr              3013    socks5
+Argo-Vm           vmess     /argo-vm              3014    direct
+
+› 要修改的节点标签：Argo-Vl2
+
+▸ 新配置
+› 新节点标签 [Argo-Vl2]：
+› 新协议 [vless]（vless/vmess/trojan）：
+› 新 WS 路径 [/argo-vl2]：
+› 新本地端口 [3012]：
+› 新 SOCKS5 [198.51.100.30:6305:******:******]（留空保持，输入 - 改为直连）：-
+
+• 正在校验节点配置...
+✓ 配置已校验并生效。
+```
+
+> 小优化：节点列表中的 SOCKS5 可显示完整主机和端口，但用户名、密码建议脱敏；交互提示中的现有 SOCKS5 也建议脱敏。
+
+### 6.4 删除节点
+
+```text
+◆ Argo-Singbox · 删除节点
+----------------------------------------------------------------
+标签              协议      WS 路径               端口    出站
+----------------  --------  --------------------  ------  ----------------
+Argo-Vl           vless     /argo-vl              3011    direct
+Argo-Vl2          vless     /argo-vl2             3012    socks5
+Argo-Tr           trojan    /argo-tr              3013    socks5
+Argo-Vm           vmess     /argo-vm              3014    direct
+
+› 要删除的节点标签：Argo-Vl2
+› 确认删除节点 Argo-Vl2？[y/N]：y
+
+• 正在重新生成配置与订阅...
+✓ 节点 Argo-Vl2 已删除。
+```
+
+最后一个节点禁止删除：
+
+```text
+✗ 至少必须保留一个节点。
+```
+
+---
+
+## 7. WARP 网址分流
+
+### 7.1 WARP 子菜单
+
+```text
+◆ Argo-Singbox · WARP 网址分流
+----------------------------------------------------------------
+当前状态       未启用
+代理端口       40000
+目标域名       无
+
+▸ 操作
+   1  启用 / 修改代理端口和全部域名
+   2  添加域名
+   3  删除域名
+   4  停用 WARP 分流
+   0  返回
+----------------------------------------------------------------
+› 请选择：
+```
+
+### 7.2 启用 WARP
+
+```text
+◆ Argo-Singbox · 启用 WARP 分流
+----------------------------------------------------------------
+! 未安装官方 Cloudflare WARP 客户端。
+› 立即自动安装？[Y/n]：Y
+
+• 正在配置 Cloudflare 官方 APT 软件源...
+• 正在安装 cloudflare-warp...
+✓ Cloudflare WARP 客户端安装完成。
+
+› WARP 本地 SOCKS5 端口 [40000]：
+› 走 WARP 的网址/域名（逗号分隔）[无]：chatgpt.com,openai.com
+
+• 正在注册 WARP 客户端...
+• 正在切换到本地代理模式...
+• 正在校验分流配置...
+✓ 配置已校验并生效。
+```
+
+重新进入菜单：
+
+```text
+当前状态       运行中
+代理端口       40000
+目标域名       chatgpt.com,openai.com
+```
+
+### 7.3 添加域名
+
+```text
+◆ Argo-Singbox · 添加 WARP 域名
+----------------------------------------------------------------
+已有域名       chatgpt.com,openai.com
+› 要添加的网址/域名（可用逗号分隔）：claude.ai
+
+✓ 配置已校验并生效。
+```
+
+### 7.4 删除域名
+
+```text
+◆ Argo-Singbox · 删除 WARP 域名
+----------------------------------------------------------------
+已有域名       chatgpt.com,openai.com,claude.ai
+› 要删除的网址或域名：claude.ai
+
+✓ 配置已校验并生效。
+```
+
+### 7.5 停用 WARP
+
+```text
+◆ Argo-Singbox · 停用 WARP 分流
+----------------------------------------------------------------
+› 确认停用 WARP 网址分流？[y/N]：y
+
+! WARP 网址分流已停用。
+```
+
+> 停用使用黄色，不使用绿色。
+
+### 7.6 WARP 异常
+
+```text
+✗ WARP：服务或本地代理端口异常
+✗ WARP 目标无法通过本地代理访问：https://chatgpt.com
+```
+
+---
+
+## 8. 完整诊断
+
+```text
 ◆ Argo-Singbox · 完整诊断
--------------------------------------------------------------------
-▸ 运行概览（颜色区别于下面的运行配置）
-公网 IP      173.231.53.138
-脚本版本     v2.11.4
-内存         415/3883 MiB (11%)
-优选入口     142.248.136.72:443
-Argo 回源    127.0.0.1:3010(这列对齐)
+----------------------------------------------------------------
+系统概览
+公网 IP        203.0.113.10
+脚本版本       v2.11.6
+内存           415/3883 MiB (11%)
+优选入口       198.51.100.10:443
+Argo 回源      127.0.0.1:3010
 
 ▸ 配置与组件
 ✓ 项目配置：有效
 ✓ Sing-box 配置：有效
 ✓ Nginx 配置：有效
 ✓ Token：已配置且服务文件一致
-组件版本   脚本 v2.11.4 · Sing-box 1.13.0-rc.4 · Cloudflared 2026.7.0
-• WARP：未启用
+组件版本       脚本 v2.11.6 · Sing-box 1.13.0-rc.4 · Cloudflared 2026.7.0
+! WARP：未启用
 
 ▸ 运行检查
 ✓ nginx：运行正常
 ✓ asb-sing-box：运行正常
+✓ asb-cloudflared：运行正常
 ✓ /argo-vl：公网 WebSocket 握手正常
 ✓ /argo-vl2：公网 WebSocket 握手正常
 ✓ /argo-tr：公网 WebSocket 握手正常
-• /argo-vm：公网握手探测超时，未作为安装失败（请用客户端实测）(使用黄色或红色)
+! /argo-vm：公网握手探测超时，未作为安装失败（请用客户端实测）
 
 ▸ 最近日志
-2026-07-09T22:38:56+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:38:56 INFO [4160947199 0ms] inbound/vless[Argo-Vl]: inbound connection from 144.34.236.165:10702
-2026-07-09T22:38:56+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:38:56 INFO [4160947199 0ms] inbound/vless[Argo-Vl]: [0] inbound connection to 91.108.56.112:80
-2026-07-09T22:38:56+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:38:56 INFO [4160947199 0ms] outbound/direct[direct]: outbound connection to 91.108.56.112:80
-2026-07-09T22:38:56+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:38:56 INFO [1245479584 0ms] inbound/vless[Argo-Vl]: inbound connection from 144.34.236.165:10718
-2026-07-09T22:38:56+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:38:56 INFO [1245479584 0ms] inbound/vless[Argo-Vl]: [0] inbound connection to 91.108.56.112:80
-2026-07-09T22:38:56+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:38:56 INFO [1245479584 0ms] outbound/direct[direct]: outbound connection to 91.108.56.112:80
-2026-07-09T22:38:58+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:38:58 INFO [3626160319 0ms] inbound/vless[Argo-Vl]: inbound connection from 144.34.236.165:10722
-2026-07-09T22:38:58+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:38:58 INFO [3626160319 0ms] inbound/vless[Argo-Vl]: [0] inbound connection to github.com:443
-2026-07-09T22:38:58+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:38:58 INFO [3626160319 0ms] outbound/direct[direct]: outbound connection to github.com:443
-2026-07-09T22:38:58+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:38:58 INFO [4156931583 0ms] inbound/vless[Argo-Vl]: inbound connection from 142.248.136.72:10736
-2026-07-09T22:38:59+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:38:59 INFO [4013056310 0ms] inbound/vless[Argo-Vl]: inbound connection from 144.34.236.165:10746
-2026-07-09T22:38:59+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:38:59 INFO [4013056310 0ms] inbound/vless[Argo-Vl]: [0] inbound connection to alive.github.com:443
-2026-07-09T22:38:59+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:38:59 INFO [4013056310 0ms] outbound/direct[direct]: outbound connection to alive.github.com:443
-2026-07-09T22:39:02+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:39:02 ERROR [4156931583 4.17s] inbound/vless[Argo-Vl]: process connection from 142.248.136.72:10736: EOF
-2026-07-09T22:39:04+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:39:04 INFO [2080243965 0ms] inbound/vless[Argo-Vl2]: inbound connection from 142.248.136.72:40558
-2026-07-09T22:39:10+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:39:10 ERROR [2080243965 6.42s] inbound/vless[Argo-Vl2]: process connection from 142.248.136.72:40558: EOF
-2026-07-09T22:39:11+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:39:11 INFO [2382046508 0ms] inbound/trojan[Argo-Tr]: inbound connection from 142.248.136.72:48864
-2026-07-09T22:39:12+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:39:12 INFO [1189298886 0ms] inbound/vless[Argo-Vl]: inbound connection from 144.34.236.165:16960
-2026-07-09T22:39:12+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:39:12 INFO [1189298886 0ms] inbound/vless[Argo-Vl]: [0] inbound connection to mobile.events.data.microsoft.com:443
-2026-07-09T22:39:12+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:39:12 INFO [1189298886 0ms] outbound/direct[direct]: outbound connection to mobile.events.data.microsoft.com:443
-2026-07-09T22:39:14+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:39:14 INFO [111028087 0ms] inbound/vless[Argo-Vl]: inbound connection from 144.34.236.165:37858
-2026-07-09T22:39:14+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:39:14 INFO [111028087 0ms] inbound/vless[Argo-Vl]: [0] inbound connection to 91.108.56.112:80
-2026-07-09T22:39:14+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:39:14 INFO [111028087 0ms] outbound/direct[direct]: outbound connection to 91.108.56.112:80
-2026-07-09T22:39:15+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:39:15 INFO [1510666581 0ms] inbound/vless[Argo-Vl]: inbound connection from 144.34.236.165:37866
-2026-07-09T22:39:15+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:39:15 INFO [1510666581 0ms] inbound/vless[Argo-Vl]: [0] inbound connection to 91.108.56.112:80
-2026-07-09T22:39:15+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:39:15 INFO [1510666581 0ms] outbound/direct[direct]: outbound connection to 91.108.56.112:80
-2026-07-09T22:39:16+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:39:16 INFO [2668606310 0ms] inbound/vless[Argo-Vl]: inbound connection from 144.34.236.165:37870
-2026-07-09T22:39:16+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:39:16 INFO [2668606310 0ms] inbound/vless[Argo-Vl]: [0] inbound connection to 91.108.56.112:80
-2026-07-09T22:39:16+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:39:16 INFO [2668606310 0ms] outbound/direct[direct]: outbound connection to 91.108.56.112:80
-2026-07-09T22:39:20+08:00 greencloud.fiatnorm.pp.ua sing-box[329]: +0800 2026-07-09 22:39:20 ERROR [2382046508 9.23s] inbound/trojan[Argo-Tr]: process connection from 142.248.136.72:48864: EOF
+2026-07-09T22:38:56+08:00  INFO   inbound/vless[Argo-Vl]  connection from 198.51.100.20:10702
+2026-07-09T22:38:56+08:00  INFO   inbound/vless[Argo-Vl]  connection to 203.0.113.20:80
+2026-07-09T22:38:56+08:00  INFO   outbound/direct[direct]  connection to 203.0.113.20:80
+2026-07-09T22:38:58+08:00  INFO   inbound/vless[Argo-Vl]  connection to github.com:443
+2026-07-09T22:38:59+08:00  INFO   outbound/direct[direct]  connection to alive.github.com:443
+2026-07-09T22:39:02+08:00  ERROR  inbound/vless[Argo-Vl]  process connection: EOF
+2026-07-09T22:39:04+08:00  INFO   inbound/vless[Argo-Vl2] connection from 198.51.100.10:40558
+2026-07-09T22:39:10+08:00  ERROR  inbound/vless[Argo-Vl2] process connection: EOF
+2026-07-09T22:39:11+08:00  INFO   inbound/trojan[Argo-Tr] connection from 198.51.100.10:48864
+2026-07-09T22:39:20+08:00  ERROR  inbound/trojan[Argo-Tr] process connection: EOF
+```
 
+#### 日志颜色
+
+- 时间戳：Dim 白。
+- `INFO`：亮绿。
+- `WARN`：亮黄。
+- `ERROR`：亮红。
+- 模块名：亮青。
+- 其余正文：白色。
+
+> 实际诊断仍输出最近 30 行日志；上面仅展示排版样例。建议对 `journalctl` 输出进行轻量解析后着色，不改变日志原文语义。
+
+### 8.1 Cloudflare Challenge / WAF 阻断
+
+```text
+✗ /argo-vl：Cloudflare 人机挑战（HTTP 403）
+! 请确认 Public Hostname 指向 http://localhost:3010，并跳过全部代理路径的 Challenge/WAF。
+```
+
+### 8.2 本地端口异常
+
+```text
+✗ 本地端口 3012 未监听。
+```
+
+### 8.3 服务异常
+
+```text
+✗ asb-sing-box：运行失败
+```
+
+随后输出对应 `systemctl status` 与最近日志。
+
+---
+
+## 9. 安装 / 更新入口
+
+```text
 ◆ Argo-Singbox · 安装 / 更新
--------------------------------------------------------------------
-▸ 请选择安装来源
-   1  使用当前 VPS 本地脚本重装   [不更新项目脚本]
-   2  从 GitHub 获取最新脚本安装  [可更新项目脚本](列对齐)
+----------------------------------------------------------------
+请选择安装来源
+   1  使用当前 VPS 本地脚本重装          [不更新项目脚本]
+   2  从 GitHub 获取最新脚本安装         [可更新项目脚本]
    0  返回
--------------------------------------------------------------------
+----------------------------------------------------------------
 › 请选择：
+```
+
+无效输入：
+
+```text
+! 请输入 0、1 或 2。
+```
+
+---
+
+## 10. 完整安装流程
+
+### 10.1 从 GitHub 更新脚本
+
+```text
+    ___                     _____ _             __
+   /   |  _________ _____  / ___/(_)___  ____ _/ /_  ____  _  __
+  / /| | / ___/ __ `/ __ \ \__ \/ / __ \/ __ `/ __ \/ __ \| |/_/
+ / ___ |/ /  / /_/ / /_/ /___/ / / / / / /_/ / /_/ / /_/ />  <
+/_/  |_/_/   \__, /\____//____/_/_/ /_/\__, /_.___/\____/_/|_|
+            /____/                    /____/
+
+Argo-Singbox  v2.11.6 · Argo Tunnel · Sing-box Core · WSS Proxy
+系统环境      Debian GNU/Linux 13 (trixie) · amd64 · IP 203.0.113.10
+----------------------------------------------------------------
+安装 / 更新
+• 正在获取 Fiatnorm/Argo-Singbox main 的最新安装脚本...
+✓ 当前安装脚本已是 GitHub 最新版本。
+```
+
+脚本发生更新：
+
+```text
+✓ 本地脚本已更新，正在切换到新版继续安装。
+```
+
+校验值短暂不一致：
+
+```text
+! 安装脚本与校验值暂不一致，正在重新获取（1/3）。
+```
+
+最终失败：
+
+```text
+✗ 最新安装脚本 SHA256 校验失败。
+```
+
+### 10.2 安装参数
+
+```text
+▸ 安装参数
+› 请输入 Argo Token（必填）：
+› 请输入 Argo 域名（必填）[asb.example.com]：
+› 请输入 UUID [00000000-0000-4000-8000-000000000000]：
+› 请输入 Cloudflare 优选入口 域名/IP:端口 [skk.moe:443]：198.51.100.10:443
+```
+
+### 10.3 环境与依赖
+
+```text
+▸ 环境与依赖
+✓ Root 权限：正常
+✓ 系统支持：Debian GNU/Linux 13 (trixie)
+✓ 系统架构：amd64
+✓ systemd：可用
+• 正在安装系统依赖：curl · ca-certificates · nginx · openssl · tar · qrencode
+✓ 系统依赖安装完成。
+```
+
+### 10.4 核心下载与校验
+
+```text
+▸ 核心组件
+• 正在下载 Sing-box 1.13.0-rc.4...
+✓ Sing-box SHA256 校验通过。
+✓ Sing-box 版本检查通过。
+• 正在下载 Cloudflared 2026.7.0...
+✓ Cloudflared SHA256 校验通过。
+✓ Cloudflared 版本检查通过。
+```
+
+### 10.5 配置与服务
+
+```text
+▸ 配置与服务
+• 正在生成 Sing-box 配置...
+• 正在生成 Nginx 配置...
+• 正在生成 systemd 服务...
+• 正在检查节点端口...
+✓ 节点端口可用。
+• 正在启动 Nginx、Sing-box 与 Argo...
+✓ 服务启动完成。
+• 正在生成订阅与明文节点...
+✓ 节点与订阅生成完成。
+```
+
+端口被旧项目占用：
+
+```text
+• 已停止占用节点端口的旧项目服务：sba-sing-box.service
+• 已停止遗留 sing-box 进程 PID 56328（端口 3011）。
+```
+
+未知第三方进程占用：
+
+```text
+LISTEN  0  4096  127.0.0.1:3011  0.0.0.0:*  users:(("unknown",pid=56328,fd=10))
+✗ 节点端口仍被未知进程占用。为避免终止第三方服务，安装已停止。
+```
+
+### 10.6 安装健康检查
+
+```text
+▸ 运行检查
+✓ nginx：运行正常
+✓ asb-sing-box：运行正常
+✓ asb-cloudflared：运行正常
+✓ /argo-vl：公网 WebSocket 握手正常
+✓ /argo-vl2：公网 WebSocket 握手正常
+✓ /argo-tr：公网 WebSocket 握手正常
+! /argo-vm：公网握手探测超时，未作为安装失败（请用客户端实测）
+
+✓ Argo-Singbox 安装 / 更新完成，核心链路检查通过。
+```
+
+健康检查存在失败：
+
+```text
+! Argo-Singbox 文件已安装，但健康检查未全部通过；请先处理上述错误再使用节点。
+```
+
+### 10.7 安装完成摘要
+
+```text
+▸ 运行摘要
+Argo 服务      运行中
+Sing-box 服务  运行中
+Argo 域名      asb.example.com
+优选入口       198.51.100.10:443
+Argo 回源      127.0.0.1:3010
+组件版本       脚本 v2.11.6 · Sing-box 1.13.0-rc.4 · Cloudflared 2026.7.0
+WARP 分流      未启用
+节点文件       /etc/asb/nodes.txt
+管理命令       asb
+
+▸ 明文节点
+vless://<example-vless-node>
+vmess://<example-vmess-node>
+trojan://<example-trojan-node>
+```
+
+---
+
+## 11. 配置事务与自动回滚
+
+正常：
+
+```text
+• 正在校验新配置...
+• 正在重启服务...
+✓ 配置已校验并生效。
+```
+
+失败并自动恢复：
+
+```text
+✗ 新配置验证失败，正在恢复。
+! 已恢复修改前配置文件。
+✗ 配置未生效，已恢复修改前文件。
+```
+
+> 回滚属于错误链路：第一行和最终结果使用红色；中间“已恢复”可使用黄色，强调系统已执行保护动作。
+
+---
+
+## 12. 更新 Argo / Sing-box 核心
+
+```text
+◆ Argo-Singbox · 核心更新
+----------------------------------------------------------------
+▸ Argo / cloudflared 核心
+当前版本       2026.6.1
+目标版本       2026.7.0
+› 是否更新 Argo / cloudflared？[y/N]：y
+
+▸ Sing-box 核心
+当前版本       1.13.0-rc.3
+目标版本       1.13.0-rc.4
+› 是否更新 Sing-box？[y/N]：y
+
+• 正在下载并校验新核心...
+• 正在备份当前核心...
+• 正在替换核心并重启服务...
+✓ Argo / cloudflared 更新成功：2026.6.1 → 2026.7.0
+✓ Sing-box 更新成功：1.13.0-rc.3 → 1.13.0-rc.4
+```
+
+已是目标版本：
+
+```text
+✓ Argo / cloudflared 已是目标版本。
+✓ Sing-box 已是目标版本。
+```
+
+用户未选择更新：
+
+```text
+! 未选择需要更新的核心。
+```
+
+更新失败：
+
+```text
+✗ 更新后验证失败，正在自动回滚。
+! 已恢复更新前核心并重新启动服务。
+✗ 核心已回滚到更新前版本，请查看 journalctl。
+```
+
+---
+
+## 13. 备份节点配置
+
+```text
+◆ Argo-Singbox · 备份
+----------------------------------------------------------------
+节点配置       /etc/asb/nodes.conf
+默认备份目录   /etc/asb/backup
+
+› 请输入节点备份文件夹或 .tar.gz 路径 [/etc/asb/backup]：
+
+• 正在创建节点配置备份...
+✓ 节点配置备份完成：/etc/asb/backup/asb-nodes-backup-20260709-224500.tar.gz
+```
+
+错误：
+
+```text
+✗ 备份路径必须使用绝对路径。
+✗ 备份文件必须以 .tar.gz 结尾。
+✗ 项目目录内仅允许使用默认备份目录 /etc/asb/backup。
+```
+
+---
+
+## 14. 恢复节点配置
+
+```text
+◆ Argo-Singbox · 恢复
+----------------------------------------------------------------
+› 请输入节点备份文件或目录 [/etc/asb/backup，留空使用最新备份]：
+
+• 使用最新备份：/etc/asb/backup/asb-nodes-backup-20260709-224500.tar.gz
+• 正在校验备份归档...
+• 正在恢复节点配置...
+• 正在校验配置并重启服务...
+✓ 节点配置恢复完成：/etc/asb/backup/asb-nodes-backup-20260709-224500.tar.gz
+```
+
+恢复失败：
+
+```text
+✗ 节点配置恢复失败，正在回滚。
+! 已恢复到执行恢复操作前的状态。
+✗ 节点配置恢复失败，已回滚到恢复前状态。
+```
+
+安全校验失败：
+
+```text
+✗ 备份归档 gzip 校验失败。
+✗ 备份归档包含越界路径，拒绝恢复。
+✗ 备份归档包含符号链接或其他特殊文件，拒绝恢复。
+```
+
+---
+
+## 15. 重启全部服务
+
+```text
+◆ Argo-Singbox · 重启服务
+----------------------------------------------------------------
+• 正在重启 Nginx、Sing-box 与 Argo...
+✓ 服务已重启。
+```
+
+建议在主菜单直接执行时仍显示标题，避免单独出现一行“服务已重启”缺少上下文。
+
+---
+
+## 16. 第三方 BBR / DD 工具
+
+```text
+◆ Argo-Singbox · 第三方 BBR / DD 工具
+----------------------------------------------------------------
+! 第三方工具：升级内核、安装 BBR、DD 系统均由 ylx2016/Linux-NetSpeed 脚本提供。
+! Argo-Singbox 不维护其代码、功能与执行结果。
+
+• 正在启动第三方脚本...
+```
+
+颜色：两行免责声明使用亮黄；项目名称可保持白色或亮洋红。
+
+---
+
+## 17. 卸载 Argo-Singbox
+
+### 17.1 卸载确认
+
+```text
+◆ Argo-Singbox · 卸载
+----------------------------------------------------------------
+! 即将删除以下项目内容：
+  • Argo-Singbox systemd 服务
+  • 私有 Argo / cloudflared 核心
+  • 私有 Sing-box 核心
+  • /etc/asb 配置、订阅与备份
+  • asb 命令入口
+
+› 确认彻底卸载 Argo-Singbox？[y/N]：y
+```
+
+### 17.2 可选清理
+
+```text
+› 同时卸载 Nginx？可能被其他网站使用，默认保留 [y/N]：n
+› 同时卸载 Cloudflare WARP 客户端、注册与软件源？默认保留 [y/N]：n
+› 同时卸载脚本使用的通用工具 curl/ca-certificates/openssl/tar/qrencode/gnupg？可能被其他程序使用，默认保留 [y/N]：n
+```
+
+### 17.3 完成
+
+```text
+• 正在停止项目服务...
+• 正在删除项目文件...
+• 正在清理 systemd 服务...
+✓ Argo-Singbox 已彻底卸载；本次脚本执行结束。
+```
+
+用户取消：
+
+```text
+! 已取消卸载。
+```
+
+卸载保护：
+
+```text
+✗ 缺少项目所有权标记，拒绝自动卸载；请人工核对 /etc/asb。
+```
+
+---
+
+## 18. 常用错误与状态提示统一稿
+
+### 18.1 权限与系统
+
+```text
+✗ 请使用 root 用户运行此脚本。
+✗ 当前系统不支持 systemd。
+✗ 无法识别系统，仅支持 Debian/Ubuntu。
+✗ 仅支持 Debian/Ubuntu + systemd。
+✗ 仅支持 amd64 和 arm64 架构。
+```
+
+### 18.2 下载与校验
+
+```text
+• 正在下载：<组件或文件>
+! 下载失败，正在重试（1/3）。
+✓ SHA256 校验通过。
+✗ 下载失败（已尝试直连和 GitHub 代理）：<URL>
+✗ GitHub 未提供 <文件> 的 SHA256，拒绝安装。
+✗ <文件> SHA256 校验失败。
+```
+
+### 18.3 节点配置
+
+```text
+✗ 节点标签格式错误。
+✗ 协议不受支持。
+✗ WS 路径格式错误。
+✗ 端口格式错误。
+✗ 节点标签、WS 路径或端口已被其他节点使用。
+✗ 未找到节点标签：Argo-Vl2
+✗ 至少必须保留一个节点。
+```
+
+### 18.4 SOCKS5
+
+```text
+✗ SOCKS5 格式必须为 主机:端口:用户名:密码。
+✗ SOCKS5 主机格式不正确。
+✗ SOCKS5 端口不正确。
+✗ SOCKS5 用户名和密码仅支持字母、数字及 ._~-。
+```
+
+### 18.5 服务和端口
+
+```text
+✗ 检测到非本项目服务 asb-sing-box.service，安装已停止，未覆盖现有服务。
+! 检测到本项目旧版 sing-box.service，将迁移为项目专属服务名。
+✗ 节点端口仍被未知进程占用。为避免终止第三方服务，安装已停止。
+```
+
+### 18.6 非致命探测
+
+```text
+! /argo-vm：公网握手探测超时，未作为安装失败（请用客户端实测）
+```
+
+> 这一类必须使用黄色，不能使用红色；它明确“不作为安装失败”。
+
+---
+
+## 19. 推荐的最终 Bash 颜色函数语义
+
+```bash
+green()  # ✓ 成功 / 运行中 / 已开启
+yellow() # ! 警告 / 已关闭 / 已取消 / 非致命异常
+red()    # ✗ 错误 / 失败 / 回滚
+info()   # • 普通信息 / 处理中
+brand()  # ◆ 页面标题
+section()# ▸ 一级分区
+prompt() # › 输入提示
+```
+
+推荐状态映射：
+
+```text
+运行中                 亮绿
+已开启                 亮绿
+有效 / 正常 / 通过     亮绿
+
+已停止                 亮黄
+未启用                 亮黄
+已取消                 亮黄
+探测超时但非失败       亮黄
+
+运行失败               亮红
+配置无效               亮红
+代理异常               亮红
+验证失败               亮红
+```
+
+---
+
+## 20. 最终统一原则
+
+1. **主视觉不变**：继续使用当前 Argo-Singbox ASCII 字标和蓝色主色。
+2. **页面标题统一**：所有独立操作都使用 `◆ Argo-Singbox · 功能名称`。
+3. **内容分区统一**：只使用 `▸` 表示一级分区，避免同时出现多种不相关符号。
+4. **成功与关闭分离**：开启用绿色 `✓`，关闭/停用用黄色 `!`。
+5. **错误等级清晰**：真正阻断流程才使用红色 `✗`。
+6. **动态值严格对齐**：系统环境、运行概览、订阅索引、节点表和菜单快捷命令必须按显示宽度对齐。
+7. **减少视觉噪声**：超长节点链接保持白色；颜色集中在标题、标签、状态和交互元素。
+8. **所有二级操作有上下文**：更新、备份、恢复、重启、BBR、卸载不再只输出孤立的一两行文字。
+9. **敏感信息不主动完整展示**：Token 只显示配置状态；SOCKS5 用户名和密码在列表与“当前值”中建议脱敏。
+10. **NO_COLOR 与非 TTY 兼容**：禁用 ANSI 后，图标、缩进、列宽和分隔线仍保持完整可读。
+
+---
+
+## 21. 最推荐的首页最终版
+
+```text
+    ___                     _____ _             __
+   /   |  _________ _____  / ___/(_)___  ____ _/ /_  ____  _  __
+  / /| | / ___/ __ `/ __ \ \__ \/ / __ \/ __ `/ __ \/ __ \| |/_/
+ / ___ |/ /  / /_/ / /_/ /___/ / / / / / /_/ / /_/ / /_/ />  <
+/_/  |_/_/   \__, /\____//____/_/_/ /_/\__, /_.___/\____/_/|_|
+            /____/                    /____/
+
+Argo-Singbox  v2.11.6 · Argo Tunnel · Sing-box Core · WSS Proxy
+系统环境      Debian GNU/Linux 13 (trixie) · amd64 · IP 203.0.113.10
+----------------------------------------------------------------
+运行概览
+Argo 服务      运行中
+Sing-box 服务  运行中
+Argo 域名      asb.example.com
+优选入口       198.51.100.10:443
+Argo 回源      127.0.0.1:3010
+组件版本       脚本 v2.11.6 · Sing-box 1.13.0-rc.4 · Cloudflared 2026.7.0
+WARP 分流      未启用
+----------------------------------------------------------------
+
+◆ Argo-Singbox · 控制中心
+----------------------------------------------------------------
+▸ 日常管理
+   1  查看节点信息                       [asb -n]
+   2  开启/关闭 Argo                     [asb -a]
+   3  开启/关闭 Sing-box                 [asb -s]
+   4  集中配置                           [asb -c]
+   5  重启全部服务                       [asb -r]
+   6  完整诊断                           [asb -x]
+
+▸ 维护工具
+   7  安装 / 更新 Argo-Singbox           [asb -i]
+   8  更新 Argo / Sing-box 核心          [asb -v]
+   9  备份节点配置                       [asb -k]
+  10  恢复节点配置                       [asb -l]
+  11  第三方 BBR / DD 工具               [asb -b]
+  12  卸载 Argo-Singbox                  [asb -u]
+   0  退出
+----------------------------------------------------------------
+› 请选择：
+```
