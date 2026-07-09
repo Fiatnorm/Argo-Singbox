@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.11.2"
+VERSION="2.11.3"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
 PROJECT_REPO="Fiatnorm/Argo-Singbox"
@@ -59,6 +59,49 @@ info() { printf '%s• %s%s\n' "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
 brand() {
   printf '\n%s%s◆ %s%s\n%s%s%s\n' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$*" "$C_RESET" \
     "$C_BRIGHT_BLUE" "----------------------------------------" "$C_RESET"
+}
+system_summary() {
+  local os="Linux" arch ip
+  if [[ -r /etc/os-release ]]; then
+    os="$(
+      # shellcheck disable=SC1091
+      source /etc/os-release
+      printf '%s' "${PRETTY_NAME:-${NAME:-Linux}}"
+    )"
+  fi
+  case "$(uname -m)" in
+    x86_64|amd64) arch="amd64" ;;
+    aarch64|arm64) arch="arm64" ;;
+    *) arch="$(uname -m)" ;;
+  esac
+  ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  printf '%s · %s · IP %s' "$os" "$arch" "${ip:-未知}"
+}
+control_panel() {
+  printf '\n%s%s' "$C_BOLD" "$C_BRIGHT_BLUE"
+  printf '%s\n' '    ___                  _____ _             _'
+  printf '%s\n' '   / _ \ _ __ __ _  ___/  ___(_)_ __   __ _| |__   _____  __'
+  printf '%s\n' '  / /_)/ |__/ _` |/ _ \___ \| | `_ \ / _` | `_ \ / _ \ \/ /'
+  printf '%s\n' ' / ___/| | | (_| | (_) |__) | | | | | (_| | |_) | (_) >  <'
+  printf '%s\n' ' \/    |_|  \__, |\___/_____/|_|_| |_|\__, |_.__/ \___/_/\_\'
+  printf '%s\n' '           |___/                       |___/'
+  printf '%s%s  %s%s%s  %s%s固定 Argo Token · WS 多协议 · WARP 分流%s\n' \
+    "$C_BRIGHT_MAGENTA" "$PROJECT_NAME" "$C_BRIGHT_YELLOW" "v${VERSION}" \
+    "$C_RESET" "$C_DIM" "$C_WHITE" "$C_RESET"
+  printf '%s  系统环境%s  %s\n' "$C_BRIGHT_CYAN" "$C_RESET" "$(system_summary)"
+  printf '%s%s%s\n' "$C_BRIGHT_BLUE" \
+    '----------------------------------------------------------------' "$C_RESET"
+}
+service_status() {
+  local service="$1"
+  if ! systemctl list-unit-files "${service}.service" --no-legend 2>/dev/null |
+    grep -q "^${service}.service"; then
+    printf '未安装'
+  elif systemctl is-active --quiet "$service"; then
+    printf '运行中'
+  else
+    printf '已停止'
+  fi
 }
 section() { printf '\n%s%s▸ %s%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
 subsection() { printf '%s%s%s%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET"; }
@@ -938,6 +981,8 @@ install_project() {
   local install_mode="${1:-local}" installer_source latest_installer
   local work_backup="" sing_stage argo_stage file
   require_root
+  control_panel
+  subsection "安装 / 更新"
   if [[ "$install_mode" == "github" ]]; then
     latest_installer="$(mktemp)"
     info "正在获取 ${PROJECT_REPO} ${PROJECT_BRANCH} 的最新安装脚本。"
@@ -1020,10 +1065,15 @@ install_project() {
   generate_nodes
   rm -f "$LEGACY_NODES_FILE" "$LEGACY_SBA_NODES_FILE"
   if health_check; then
-    green "${PROJECT_NAME} 安装 / 更新完成，核心链路检查通过。节点文件：${NODES_FILE}"
+    green "${PROJECT_NAME} 安装 / 更新完成，核心链路检查通过。"
   else
     yellow "${PROJECT_NAME} 文件已安装，但健康检查未全部通过；请先处理上述错误再使用节点。"
   fi
+  section "运行摘要"
+  key_value "Argo 域名" "$ARGO_DOMAIN"
+  key_value "优选入口" "${SERVER}:${SERVER_PORT}"
+  key_value "节点文件" "$NODES_FILE"
+  key_value "管理命令" "$COMMAND_NAME"
   show_install_nodes
 }
 
@@ -1669,8 +1719,16 @@ uninstall_project() {
 
 menu() {
   while true; do
-    brand "${PROJECT_NAME} v${VERSION}"
-    subsection "日常管理"
+    load_env
+    control_panel
+    subsection "运行概览"
+    key_value "Argo 服务" "$(service_status "$ARGO_SERVICE")"
+    key_value "Sing-box 服务" "$(service_status "$SING_SERVICE")"
+    if [[ -n "$ARGO_DOMAIN" ]]; then
+      key_value "Argo 域名" "$ARGO_DOMAIN"
+      key_value "优选入口" "${SERVER}:${SERVER_PORT}"
+    fi
+    section "日常管理"
     menu_item 1 "查看节点信息" "${COMMAND_NAME} -n"
     menu_item 2 "开启/关闭 Argo" "${COMMAND_NAME} -a"
     menu_item 3 "开启/关闭 Sing-box" "${COMMAND_NAME} -s"
