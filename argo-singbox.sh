@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.11.3"
+VERSION="2.11.4"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
 PROJECT_REPO="Fiatnorm/Argo-Singbox"
@@ -27,6 +27,7 @@ SUB_CLASH_FILE="${WORK_DIR}/subscription.clash.yaml"
 SUB_CLASH_PROVIDER_FILE="${WORK_DIR}/subscription.proxies.yaml"
 SUB_SING_BOX_FILE="${WORK_DIR}/subscription.sing-box.json"
 SUB_SHADOWROCKET_FILE="${WORK_DIR}/subscription.shadowrocket"
+SUB_AUTO_QR_FILE="${WORK_DIR}/subscription.auto.svg"
 SING_SERVICE="asb-sing-box"
 ARGO_SERVICE="asb-cloudflared"
 LEGACY_SING_SERVICE="sba-sing-box"
@@ -74,7 +75,8 @@ system_summary() {
     aarch64|arm64) arch="arm64" ;;
     *) arch="$(uname -m)" ;;
   esac
-  ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  ip="$(curl -4fsS --connect-timeout 2 --max-time 3 https://api.ipify.org 2>/dev/null ||
+    hostname -I 2>/dev/null | awk '{print $1}')"
   printf '%s · %s · IP %s' "$os" "$arch" "${ip:-未知}"
 }
 control_panel() {
@@ -103,16 +105,41 @@ service_status() {
     printf '已停止'
   fi
 }
+warp_status() {
+  if [[ "${WARP_ENABLED:-0}" != "1" ]]; then
+    printf '未启用'
+  elif systemctl is-active --quiet warp-svc 2>/dev/null &&
+    ss -lntH "sport = :${WARP_PROXY_PORT}" 2>/dev/null | grep -q .; then
+    printf '运行中 · 127.0.0.1:%s' "$WARP_PROXY_PORT"
+  else
+    printf '已启用 · 代理异常'
+  fi
+}
+component_versions() {
+  printf '脚本 v%s · Sing-box %s · Cloudflared %s' "$VERSION" \
+    "$(local_sing_box_version 2>/dev/null || printf '未安装')" \
+    "$(local_cloudflared_version 2>/dev/null || printf '未安装')"
+}
 section() { printf '\n%s%s▸ %s%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
 subsection() { printf '%s%s%s%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET"; }
 key_value() {
   printf '%s%-14s%s %s%s%s\n' "$C_BRIGHT_BLUE" "$1" "$C_RESET" "$C_WHITE" "$2" "$C_RESET"
+}
+state_value() {
+  local color="$C_BRIGHT_YELLOW"
+  case "$2" in
+    运行中*) color="$C_BRIGHT_GREEN" ;;
+    未启用|已停止|未安装) color="$C_BRIGHT_YELLOW" ;;
+    *异常*) color="$C_BRIGHT_RED" ;;
+  esac
+  printf '%s%-14s%s %s%s%s\n' "$C_BRIGHT_BLUE" "$1" "$C_RESET" "$color" "$2" "$C_RESET"
 }
 link_value() {
   printf '%s%-14s%s %s%s%s%s\n' "$C_BRIGHT_BLUE" "$1" "$C_RESET" "$C_WHITE" "$C_UNDERLINE" "$2" "$C_RESET"
 }
 prompt() { printf '%s%s› %s%s' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$*" "$C_RESET"; }
 read_choice() { prompt "$1"; IFS= read -r REPLY; }
+read_input() { prompt "$1"; IFS= read -r "$2"; }
 menu_item() {
   printf '  %s%2s%s  %s%s%s%s%s%s\n' "$C_BRIGHT_YELLOW" "$1" "$C_RESET" "$C_WHITE" "$2" \
     "$C_RESET" "$C_BRIGHT_CYAN" "${3:+  [$3]}" "$C_RESET"
@@ -120,12 +147,16 @@ menu_item() {
 die() { red "$*"; exit 1; }
 
 require_root() {
+  local os_id
   [[ ${EUID} -eq 0 ]] || die "请使用 root 用户运行此脚本。"
   command -v systemctl >/dev/null 2>&1 || die "当前系统不支持 systemd。"
   [[ -r /etc/os-release ]] || die "无法识别系统，仅支持 Debian/Ubuntu。"
-  # shellcheck disable=SC1091
-  source /etc/os-release
-  [[ "${ID:-}" == "debian" || "${ID:-}" == "ubuntu" ]] ||
+  os_id="$(
+    # shellcheck disable=SC1091
+    source /etc/os-release
+    printf '%s' "${ID:-}"
+  )"
+  [[ "$os_id" == "debian" || "$os_id" == "ubuntu" ]] ||
     die "仅支持 Debian/Ubuntu + systemd。"
 }
 
@@ -304,7 +335,7 @@ install_dependencies() {
 install_cloudflare_warp() {
   local answer codename key_file fingerprint
   command -v warp-cli >/dev/null 2>&1 && return
-  read -rp "未安装官方 Cloudflare WARP 客户端，立即自动安装？[Y/n]: " answer
+  read_input "未安装官方 Cloudflare WARP 客户端，立即自动安装？[Y/n]: " answer
   [[ ! "$answer" =~ ^[Nn]$ ]] || die "已取消安装 Cloudflare WARP 客户端。"
   command -v apt-get >/dev/null 2>&1 ||
     die "无法自动安装：当前系统没有 apt-get。"
@@ -356,7 +387,7 @@ ensure_warp_registration() {
   if grep -qi "Old registration is still around" "$output"; then
     cat "$output" >&2
     rm -f "$output"
-    read -rp "检测到无法使用的旧 WARP 注册，删除并重新注册？[y/N]: " answer
+    read_input "检测到无法使用的旧 WARP 注册，删除并重新注册？[y/N]: " answer
     [[ "$answer" =~ ^[Yy]$ ]] ||
       die "未清理旧 WARP 注册，已取消启用。"
     warp-cli --accept-tos registration delete >/dev/null 2>&1 ||
@@ -546,7 +577,11 @@ EOF
     }
     location = /${UUID}/ {
         default_type text/html;
-        return 200 '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Argo-Singbox 配置文件</title><style>body{max-width:720px;margin:40px auto;padding:0 20px;font:16px/1.6 system-ui,sans-serif;color:#202124}h1{font-size:24px}li{margin:8px 0}a{color:#0969da;text-decoration:none}a:hover{text-decoration:underline}code{background:#f6f8fa;padding:2px 6px;border-radius:4px}</style></head><body><h1>Argo-Singbox 配置文件</h1><p>按客户端选择订阅；查看明文节点请打开 <code>raw</code>。</p><ul><li><a href="auto">自动适配订阅</a></li><li><a href="raw">明文节点协议</a></li><li><a href="base64">Base64 通用订阅</a></li><li><a href="clash">Clash / Mihomo 配置</a></li><li><a href="proxies">Clash Proxy Provider</a></li><li><a href="sing-box">sing-box 配置</a></li><li><a href="shadowrocket">Shadowrocket 订阅</a></li></ul></body></html>';
+        return 200 '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Argo-Singbox 订阅面板</title><style>:root{color-scheme:light;--blue:#0969da;--blue2:#1d4ed8;--text:#172033;--muted:#5f6f89;--line:#d8e3f5;--bg:#fff}*{box-sizing:border-box}body{margin:0;background:var(--bg);font:16px/1.6 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text)}main{max-width:860px;margin:32px auto;padding:0 18px 40px}h1{margin:0 0 8px;color:var(--blue);font-size:28px;letter-spacing:0}p{margin:0 0 18px;color:var(--muted)}.qr{display:flex;gap:18px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:16px;margin:18px 0 20px}.qr img{width:168px;height:168px;image-rendering:pixelated}.qr a,.item{color:var(--blue);text-decoration:none}.qr a:hover,.item:hover{text-decoration:underline}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.item{display:block;border:1px solid var(--line);border-radius:8px;padding:12px 14px}.name{display:block;font-weight:700;color:var(--blue2)}.desc{display:block;margin-top:3px;color:var(--muted);font-size:13px}code{color:var(--blue);background:#eef6ff;padding:2px 6px;border-radius:5px}@media (max-width:560px){.qr{display:block}.qr img{width:150px;height:150px;margin-bottom:10px}}</style></head><body><main><h1>Argo-Singbox 订阅面板</h1><p>按客户端选择订阅。终端执行 <code>asb -n</code> 可查看订阅链接、自动适配 QR 和明文节点。</p><section class="qr"><a href="auto"><img src="auto-qr.svg" alt="自动适配订阅 QR"></a><div><span class="name">自动适配订阅 QR</span><span class="desc">扫码导入自动适配订阅；点击二维码打开订阅链接。</span><p><a href="auto">打开自动适配订阅</a></p></div></section><div class="grid"><a class="item" href="auto"><span class="name">自动适配订阅</span><span class="desc">根据客户端 User-Agent 返回合适格式</span></a><a class="item" href="raw"><span class="name">明文节点链接</span><span class="desc">逐行 vless / vmess / trojan 原始链接</span></a><a class="item" href="base64"><span class="name">Base64 通用订阅</span><span class="desc">V2rayN、NekoBox 等通用导入</span></a><a class="item" href="clash"><span class="name">Clash/Mihomo 订阅</span><span class="desc">完整 YAML 配置</span></a><a class="item" href="proxies"><span class="name">Clash Provider 订阅</span><span class="desc">仅代理节点列表</span></a><a class="item" href="sing-box"><span class="name">sing-box 订阅</span><span class="desc">JSON 出站配置</span></a><a class="item" href="shadowrocket"><span class="name">Shadowrocket 订阅</span><span class="desc">兼容 Shadowrocket 的 Base64 订阅</span></a></div></main></body></html>';
+    }
+    location = /${UUID}/auto-qr.svg {
+        default_type image/svg+xml;
+        alias ${SUB_AUTO_QR_FILE};
     }
     location = /${UUID}/auto {
         default_type text/plain;
@@ -633,7 +668,7 @@ EOF
 }
 
 generate_nodes() {
-  local old_umask vmess_json vmess_link tag protocol path port socks encoded_path first uri_server
+  local old_umask vmess_json vmess_link tag protocol path port socks encoded_path first uri_server auto_url
   ensure_nodes_config
   validate_nodes_config
   old_umask="$(umask)"
@@ -658,6 +693,8 @@ generate_nodes() {
   install -m 644 "$NODES_FILE" "$SUB_FILE"
   base64 -w 0 "$NODES_FILE" >"$SUB_BASE64_FILE"
   cp -f "$SUB_BASE64_FILE" "$SUB_SHADOWROCKET_FILE"
+  auto_url="https://${ARGO_DOMAIN}/${UUID}/auto"
+  qrencode -t SVG -o "$SUB_AUTO_QR_FILE" "$auto_url"
   printf 'proxies:\n' >"$SUB_CLASH_PROVIDER_FILE"
   while IFS='|' read -r tag protocol path port socks; do
     case "$protocol" in
@@ -693,7 +730,7 @@ generate_nodes() {
   printf ']}\n' >>"$SUB_SING_BOX_FILE"
   chmod 644 "$SUB_BASE64_FILE"
   chmod 644 "$SUB_CLASH_FILE" "$SUB_CLASH_PROVIDER_FILE" "$SUB_SING_BOX_FILE" \
-    "$SUB_SHADOWROCKET_FILE"
+    "$SUB_SHADOWROCKET_FILE" "$SUB_AUTO_QR_FILE"
   umask "$old_umask"
 }
 
@@ -794,19 +831,19 @@ health_check() {
 
 prompt_install_values() {
   local value endpoint
-  read -rp "请输入 Argo Token（必填）: " value
+  read_input "请输入 Argo Token（必填）: " value
   valid_argo_token "$value" || die "Argo Token 格式不正确。"
   ARGO_TOKEN="$value"
-  read -rp "请输入 Argo 域名（必填）${ARGO_DOMAIN:+ [${ARGO_DOMAIN}]}: " value
+  read_input "请输入 Argo 域名（必填）${ARGO_DOMAIN:+ [${ARGO_DOMAIN}]}: " value
   ARGO_DOMAIN="${value:-$ARGO_DOMAIN}"
   [[ -n "$ARGO_DOMAIN" ]] || die "Argo 域名不能为空。"
   [[ -n "$UUID" ]] || UUID="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || true)"
   [[ -n "$UUID" ]] || UUID="$(openssl rand -hex 16 | sed 's/^\(........\)\(....\)\(....\)\(....\)\(............\)$/\1-\2-\3-\4-\5/')"
-  read -rp "请输入 UUID [${UUID}]: " value
+  read_input "请输入 UUID [${UUID}]: " value
   UUID="${value:-$UUID}"
   [[ "${UUID,,}" =~ ^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$ ]] ||
     die "UUID 格式不正确。"
-  read -rp "请输入 Cloudflare 优选入口 域名/IP:端口 [${SERVER}:${SERVER_PORT}]: " endpoint
+  read_input "请输入 Cloudflare 优选入口 域名/IP:端口 [${SERVER}:${SERVER_PORT}]: " endpoint
   endpoint="${endpoint:-${SERVER}:${SERVER_PORT}}"
   parse_endpoint "$endpoint"
   [[ "$ARGO_DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || die "Argo 域名格式不正确。"
@@ -1070,8 +1107,13 @@ install_project() {
     yellow "${PROJECT_NAME} 文件已安装，但健康检查未全部通过；请先处理上述错误再使用节点。"
   fi
   section "运行摘要"
+  state_value "Argo 服务" "$(service_status "$ARGO_SERVICE")"
+  state_value "Sing-box 服务" "$(service_status "$SING_SERVICE")"
   key_value "Argo 域名" "$ARGO_DOMAIN"
   key_value "优选入口" "${SERVER}:${SERVER_PORT}"
+  key_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
+  key_value "组件版本" "$(component_versions)"
+  state_value "WARP 分流" "$(warp_status)"
   key_value "节点文件" "$NODES_FILE"
   key_value "管理命令" "$COMMAND_NAME"
   show_install_nodes
@@ -1142,13 +1184,13 @@ add_node_profile() {
   local tag protocol path port socks default_port
   begin_config_change
   default_port="$(next_node_port)"
-  read -rp "节点标签（字母/数字/_/-）: " tag
-  read -rp "协议（vless/vmess/trojan）: " protocol
+  read_input "节点标签（字母/数字/_/-）: " tag
+  read_input "协议（vless/vmess/trojan）: " protocol
   protocol="${protocol,,}"
-  read -rp "WS 路径（以 / 开头）: " path
-  read -rp "本地监听端口 [${default_port}]: " port
+  read_input "WS 路径（以 / 开头）: " path
+  read_input "本地监听端口 [${default_port}]: " port
   port="${port:-$default_port}"
-  read -rp "SOCKS5 出站（主机:端口:用户名:密码，留空为直连）: " socks
+  read_input "SOCKS5 出站（主机:端口:用户名:密码，留空为直连）: " socks
   [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || die "节点标签格式错误。"
   [[ "$protocol" =~ ^(vless|vmess|trojan)$ ]] || die "协议不受支持。"
   valid_path "$path" || die "WS 路径格式错误。"
@@ -1165,7 +1207,7 @@ add_node_profile() {
 change_origin_port() {
   local value temp next_port
   begin_config_change
-  read -rp "新的 Argo Tunnel 回源端口 [${ORIGIN_PORT}]: " value
+  read_input "新的 Argo Tunnel 回源端口 [${ORIGIN_PORT}]: " value
   value="${value:-$ORIGIN_PORT}"
   valid_port "$value" || die "端口格式错误。"
   next_port="$((10#$value + 1))"
@@ -1184,7 +1226,7 @@ delete_node_profile() {
   local tag temp
   list_node_profiles
   begin_config_change
-  read -rp "要删除的节点标签: " tag
+  read_input "要删除的节点标签: " tag
   awk -F'|' -v wanted="$tag" '$1 == wanted {found=1} END {exit !found}' "$NODES_CONFIG" ||
     die "未找到节点标签：${tag}"
   [[ "$(wc -l <"$NODES_CONFIG")" -gt 1 ]] || die "至少必须保留一个节点。"
@@ -1198,17 +1240,17 @@ delete_node_profile() {
 edit_node_profile() {
   local wanted tag protocol path port socks new_tag new_protocol new_path new_port new_socks temp
   list_node_profiles
-  read -rp "要修改的节点标签: " wanted
+  read_input "要修改的节点标签: " wanted
   while IFS='|' read -r tag protocol path port socks; do
     [[ "$tag" == "$wanted" ]] && break
   done <"$NODES_CONFIG"
   [[ "${tag:-}" == "$wanted" ]] || die "未找到节点标签：${wanted}"
   begin_config_change
-  read -rp "新节点标签 [${tag}]: " new_tag
-  read -rp "新协议 [${protocol}]（vless/vmess/trojan）: " new_protocol
-  read -rp "新 WS 路径 [${path}]: " new_path
-  read -rp "新本地端口 [${port}]: " new_port
-  read -rp "新 SOCKS5 [${socks:-direct}]（留空保持，输入 - 改为直连）: " new_socks
+  read_input "新节点标签 [${tag}]: " new_tag
+  read_input "新协议 [${protocol}]（vless/vmess/trojan）: " new_protocol
+  read_input "新 WS 路径 [${path}]: " new_path
+  read_input "新本地端口 [${port}]: " new_port
+  read_input "新 SOCKS5 [${socks:-direct}]（留空保持，输入 - 改为直连）: " new_socks
   tag="${new_tag:-$tag}"; protocol="${new_protocol:-$protocol}"
   protocol="${protocol,,}"; path="${new_path:-$path}"; port="${new_port:-$port}"
   [[ "$new_socks" == "-" ]] && socks="" || socks="${new_socks:-$socks}"
@@ -1246,10 +1288,10 @@ configure_warp() {
     case "$choice" in
       1)
         install_cloudflare_warp
-        read -rp "WARP 本地 SOCKS5 端口 [${WARP_PROXY_PORT}]: " port
+        read_input "WARP 本地 SOCKS5 端口 [${WARP_PROXY_PORT}]: " port
         port="${port:-$WARP_PROXY_PORT}"
         valid_port "$port" || die "WARP 代理端口无效。"
-        read -rp "走 WARP 的网址/域名（逗号分隔）[${WARP_DOMAINS:-无}]: " targets
+        read_input "走 WARP 的网址/域名（逗号分隔）[${WARP_DOMAINS:-无}]: " targets
         targets="${targets:-$WARP_DOMAINS}"
         targets="$(normalize_warp_domains "$targets")"
         systemctl enable --now warp-svc >/dev/null 2>&1 || die "无法启动 warp-svc。"
@@ -1264,8 +1306,8 @@ configure_warp() {
         ;;
       2)
         [[ "$WARP_ENABLED" == "1" ]] || die "请先启用 WARP 分流。"
-        printf '已有 WARP 域名：%s\n' "$WARP_DOMAINS"
-        read -rp "要添加的网址/域名（可用逗号分隔）: " targets
+        key_value "已有域名" "$WARP_DOMAINS"
+        read_input "要添加的网址/域名（可用逗号分隔）: " targets
         targets="$(normalize_warp_domains "$targets")"
         begin_config_change
         WARP_DOMAINS="$(normalize_warp_domains "${WARP_DOMAINS},${targets}")"
@@ -1273,7 +1315,7 @@ configure_warp() {
         ;;
       3)
         [[ "$WARP_ENABLED" == "1" ]] || die "WARP 分流尚未启用。"
-        read -rp "要删除的网址或域名: " domain
+        read_input "要删除的网址或域名: " domain
         normalized="$(normalize_warp_domains "$domain")"
         [[ "$normalized" != *,* ]] || die "每次只能删除一个域名。"
         output=""; old_ifs="$IFS"; IFS=','
@@ -1322,15 +1364,15 @@ manage_config() {
     case "$choice" in
       1)
         begin_config_change
-        read -rp "新 Token [留空保持]: " value; ARGO_TOKEN="${value:-$ARGO_TOKEN}"
-        read -rp "新 Argo 域名 [${ARGO_DOMAIN}]: " value; ARGO_DOMAIN="${value:-$ARGO_DOMAIN}"
+        read_input "新 Token [留空保持]: " value; ARGO_TOKEN="${value:-$ARGO_TOKEN}"
+        read_input "新 Argo 域名 [${ARGO_DOMAIN}]: " value; ARGO_DOMAIN="${value:-$ARGO_DOMAIN}"
         valid_argo_token "$ARGO_TOKEN" && [[ "$ARGO_DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] ||
           die "Token 或域名无效。"
         apply_runtime_config
         ;;
-      2) begin_config_change; read -rp "新优选入口 域名/IP:端口: " endpoint; parse_endpoint "$endpoint"; apply_runtime_config ;;
+      2) begin_config_change; read_input "新优选入口 域名/IP:端口: " endpoint; parse_endpoint "$endpoint"; apply_runtime_config ;;
       3) change_origin_port ;;
-      4) begin_config_change; read -rp "新 UUID: " value; valid_uuid "$value" || die "UUID 格式错误。"; UUID="$value"; apply_runtime_config ;;
+      4) begin_config_change; read_input "新 UUID: " value; valid_uuid "$value" || die "UUID 格式错误。"; UUID="$value"; apply_runtime_config ;;
       5) list_node_profiles ;;
       6) add_node_profile ;;
       7) edit_node_profile ;;
@@ -1347,7 +1389,7 @@ backup_project() {
   require_root
   [[ -f "$MANAGED_FILE" ]] || die "缺少项目所有权标记，拒绝备份。"
   if [[ -z "$output" ]]; then
-    read -rp "请输入备份文件夹或 .tar.gz 路径 [${BACKUP_DIR}]: " output
+    read_input "请输入备份文件夹或 .tar.gz 路径 [${BACKUP_DIR}]: " output
     output="${output:-$BACKUP_DIR}"
   fi
   if [[ "$output" != *.tar.gz ]]; then
@@ -1398,7 +1440,7 @@ restore_project() {
   local archive="${1:-}" stage old_dir archive_copy archive_name latest
   require_root
   if [[ -z "$archive" ]]; then
-    read -rp "请输入备份文件或目录 [${BACKUP_DIR}，留空使用最新备份]: " archive
+    read_input "请输入备份文件或目录 [${BACKUP_DIR}，留空使用最新备份]: " archive
     archive="${archive:-$BACKUP_DIR}"
   fi
   if [[ -d "$archive" ]]; then
@@ -1478,7 +1520,7 @@ doctor() {
   [[ -f "/etc/systemd/system/${ARGO_SERVICE}.service" ]] &&
     grep -Fq -- "--token ${ARGO_TOKEN}" "/etc/systemd/system/${ARGO_SERVICE}.service" && token_in_unit=1
   ((token_in_unit)) && green "Token：已配置且服务文件一致" || { red "Token：缺失或服务文件未同步"; failed=1; }
-  key_value "组件版本" "脚本 v${VERSION} · Sing-box $(local_sing_box_version || echo 未安装) · Cloudflared $(local_cloudflared_version || echo 未安装)"
+  key_value "组件版本" "$(component_versions)"
   if [[ "$WARP_ENABLED" == "1" ]]; then
     if systemctl is-active --quiet warp-svc &&
       ss -lntH "sport = :${WARP_PROXY_PORT}" | grep -q .; then
@@ -1520,7 +1562,7 @@ show_nodes() {
   link_value "sing-box" "https://${ARGO_DOMAIN}/${UUID}/sing-box"
   link_value "Shadowrocket" "https://${ARGO_DOMAIN}/${UUID}/shadowrocket"
   if command -v qrencode >/dev/null 2>&1; then
-    section "自动适配订阅二维码"
+    section "自动适配订阅 QR"
     qrencode -t ANSIUTF8 "$auto_url"
   fi
   section "明文节点"
@@ -1562,17 +1604,19 @@ sync_versions() {
   new_sing="$wanted_sing"
   new_argo="$wanted_argo"
   section "Argo / cloudflared 核心"
-  printf '当前版本：%s\n目标版本：%s\n' "${old_argo:-未安装}" "${new_argo:-未知}"
+  key_value "当前版本" "${old_argo:-未安装}"
+  key_value "目标版本" "${new_argo:-未知}"
   if [[ "$old_argo" != "$new_argo" ]]; then
-    read -rp "是否更新 Argo / cloudflared？[y/N]: " answer
+    read_input "是否更新 Argo / cloudflared？[y/N]: " answer
     [[ "$answer" =~ ^[Yy]$ ]] && update_argo=1
   else
     green "Argo / cloudflared 已是目标版本。"
   fi
   section "Sing-box 核心"
-  printf '当前版本：%s\n目标版本：%s\n' "${old_sing:-未安装}" "${new_sing:-未知}"
+  key_value "当前版本" "${old_sing:-未安装}"
+  key_value "目标版本" "${new_sing:-未知}"
   if [[ "$old_sing" != "$new_sing" ]]; then
-    read -rp "是否更新 Sing-box？[y/N]: " answer
+    read_input "是否更新 Sing-box？[y/N]: " answer
     [[ "$answer" =~ ^[Yy]$ ]] && update_sing=1
   else
     green "Sing-box 已是目标版本。"
@@ -1657,21 +1701,21 @@ uninstall_project() {
   [[ "$resolved_work_dir" == "$WORK_DIR" ]] ||
     die "项目目录解析结果异常，拒绝递归删除：${WORK_DIR}"
   yellow "将删除本项目服务、私有 Argo/cloudflared 与 sing-box 核心、配置、订阅、备份和命令入口。"
-  read -rp "确认彻底卸载 ${PROJECT_NAME}？[y/N]: " answer
+  read_input "确认彻底卸载 ${PROJECT_NAME}？[y/N]: " answer
   [[ "$answer" =~ ^[Yy]$ ]] || { yellow "已取消卸载。"; return 0; }
   if command -v nginx >/dev/null 2>&1 ||
     dpkg-query -W -f='${Status}' nginx 2>/dev/null | grep -q 'install ok installed'; then
-    read -rp "同时卸载 Nginx？可能被其他网站使用，默认保留 [y/N]: " answer
+    read_input "同时卸载 Nginx？可能被其他网站使用，默认保留 [y/N]: " answer
     [[ "$answer" =~ ^[Yy]$ ]] && remove_nginx=1
   fi
   if command -v warp-cli >/dev/null 2>&1 ||
     dpkg-query -W -f='${Status}' cloudflare-warp 2>/dev/null | grep -q 'install ok installed' ||
     [[ -e /etc/apt/sources.list.d/cloudflare-client.list ||
       -e /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg ]]; then
-    read -rp "同时卸载 Cloudflare WARP 客户端、注册与软件源？默认保留 [y/N]: " answer
+    read_input "同时卸载 Cloudflare WARP 客户端、注册与软件源？默认保留 [y/N]: " answer
     [[ "$answer" =~ ^[Yy]$ ]] && remove_warp=1
   fi
-  read -rp "同时卸载脚本使用的通用工具 curl/ca-certificates/openssl/tar/qrencode/gnupg？可能被其他程序使用，默认保留 [y/N]: " answer
+  read_input "同时卸载脚本使用的通用工具 curl/ca-certificates/openssl/tar/qrencode/gnupg？可能被其他程序使用，默认保留 [y/N]: " answer
   [[ "$answer" =~ ^[Yy]$ ]] && remove_tools=1
 
   systemctl disable --now "$SING_SERVICE" "$ARGO_SERVICE" 2>/dev/null || true
@@ -1687,7 +1731,7 @@ uninstall_project() {
   remove_legacy_symlink
   rm -f "$ENV_FILE" "$NODES_CONFIG" "$SING_BOX_CONFIG" "$LOCAL_SCRIPT" "$MANAGED_FILE" \
     "$SUB_FILE" "$SUB_BASE64_FILE" "$SUB_CLASH_FILE" "$SUB_CLASH_PROVIDER_FILE" \
-    "$SUB_SING_BOX_FILE" "$SUB_SHADOWROCKET_FILE" \
+    "$SUB_SING_BOX_FILE" "$SUB_SHADOWROCKET_FILE" "$SUB_AUTO_QR_FILE" \
     "$BIN_DIR/sing-box" "$BIN_DIR/cloudflared"
   rm -rf "$BACKUP_DIR"
   rm -rf "$resolved_work_dir"
@@ -1722,12 +1766,15 @@ menu() {
     load_env
     control_panel
     subsection "运行概览"
-    key_value "Argo 服务" "$(service_status "$ARGO_SERVICE")"
-    key_value "Sing-box 服务" "$(service_status "$SING_SERVICE")"
+    state_value "Argo 服务" "$(service_status "$ARGO_SERVICE")"
+    state_value "Sing-box 服务" "$(service_status "$SING_SERVICE")"
     if [[ -n "$ARGO_DOMAIN" ]]; then
       key_value "Argo 域名" "$ARGO_DOMAIN"
       key_value "优选入口" "${SERVER}:${SERVER_PORT}"
+      key_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
     fi
+    key_value "组件版本" "$(component_versions)"
+    state_value "WARP 分流" "$(warp_status)"
     section "日常管理"
     menu_item 1 "查看节点信息" "${COMMAND_NAME} -n"
     menu_item 2 "开启/关闭 Argo" "${COMMAND_NAME} -a"
