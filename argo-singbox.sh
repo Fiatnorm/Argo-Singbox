@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.11.7"
+VERSION="2.11.9"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
 PROJECT_REPO="Fiatnorm/Argo-Singbox"
@@ -57,6 +57,10 @@ fi
 ui_line() {
   local char="${1:--}"
   printf '%s%*s%s\n' "$C_BRIGHT_BLUE" "$UI_WIDTH" '' "$C_RESET" | tr ' ' "$char"
+}
+white_line() {
+  local char="${1:--}"
+  printf '%s%*s%s\n' "$C_WHITE" "$UI_WIDTH" '' "$C_RESET" | tr ' ' "$char"
 }
 green() { printf '%s✓ %s%s\n' "$C_BRIGHT_GREEN" "$*" "$C_RESET"; }
 yellow() { printf '%s! %s%s\n' "$C_BRIGHT_YELLOW" "$*" "$C_RESET"; }
@@ -155,8 +159,20 @@ key_value() {
   pad_right "$1" 13
   printf '%s  %s%s%s\n' "$C_RESET" "$C_WHITE" "$2" "$C_RESET"
 }
+ip_value() {
+  printf '%s' "$C_BRIGHT_BLUE"
+  pad_right "$1" 13
+  printf '%s  %s%s%s\n' "$C_RESET" "$C_BRIGHT_MAGENTA" "$2" "$C_RESET"
+}
+endpoint_value() {
+  local label="$1" host="$2" port="$3" color="$C_WHITE"
+  [[ "$host" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ || "$host" =~ ^[0-9A-Fa-f:]+$ ]] && color="$C_BRIGHT_MAGENTA"
+  printf '%s' "$C_BRIGHT_BLUE"
+  pad_right "$label" 13
+  printf '%s  %s%s:%s%s\n' "$C_RESET" "$color" "$host" "$port" "$C_RESET"
+}
 state_value() {
-  local color="$C_BRIGHT_YELLOW"
+  local color="$C_BRIGHT_YELLOW" value="$2" prefix endpoint
   case "$2" in
     运行中*) color="$C_BRIGHT_GREEN" ;;
     未启用|已停止|未安装) color="$C_BRIGHT_YELLOW" ;;
@@ -164,19 +180,25 @@ state_value() {
   esac
   printf '%s' "$C_BRIGHT_BLUE"
   pad_right "$1" 13
-  printf '%s  %s%s%s\n' "$C_RESET" "$color" "$2" "$C_RESET"
+  if [[ "$value" =~ ^(.*)(127\.0\.0\.1:[0-9]+)$ ]]; then
+    prefix="${BASH_REMATCH[1]}"; endpoint="${BASH_REMATCH[2]}"
+    printf '%s  %s%s%s%s%s\n' "$C_RESET" "$color" "$prefix" "$C_BRIGHT_MAGENTA" "$endpoint" "$C_RESET"
+  else
+    printf '%s  %s%s%s\n' "$C_RESET" "$color" "$value" "$C_RESET"
+  fi
 }
 link_value() {
   printf '%s' "$C_BRIGHT_BLUE"
   pad_right "$1" 14
   printf '%s  %s%s%s\n' "$C_RESET" "$C_WHITE" "$2" "$C_RESET"
+  white_line
 }
 prompt() { printf '%s%s› %s%s' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$*" "$C_RESET"; }
 read_choice() { prompt "$1"; IFS= read -r REPLY; REPLY="${REPLY%$'\r'}"; }
 read_input() { prompt "$1"; IFS= read -r "$2"; printf -v "$2" '%s' "${!2%$'\r'}"; }
 is_exit_input() {
   case "${1:-}" in
-    0|q|Q|quit|exit|返回|退出) return 0 ;;
+    0) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -1158,8 +1180,8 @@ install_project() {
   state_value "Argo 服务" "$(service_status "$ARGO_SERVICE")"
   state_value "Sing-box 服务" "$(service_status "$SING_SERVICE")"
   key_value "Argo 域名" "$ARGO_DOMAIN"
-  key_value "优选入口" "${SERVER}:${SERVER_PORT}"
-  key_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
+  endpoint_value "优选入口" "$SERVER" "$SERVER_PORT"
+  ip_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
   key_value "组件版本" "$(component_versions)"
   state_value "WARP 分流" "$(warp_status)"
   key_value "节点文件" "$NODES_FILE"
@@ -1233,7 +1255,7 @@ list_node_profiles() {
 add_node_profile() {
   local tag protocol path port socks default_port
   brand "${PROJECT_NAME} · 添加节点"
-  key_value "退出方式" "输入 0/q/返回/退出"
+  key_value "退出方式" "输入 0 返回"
   begin_config_change
   default_port="$(next_node_port)"
   read_input "节点标签（字母/数字/_/-）: " tag
@@ -1264,7 +1286,7 @@ add_node_profile() {
 change_origin_port() {
   local value temp next_port
   brand "${PROJECT_NAME} · 修改回源端口"
-  key_value "退出方式" "输入 0/q/返回/退出"
+  key_value "退出方式" "输入 0 返回"
   begin_config_change
   read_input "新的 Argo Tunnel 回源端口 [${ORIGIN_PORT}]: " value
   is_exit_input "$value" && { cancel_config_change; return 0; }
@@ -1286,7 +1308,7 @@ delete_node_profile() {
   local tag temp answer
   brand "${PROJECT_NAME} · 删除节点"
   list_node_profiles
-  key_value "退出方式" "输入 0/q/返回/退出"
+  key_value "退出方式" "输入 0 返回"
   begin_config_change
   read_input "要删除的节点标签: " tag
   is_exit_input "$tag" && { cancel_config_change; return 0; }
@@ -1307,7 +1329,7 @@ edit_node_profile() {
   local wanted tag protocol path port socks new_tag new_protocol new_path new_port new_socks temp
   brand "${PROJECT_NAME} · 修改节点"
   list_node_profiles
-  key_value "退出方式" "输入 0/q/返回/退出"
+  key_value "退出方式" "输入 0 返回"
   read_input "要修改的节点标签: " wanted
   is_exit_input "$wanted" && { return_notice; return 0; }
   while IFS='|' read -r tag protocol path port socks; do
@@ -1362,7 +1384,7 @@ configure_warp() {
     read_choice "请选择："; choice="$REPLY"
     case "$choice" in
       1)
-        key_value "退出方式" "输入 0/q/返回/退出"
+        key_value "退出方式" "输入 0 返回"
         read_input "WARP 本地 SOCKS5 端口 [${WARP_PROXY_PORT}]: " port
         is_exit_input "$port" && { return_notice; continue; }
         port="${port:-$WARP_PROXY_PORT}"
@@ -1385,7 +1407,7 @@ configure_warp() {
       2)
         [[ "$WARP_ENABLED" == "1" ]] || die "请先启用 WARP 分流。"
         key_value "已有域名" "$WARP_DOMAINS"
-        key_value "退出方式" "输入 0/q/返回/退出"
+        key_value "退出方式" "输入 0 返回"
         read_input "要添加的网址/域名（可用逗号分隔）: " targets
         is_exit_input "$targets" && { return_notice; continue; }
         targets="$(normalize_warp_domains "$targets")"
@@ -1395,7 +1417,7 @@ configure_warp() {
         ;;
       3)
         [[ "$WARP_ENABLED" == "1" ]] || die "WARP 分流尚未启用。"
-        key_value "退出方式" "输入 0/q/返回/退出"
+        key_value "退出方式" "输入 0 返回"
         read_input "要删除的网址或域名: " domain
         is_exit_input "$domain" && { return_notice; continue; }
         normalized="$(normalize_warp_domains "$domain")"
@@ -1450,7 +1472,7 @@ manage_config() {
     case "$choice" in
       1)
         begin_config_change
-        key_value "退出方式" "输入 0/q/返回/退出"
+        key_value "退出方式" "输入 0 返回"
         read_input "新 Token [留空保持]: " value
         is_exit_input "$value" && { cancel_config_change; continue; }
         ARGO_TOKEN="${value:-$ARGO_TOKEN}"
@@ -1463,7 +1485,7 @@ manage_config() {
         ;;
       2)
         begin_config_change
-        key_value "退出方式" "输入 0/q/返回/退出"
+        key_value "退出方式" "输入 0 返回"
         read_input "新优选入口 域名/IP:端口: " endpoint
         is_exit_input "$endpoint" && { cancel_config_change; continue; }
         parse_endpoint "$endpoint"
@@ -1472,7 +1494,7 @@ manage_config() {
       3) change_origin_port ;;
       4)
         begin_config_change
-        key_value "退出方式" "输入 0/q/返回/退出"
+        key_value "退出方式" "输入 0 返回"
         read_input "新 UUID: " value
         is_exit_input "$value" && { cancel_config_change; continue; }
         valid_uuid "$value" || die "UUID 格式错误。"
@@ -1498,7 +1520,7 @@ backup_project() {
   brand "${PROJECT_NAME} · 备份节点配置"
   key_value "节点配置" "$NODES_CONFIG"
   key_value "默认目录" "$BACKUP_DIR"
-  key_value "退出方式" "输入 0/q/返回/退出"
+  key_value "退出方式" "输入 0 返回"
   validate_nodes_config
   if [[ -z "$output" ]]; then
     read_input "请输入节点备份文件夹或 .tar.gz 路径 [${BACKUP_DIR}]: " output
@@ -1569,7 +1591,7 @@ restore_project() {
   local archive="${1:-}" stage archive_copy latest nodes_source
   require_root
   brand "${PROJECT_NAME} · 恢复节点配置"
-  key_value "退出方式" "输入 0/q/返回/退出"
+  key_value "退出方式" "输入 0 返回"
   if [[ -z "$archive" ]]; then
     read_input "请输入节点备份文件或目录 [${BACKUP_DIR}，留空使用最新备份]: " archive
     is_exit_input "$archive" && { return_notice; return 0; }
@@ -1645,11 +1667,11 @@ doctor() {
   memory="$(free -m | awk '/^Mem:/{printf "%s/%s MiB (%.0f%%)",$3,$2,$3*100/$2}')"
   brand "${PROJECT_NAME} · 完整诊断"
   subsection "运行概览"
-  key_value "公网 IP" "${ip:-未知}"
+  ip_value "公网 IP" "${ip:-未知}"
   key_value "脚本版本" "v${VERSION}"
   key_value "内存" "${memory:-未知}"
-  key_value "优选入口" "${SERVER:-未知}:${SERVER_PORT:-未知}"
-  key_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
+  endpoint_value "优选入口" "${SERVER:-未知}" "${SERVER_PORT:-未知}"
+  ip_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
   section "配置与组件"
   if validate_nodes_config && valid_uuid "$UUID" && valid_argo_token "$ARGO_TOKEN" &&
     [[ -n "$ARGO_DOMAIN" ]]; then
@@ -1667,7 +1689,8 @@ doctor() {
   if [[ "$WARP_ENABLED" == "1" ]]; then
     if systemctl is-active --quiet warp-svc &&
       ss -lntH "sport = :${WARP_PROXY_PORT}" | grep -q .; then
-      green "WARP：本地代理运行于 127.0.0.1:${WARP_PROXY_PORT}"
+      printf '%s✓ WARP：本地代理运行于 %s127.0.0.1:%s%s\n' \
+        "$C_BRIGHT_GREEN" "$C_BRIGHT_MAGENTA" "$WARP_PROXY_PORT" "$C_RESET"
     else
       red "WARP：服务或本地代理端口异常"
       failed=1
@@ -1696,6 +1719,7 @@ show_nodes() {
   [[ -f "$NODES_FILE" ]] || die "节点文件不存在，请先安装。"
   auto_url="https://${ARGO_DOMAIN}/${UUID}/auto"
   brand "${PROJECT_NAME} · 节点与订阅"
+  UI_TIGHT_SECTION=1
   subsection "配置文件索引"
   link_value "文件索引" "https://${ARGO_DOMAIN}/${UUID}/"
   link_value "自动适配" "$auto_url"
@@ -1940,8 +1964,8 @@ menu() {
     state_value "Sing-box 服务" "$(service_status "$SING_SERVICE")"
     if [[ -n "$ARGO_DOMAIN" ]]; then
       key_value "Argo 域名" "$ARGO_DOMAIN"
-      key_value "优选入口" "${SERVER}:${SERVER_PORT}"
-      key_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
+      endpoint_value "优选入口" "$SERVER" "$SERVER_PORT"
+      ip_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
     fi
     key_value "组件版本" "$(component_versions)"
     state_value "WARP 分流" "$(warp_status)"
