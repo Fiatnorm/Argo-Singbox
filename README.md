@@ -1,4 +1,4 @@
-# Argo-Singbox v2.11.7
+# Argo-Singbox v2.12.1
 
 面向固定 Argo Token 隧道的中文轻量安装脚本，提供：
 
