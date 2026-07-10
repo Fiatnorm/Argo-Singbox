@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.12.0"
+VERSION="2.12.1"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
 PROJECT_REPO="Fiatnorm/Argo-Singbox"
@@ -163,11 +163,12 @@ ip_value() {
   printf '%s  %s%s%s\n' "$C_RESET" "$C_BRIGHT_MAGENTA" "$2" "$C_RESET"
 }
 endpoint_value() {
-  local label="$1" host="$2" port="$3" color="$C_WHITE"
+  local label="$1" host="$2" port="$3" color="$C_WHITE" display_host="$2"
   [[ "$host" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ || "$host" =~ ^[0-9A-Fa-f:]+$ ]] && color="$C_BRIGHT_MAGENTA"
+  [[ "$host" == *:* && "$host" != \[*\] ]] && display_host="[${host}]"
   printf '%s' "$C_BRIGHT_BLUE"
   pad_right "$label" 13
-  printf '%s  %s%s:%s%s\n' "$C_RESET" "$color" "$host" "$port" "$C_RESET"
+  printf '%s  %s%s:%s%s\n' "$C_RESET" "$color" "$display_host" "$port" "$C_RESET"
 }
 state_value() {
   local color="$C_BRIGHT_YELLOW" value="$2" prefix endpoint
@@ -269,6 +270,20 @@ valid_uuid() { [[ "${1,,}" =~ ^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[
 valid_path() { [[ "$1" =~ ^/[A-Za-z0-9._~-]+$ ]]; }
 valid_port() { [[ "$1" =~ ^[0-9]+$ ]] && ((10#$1 >= 1 && 10#$1 <= 65535)); }
 valid_argo_token() { [[ "$1" =~ ^[A-Za-z0-9._~+/=-]+$ ]]; }
+valid_domain() { [[ "$1" =~ ^([A-Za-z0-9-]+\.)*[A-Za-z0-9-]+$ ]]; }
+
+validate_environment() {
+  valid_uuid "$UUID" || die "UUID 格式不正确。"
+  valid_argo_token "$ARGO_TOKEN" || die "Argo Token 格式不正确。"
+  valid_domain "$ARGO_DOMAIN" || die "Argo 域名格式不正确。"
+  [[ "$SERVER" =~ ^[A-Za-z0-9._:-]+$ ]] || die "优选入口格式不正确。"
+  valid_port "$SERVER_PORT" || die "优选入口端口无效。"
+  valid_port "$ORIGIN_PORT" || die "Argo 回源端口无效。"
+  if [[ "$WARP_ENABLED" == "1" ]]; then
+    valid_port "$WARP_PROXY_PORT" || die "WARP 本地代理端口无效。"
+    normalize_warp_domains "$WARP_DOMAINS" >/dev/null
+  fi
+}
 
 normalize_warp_domains() {
   local input="$1" item host output="" seen="," old_ifs="$IFS"
@@ -558,6 +573,7 @@ local_cloudflared_version() {
 write_sing_box_config() {
   local tag protocol path port socks first=1 values host proxy_port username password
   ensure_nodes_config
+  validate_environment
   validate_nodes_config
   printf '{"log":{"level":"info","timestamp":true},"inbounds":[\n' >"$SING_BOX_CONFIG"
   while IFS='|' read -r tag protocol path port socks; do
@@ -604,6 +620,7 @@ write_sing_box_config() {
 write_nginx_config() {
   local tag protocol path port socks
   ensure_nodes_config
+  validate_environment
   validate_nodes_config
   cat >"$NGINX_CONFIG" <<EOF
 map \$http_upgrade \$connection_upgrade {
@@ -737,6 +754,7 @@ EOF
 generate_nodes() {
   local old_umask vmess_json vmess_link tag protocol path port socks encoded_path first uri_server auto_url
   ensure_nodes_config
+  validate_environment
   validate_nodes_config
   old_umask="$(umask)"
   umask 077
@@ -913,7 +931,7 @@ prompt_install_values() {
   read_input "请输入 Cloudflare 优选入口 域名/IP:端口 [${SERVER}:${SERVER_PORT}]: " endpoint
   endpoint="${endpoint:-${SERVER}:${SERVER_PORT}}"
   parse_endpoint "$endpoint"
-  [[ "$ARGO_DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || die "Argo 域名格式不正确。"
+  valid_domain "$ARGO_DOMAIN" || die "Argo 域名格式不正确。"
 }
 
 parse_endpoint() {
@@ -1209,6 +1227,9 @@ begin_config_change() {
   CONFIG_SNAPSHOT="$(mktemp -d)"
   cp -a "$ENV_FILE" "$NODES_CONFIG" "$SING_BOX_CONFIG" "$NGINX_CONFIG" \
     "/etc/systemd/system/${SING_SERVICE}.service" "/etc/systemd/system/${ARGO_SERVICE}.service" \
+    "$NODES_FILE" "$SUB_FILE" "$SUB_BASE64_FILE" "$SUB_CLASH_FILE" \
+    "$SUB_CLASH_PROVIDER_FILE" "$SUB_SING_BOX_FILE" "$SUB_SHADOWROCKET_FILE" \
+    "$SUB_AUTO_QR_FILE" \
     "$CONFIG_SNAPSHOT/" 2>/dev/null || true
 }
 
@@ -1217,9 +1238,9 @@ apply_runtime_config() {
   [[ -n "$snapshot" && -d "$snapshot" ]] || die "缺少配置事务快照。"
   info "正在校验配置并重启服务..."
   if save_env && write_sing_box_config && write_nginx_config && write_services &&
+    generate_nodes &&
     systemctl daemon-reload &&
     systemctl restart nginx "$SING_SERVICE" "$ARGO_SERVICE" && wait_for_services; then
-    generate_nodes
     rm -rf "$snapshot"
     green "配置已校验并生效。"
     return 0
@@ -1231,7 +1252,18 @@ apply_runtime_config() {
   [[ -f "$snapshot/argo-singbox.conf" ]] && install -m 644 "$snapshot/argo-singbox.conf" "$NGINX_CONFIG"
   [[ -f "$snapshot/${SING_SERVICE}.service" ]] && install -m 600 "$snapshot/${SING_SERVICE}.service" "/etc/systemd/system/${SING_SERVICE}.service"
   [[ -f "$snapshot/${ARGO_SERVICE}.service" ]] && install -m 600 "$snapshot/${ARGO_SERVICE}.service" "/etc/systemd/system/${ARGO_SERVICE}.service"
+  rm -f "$NODES_FILE" "$SUB_FILE" "$SUB_BASE64_FILE" "$SUB_CLASH_FILE" \
+    "$SUB_CLASH_PROVIDER_FILE" "$SUB_SING_BOX_FILE" "$SUB_SHADOWROCKET_FILE" "$SUB_AUTO_QR_FILE"
+  [[ -f "$snapshot/$(basename "$NODES_FILE")" ]] && install -m 600 "$snapshot/$(basename "$NODES_FILE")" "$NODES_FILE"
+  [[ -f "$snapshot/$(basename "$SUB_FILE")" ]] && install -m 644 "$snapshot/$(basename "$SUB_FILE")" "$SUB_FILE"
+  [[ -f "$snapshot/$(basename "$SUB_BASE64_FILE")" ]] && install -m 644 "$snapshot/$(basename "$SUB_BASE64_FILE")" "$SUB_BASE64_FILE"
+  [[ -f "$snapshot/$(basename "$SUB_CLASH_FILE")" ]] && install -m 644 "$snapshot/$(basename "$SUB_CLASH_FILE")" "$SUB_CLASH_FILE"
+  [[ -f "$snapshot/$(basename "$SUB_CLASH_PROVIDER_FILE")" ]] && install -m 644 "$snapshot/$(basename "$SUB_CLASH_PROVIDER_FILE")" "$SUB_CLASH_PROVIDER_FILE"
+  [[ -f "$snapshot/$(basename "$SUB_SING_BOX_FILE")" ]] && install -m 644 "$snapshot/$(basename "$SUB_SING_BOX_FILE")" "$SUB_SING_BOX_FILE"
+  [[ -f "$snapshot/$(basename "$SUB_SHADOWROCKET_FILE")" ]] && install -m 644 "$snapshot/$(basename "$SUB_SHADOWROCKET_FILE")" "$SUB_SHADOWROCKET_FILE"
+  [[ -f "$snapshot/$(basename "$SUB_AUTO_QR_FILE")" ]] && install -m 644 "$snapshot/$(basename "$SUB_AUTO_QR_FILE")" "$SUB_AUTO_QR_FILE"
   rm -rf "$snapshot"
+  load_env
   systemctl daemon-reload
   systemctl restart nginx "$SING_SERVICE" "$ARGO_SERVICE" 2>/dev/null || true
   die "配置未生效，已恢复修改前文件。"
