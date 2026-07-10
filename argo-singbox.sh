@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.11.9"
+VERSION="2.12.0"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
 PROJECT_REPO="Fiatnorm/Argo-Singbox"
@@ -56,11 +56,8 @@ else
 fi
 ui_line() {
   local char="${1:--}"
+  UI_LAST_WAS_LINE=1
   printf '%s%*s%s\n' "$C_BRIGHT_BLUE" "$UI_WIDTH" '' "$C_RESET" | tr ' ' "$char"
-}
-white_line() {
-  local char="${1:--}"
-  printf '%s%*s%s\n' "$C_WHITE" "$UI_WIDTH" '' "$C_RESET" | tr ' ' "$char"
 }
 green() { printf '%s✓ %s%s\n' "$C_BRIGHT_GREEN" "$*" "$C_RESET"; }
 yellow() { printf '%s! %s%s\n' "$C_BRIGHT_YELLOW" "$*" "$C_RESET"; }
@@ -146,11 +143,12 @@ component_versions() {
     "$(local_cloudflared_version 2>/dev/null || printf '未安装')"
 }
 section() {
-  if [[ "${UI_TIGHT_SECTION:-0}" == "1" ]]; then
+  if [[ "${UI_TIGHT_SECTION:-0}" == "1" || "${UI_LAST_WAS_LINE:-0}" == "1" ]]; then
     UI_TIGHT_SECTION=0
   else
     printf '\n'
   fi
+  UI_LAST_WAS_LINE=0
   printf '%s%s▸ %s%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$*" "$C_RESET"
 }
 subsection() { section "$*"; }
@@ -190,8 +188,7 @@ state_value() {
 link_value() {
   printf '%s' "$C_BRIGHT_BLUE"
   pad_right "$1" 14
-  printf '%s  %s%s%s\n' "$C_RESET" "$C_WHITE" "$2" "$C_RESET"
-  white_line
+  printf '%s  %s%s%s%s\n' "$C_RESET" "$C_WHITE" "$C_UNDERLINE" "$2" "$C_RESET"
 }
 prompt() { printf '%s%s› %s%s' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$*" "$C_RESET"; }
 read_choice() { prompt "$1"; IFS= read -r REPLY; REPLY="${REPLY%$'\r'}"; }
@@ -1181,7 +1178,7 @@ install_project() {
   state_value "Sing-box 服务" "$(service_status "$SING_SERVICE")"
   key_value "Argo 域名" "$ARGO_DOMAIN"
   endpoint_value "优选入口" "$SERVER" "$SERVER_PORT"
-  ip_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
+  key_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
   key_value "组件版本" "$(component_versions)"
   state_value "WARP 分流" "$(warp_status)"
   key_value "节点文件" "$NODES_FILE"
@@ -1671,7 +1668,7 @@ doctor() {
   key_value "脚本版本" "v${VERSION}"
   key_value "内存" "${memory:-未知}"
   endpoint_value "优选入口" "${SERVER:-未知}" "${SERVER_PORT:-未知}"
-  ip_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
+  key_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
   section "配置与组件"
   if validate_nodes_config && valid_uuid "$UUID" && valid_argo_token "$ARGO_TOKEN" &&
     [[ -n "$ARGO_DOMAIN" ]]; then
@@ -1965,7 +1962,7 @@ menu() {
     if [[ -n "$ARGO_DOMAIN" ]]; then
       key_value "Argo 域名" "$ARGO_DOMAIN"
       endpoint_value "优选入口" "$SERVER" "$SERVER_PORT"
-      ip_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
+  key_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
     fi
     key_value "组件版本" "$(component_versions)"
     state_value "WARP 分流" "$(warp_status)"
