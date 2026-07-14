@@ -64,6 +64,7 @@
 - 默认保留 VLESS、VMess、Trojan 各一个 WS 节点，并允许通过 `asb -c` 动态添加、修改或删除这三种协议的 WS 节点。
 - 允许节点按 inbound tag 与 WS 路径绑定独立 SOCKS5 出站。
 - 允许用户指定目标网址优先通过 Cloudflare 官方 WARP 客户端的本地 SOCKS5 proxy 出站；未命中时仍遵循节点 SOCKS5 或 direct。
+- 首次安装和缺省环境配置的 Cloudflare 优选入口为 `bestcf.cdn.fiatnorm.us.kg:443`；用户仍可在安装或 `asb -c` 中修改。
 - 保持中文交互，不加入英文模式。
 - 日常管理必须使用 VPS 本地安装脚本，不得改成每次执行都从 GitHub 拉取仓库脚本。
 - BBR 不是项目内置能力，只能作为明确标注的第三方外部工具保留。
@@ -90,7 +91,7 @@
 - 核心更新必须先比较版本并请求确认。
 - 下载必须包含连接超时、总超时、重试、GitHub 代理回退和 SHA256 校验。
 - 更新流程必须遵循：下载到临时文件 → 校验可执行性 → `sing-box check` → 备份 → 原子替换 → 重启验证 → 失败回滚。
-- 不得在脚本或示例文件中加入固定公共 UUID、Token 或项目公共域名。
+- 不得在脚本或示例文件中加入固定公共 UUID、Token 或未经项目明确指定的公共域名；当前约定的默认优选入口为 `bestcf.cdn.fiatnorm.us.kg:443`，且必须允许用户覆盖。
 - 不得嵌入公共 WARP WireGuard 私钥、固定 WARP 账户或非官方 WARP 注册凭据；WARP 使用用户 VPS 上安装的 Cloudflare 官方客户端。
 - Argo 域名必须由用户输入；首次安装 UUID 应自动随机生成。
 - Argo Token 必须拒绝空白、换行和 systemd 控制字符；包含 Token 的配置和 unit 权限不得宽于 `600`。

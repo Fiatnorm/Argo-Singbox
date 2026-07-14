@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2.12.1"
+VERSION="2.12.2"
 PROJECT_NAME="Argo-Singbox"
 COMMAND_NAME="asb"
 PROJECT_REPO="Fiatnorm/Argo-Singbox"
@@ -34,7 +34,7 @@ LEGACY_SING_SERVICE="sba-sing-box"
 LEGACY_ARGO_SERVICE="sba-cloudflared"
 LEGACY_MIGRATED=0
 
-DEFAULT_SERVER="skk.moe"
+DEFAULT_SERVER="bestcf.cdn.fiatnorm.us.kg"
 DEFAULT_SERVER_PORT="443"
 DEFAULT_SING_BOX_VERSION="1.13.0-rc.4"
 SING_BOX_FORCE_VERSION_URL="https://raw.githubusercontent.com/fscarmen/sing-box/refs/heads/main/force_version"

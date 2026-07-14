@@ -1,6 +1,6 @@
 # Argo-Singbox 完整终端输出 UI 设计稿
 
-> 适用版本：Argo-Singbox v2.12.1
+> 适用版本：Argo-Singbox v2.12.2
 >
 > 设计基础：沿用现有 ASCII 品牌字标、`◆ / ▸ / ✓ / ! / ✗ / • / ›` 视觉语言与当前项目交互逻辑，只进行轻量统一和排版优化。
 >
@@ -83,7 +83,7 @@
 /_/  |_/_/   \__, /\____//____/_/_/ /_/\__, /_.___/\____/_/|_|
             /____/                    /____/
 
-Argo-Singbox  v2.12.1 · Argo Tunnel · Sing-box Core · WSS Proxy
+Argo-Singbox  v2.12.2 · Argo Tunnel · Sing-box Core · WSS Proxy
 系统环境      Debian GNU/Linux 13 (trixie) · amd64 · IP 203.0.113.10
 ----------------------------------------------------------------
 运行概览
@@ -92,7 +92,7 @@ Sing-box 服务  运行中
 Argo 域名      asb.example.com
 优选入口       198.51.100.10:443
 Argo 回源      127.0.0.1:3010
-组件版本       脚本 v2.12.1 · Sing-box 1.13.0-rc.4 · Cloudflared 2026.7.0
+组件版本       脚本 v2.12.2 · Sing-box 1.13.0-rc.4 · Cloudflared 2026.7.0
 WARP 分流      未启用
 ----------------------------------------------------------------
 
@@ -122,7 +122,7 @@ WARP 分流      未启用
 
 - ASCII 字标：亮蓝。
 - `Argo-Singbox`：亮洋红加粗。
-- `v2.12.1`：亮黄。
+- `v2.12.2`：亮黄。
 - `Argo Tunnel · Sing-box Core · WSS Proxy`：Dim 白。
 - `系统环境`：亮青；系统内容：白色。
 - `运行概览`：亮蓝加粗，用于区别下方亮青色 `▸` 分区。
@@ -138,7 +138,7 @@ Sing-box 服务  已停止
 Argo 域名      asb.example.com
 优选入口       198.51.100.10:443
 Argo 回源      127.0.0.1:3010
-组件版本       脚本 v2.12.1 · Sing-box 1.13.0-rc.4 · Cloudflared 2026.7.0
+组件版本       脚本 v2.12.2 · Sing-box 1.13.0-rc.4 · Cloudflared 2026.7.0
 WARP 分流      未启用
 ```
 
@@ -586,7 +586,7 @@ Argo-Vm           vmess     /argo-vm              3014    direct
 ----------------------------------------------------------------
 系统概览
 公网 IP        203.0.113.10
-脚本版本       v2.12.1
+脚本版本       v2.12.2
 内存           415/3883 MiB (11%)
 优选入口       198.51.100.10:443
 Argo 回源      127.0.0.1:3010
@@ -596,7 +596,7 @@ Argo 回源      127.0.0.1:3010
 ✓ Sing-box 配置：有效
 ✓ Nginx 配置：有效
 ✓ Token：已配置且服务文件一致
-组件版本       脚本 v2.12.1 · Sing-box 1.13.0-rc.4 · Cloudflared 2026.7.0
+组件版本       脚本 v2.12.2 · Sing-box 1.13.0-rc.4 · Cloudflared 2026.7.0
 ! WARP：未启用
 
 ▸ 运行检查
@@ -688,7 +688,7 @@ Argo 回源      127.0.0.1:3010
 /_/  |_/_/   \__, /\____//____/_/_/ /_/\__, /_.___/\____/_/|_|
             /____/                    /____/
 
-Argo-Singbox  v2.12.1 · Argo Tunnel · Sing-box Core · WSS Proxy
+Argo-Singbox  v2.12.2 · Argo Tunnel · Sing-box Core · WSS Proxy
 系统环境      Debian GNU/Linux 13 (trixie) · amd64 · IP 203.0.113.10
 ----------------------------------------------------------------
 安装 / 更新
@@ -721,7 +721,7 @@ Argo-Singbox  v2.12.1 · Argo Tunnel · Sing-box Core · WSS Proxy
 › 请输入 Argo Token（必填）：
 › 请输入 Argo 域名（必填）[asb.example.com]：
 › 请输入 UUID [00000000-0000-4000-8000-000000000000]：
-› 请输入 Cloudflare 优选入口 域名/IP:端口 [skk.moe:443]：198.51.100.10:443
+› 请输入 Cloudflare 优选入口 域名/IP:端口 [bestcf.cdn.fiatnorm.us.kg:443]：198.51.100.10:443
 ```
 
 ### 10.3 环境与依赖
@@ -807,7 +807,7 @@ Sing-box 服务  运行中
 Argo 域名      asb.example.com
 优选入口       198.51.100.10:443
 Argo 回源      127.0.0.1:3010
-组件版本       脚本 v2.12.1 · Sing-box 1.13.0-rc.4 · Cloudflared 2026.7.0
+组件版本       脚本 v2.12.2 · Sing-box 1.13.0-rc.4 · Cloudflared 2026.7.0
 WARP 分流      未启用
 节点文件       /etc/asb/nodes.txt
 管理命令       asb
@@ -1138,7 +1138,7 @@ prompt() # › 输入提示
 /_/  |_/_/   \__, /\____//____/_/_/ /_/\__, /_.___/\____/_/|_|
             /____/                    /____/
 
-Argo-Singbox  v2.12.1 · Argo Tunnel · Sing-box Core · WSS Proxy
+Argo-Singbox  v2.12.2 · Argo Tunnel · Sing-box Core · WSS Proxy
 系统环境      Debian GNU/Linux 13 (trixie) · amd64 · IP 203.0.113.10
 ----------------------------------------------------------------
 运行概览
@@ -1147,7 +1147,7 @@ Sing-box 服务  运行中
 Argo 域名      asb.example.com
 优选入口       198.51.100.10:443
 Argo 回源      127.0.0.1:3010
-组件版本       脚本 v2.12.1 · Sing-box 1.13.0-rc.4 · Cloudflared 2026.7.0
+组件版本       脚本 v2.12.2 · Sing-box 1.13.0-rc.4 · Cloudflared 2026.7.0
 WARP 分流      未启用
 ----------------------------------------------------------------
 
