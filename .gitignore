@@ -1,0 +1,2 @@
+# Read-only upstream comparison checkout; managed by its own nested Git repository.
+reference/sba/
