@@ -1,4 +1,4 @@
-# AGS v1.3.2
+# AGS v1.3.3
 
 AGS 是单内核项目。运行时只安装和管理官方 Sing-box，保留节点、订阅、WARP、长期全局流量统计、诊断、备份恢复和安装更新能力。
 
@@ -98,7 +98,7 @@ Sing-box 通过 `experimental.clash_api` 在 `127.0.0.1:18085` 提供本机 REST
 
 脚本先检查已加载模块，再尝试 `modprobe brutal`。检测成功时服务端和两类结构化订阅启用 TCP Brutal；否则只启用 h2mux。默认上下行带宽均为 1000 Mbps，可在 `ags -c` 的“h2mux / TCP Brutal”页面修改。
 
-同一页面提供 TCP Brutal 安装与更新。执行安装前会验证 Linux、内核不低于 4.9、非 WSL/容器、当前内核存在 `/lib/modules` 且启用 `CONFIG_MODULES`；内核低于 5.8 时提示仅支持 IPv4，低于 4.13 时额外提示 `fq pacing` 要求。不通过预检时不会下载文件、安装软件包或修改内核。通过后才会下载固定在上游提交 `f11e52d88c7ad2285896de018c2d96d4687f0ab6` 的 [tcp-brutal 官方 DKMS 安装器](https://github.com/apernet/tcp-brutal)，以及官方稳定版 `v1.0.3` DKMS 模块包；两者分别通过固定 SHA256 校验后，使用安装器的 `--local` 模式安装。模块成功加载后，脚本会重新生成服务端及订阅配置并验证服务重启。
+同一页面提供 TCP Brutal 安装与更新。执行安装前会验证 Linux、内核不低于 4.9、非 WSL/容器、当前内核存在 `/lib/modules` 且启用 `CONFIG_MODULES`，并按官方安装器规则检查 APT、DKMS 以及当前运行内核精确对应的 `linux-headers-$(uname -r)`。内核头文件未安装时，只有该精确软件包在当前 APT 源中可安装才会继续；不能以其他版本头文件替代。内核低于 5.8 时提示仅支持 IPv4，低于 4.13 时额外提示 `fq pacing` 要求。不通过预检时不会下载文件、安装软件包或修改内核。用户确认后会刷新 APT、再次复核并安装依赖，通过后才下载固定在上游提交 `f11e52d88c7ad2285896de018c2d96d4687f0ab6` 的 [tcp-brutal 官方 DKMS 安装器](https://github.com/apernet/tcp-brutal)，以及官方稳定版 `v1.0.3` DKMS 模块包；两者分别通过固定 SHA256 校验后，使用安装器的 `--local` 模式安装。模块成功加载后，脚本会重新生成服务端及订阅配置并验证服务重启。
 
 ## 从旧组合项目迁移
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="1.3.2"
+VERSION="1.3.3"
 PROJECT_NAME="AGS"
 PROJECT_CODE="AGS"
 COMMAND_NAME="ags"
@@ -494,6 +494,23 @@ core_config() { printf '%s\n' "$SING_BOX_CONFIG"; }
 tcp_brutal_system_name() { uname -s; }
 tcp_brutal_kernel_release() { uname -r; }
 tcp_brutal_modules_directory_exists() { [[ -d "/lib/modules/$1" ]]; }
+tcp_brutal_headers_directory_exists() { [[ -d "/lib/modules/$1/build" ]]; }
+tcp_brutal_apt_available() {
+  command -v apt-get >/dev/null 2>&1 && command -v apt-cache >/dev/null 2>&1
+}
+tcp_brutal_package_installable() {
+  local package="$1" candidate
+  if command -v dpkg-query >/dev/null 2>&1 &&
+    dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q '^install ok installed$'; then
+    return 0
+  fi
+  candidate="$(LC_ALL=C apt-cache policy "$package" 2>/dev/null |
+    awk '$1 == "Candidate:" {print $2; exit}')"
+  [[ -n "$candidate" && "$candidate" != "(none)" ]]
+}
+tcp_brutal_dkms_available() {
+  command -v dkms >/dev/null 2>&1 || tcp_brutal_package_installable dkms
+}
 
 tcp_brutal_container_detected() {
   if command -v systemd-detect-virt >/dev/null 2>&1 &&
@@ -529,10 +546,11 @@ tcp_brutal_kernel_at_least() {
 }
 
 tcp_brutal_preflight() {
-  local system release
+  local system release headers_package
   TCP_BRUTAL_SUPPORT_ERROR=""
   TCP_BRUTAL_SUPPORT_WARNING=""
   TCP_BRUTAL_HEADERS_STATE=""
+  TCP_BRUTAL_HEADERS_PACKAGE=""
   system="$(tcp_brutal_system_name 2>/dev/null || true)"
   release="$(tcp_brutal_kernel_release 2>/dev/null || true)"
   TCP_BRUTAL_CHECKED_KERNEL="$release"
@@ -560,10 +578,24 @@ tcp_brutal_preflight() {
     TCP_BRUTAL_SUPPORT_ERROR="当前内核未启用可加载模块（CONFIG_MODULES）。"
     return 1
   fi
-  if [[ -d "/lib/modules/${release}/build" ]]; then
+  if ! tcp_brutal_apt_available; then
+    TCP_BRUTAL_SUPPORT_ERROR="AGS 仅支持通过 Debian/Ubuntu APT 安装 TCP Brutal 官方依赖。"
+    return 1
+  fi
+  if ! tcp_brutal_dkms_available; then
+    TCP_BRUTAL_SUPPORT_ERROR="APT 中没有可安装的 dkms，无法使用 TCP Brutal 官方 DKMS 安装器。"
+    return 1
+  fi
+  if tcp_brutal_headers_directory_exists "$release"; then
     TCP_BRUTAL_HEADERS_STATE="已安装"
   else
-    TCP_BRUTAL_HEADERS_STATE="未安装 · 官方安装器将尝试安装"
+    headers_package="linux-headers-${release}"
+    TCP_BRUTAL_HEADERS_PACKAGE="$headers_package"
+    if ! tcp_brutal_package_installable "$headers_package"; then
+      TCP_BRUTAL_SUPPORT_ERROR="当前运行内核 ${release} 缺少匹配头文件，且 APT 中没有可安装的 ${headers_package}。请先更新 APT；若仍不可用，请升级内核及匹配头文件并重启，再重新安装；不能使用其他版本头文件替代。"
+      return 1
+    fi
+    TCP_BRUTAL_HEADERS_STATE="可安装 · ${headers_package}"
   fi
   if ! tcp_brutal_kernel_at_least "$release" 4 13; then
     TCP_BRUTAL_SUPPORT_WARNING="内核低于 4.13，安装后还需按官方说明为公网接口启用 fq pacing；低于 5.8 时仅支持 IPv4。"
@@ -2325,7 +2357,7 @@ configure_warp() {
 }
 
 install_tcp_brutal_module() {
-  local answer installer module_archive actual_sha supported=0
+  local answer installer module_archive actual_sha supported=0 packages
   tcp_brutal_preflight && supported=1
   brand "${PROJECT_NAME} · TCP Brutal 安装" cancel
   subsection "内核预检"
@@ -2352,8 +2384,15 @@ install_tcp_brutal_module() {
   is_exit_input "$answer" && { return_notice; return 0; }
   is_confirmed "$answer" || { yellow "已取消 TCP Brutal 安装。"; return 0; }
 
-  DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates kmod ||
+  info "正在刷新 APT 并复核当前内核的官方安装条件..."
+  apt-get update || die "APT 软件包索引更新失败，无法复核 TCP Brutal 安装条件。"
+  tcp_brutal_preflight || die "$TCP_BRUTAL_SUPPORT_ERROR"
+  packages=(curl ca-certificates kmod dkms)
+  [[ -z "$TCP_BRUTAL_HEADERS_PACKAGE" ]] || packages+=("$TCP_BRUTAL_HEADERS_PACKAGE")
+  DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}" ||
     die "TCP Brutal 安装依赖准备失败。"
+  tcp_brutal_headers_directory_exists "$TCP_BRUTAL_CHECKED_KERNEL" ||
+    die "当前运行内核的匹配头文件安装后仍不可用：/lib/modules/${TCP_BRUTAL_CHECKED_KERNEL}/build"
   installer="$(mktemp)"
   download "https://raw.githubusercontent.com/${TCP_BRUTAL_REPO}/${TCP_BRUTAL_INSTALLER_REV}/scripts/install_dkms.sh" "$installer"
   actual_sha="$(sha256sum "$installer" | awk '{print $1}')"

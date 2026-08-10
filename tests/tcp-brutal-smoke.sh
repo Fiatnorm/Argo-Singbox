@@ -10,12 +10,22 @@ TEST_KERNEL="6.8.0-test"
 TEST_CONTAINER=0
 TEST_MODULES_DIR=1
 TEST_MODULES_ENABLED=1
+TEST_HEADERS_DIR=1
+TEST_APT_AVAILABLE=1
+TEST_DKMS_INSTALLABLE=1
+TEST_HEADERS_INSTALLABLE=1
 
 tcp_brutal_system_name() { printf '%s\n' "$TEST_SYSTEM"; }
 tcp_brutal_kernel_release() { printf '%s\n' "$TEST_KERNEL"; }
 tcp_brutal_container_detected() { [[ "$TEST_CONTAINER" == "1" ]]; }
 tcp_brutal_modules_directory_exists() { [[ "$TEST_MODULES_DIR" == "1" ]]; }
 tcp_brutal_kernel_modules_enabled() { [[ "$TEST_MODULES_ENABLED" == "1" ]]; }
+tcp_brutal_headers_directory_exists() { [[ "$TEST_HEADERS_DIR" == "1" ]]; }
+tcp_brutal_apt_available() { [[ "$TEST_APT_AVAILABLE" == "1" ]]; }
+tcp_brutal_dkms_available() { [[ "$TEST_DKMS_INSTALLABLE" == "1" ]]; }
+tcp_brutal_package_installable() {
+  [[ "$1" != "dkms" && "$TEST_HEADERS_INSTALLABLE" == "1" ]]
+}
 
 assert_supported() {
   tcp_brutal_preflight || {
@@ -66,7 +76,22 @@ TEST_MODULES_ENABLED=0
 assert_rejected "CONFIG_MODULES"
 
 TEST_MODULES_ENABLED=1
-TEST_KERNEL="4.8.17-test"
+TEST_APT_AVAILABLE=0
+assert_rejected "APT"
+TEST_APT_AVAILABLE=1
+
+TEST_DKMS_INSTALLABLE=0
+assert_rejected "dkms"
+TEST_DKMS_INSTALLABLE=1
+
+TEST_HEADERS_DIR=0
+TEST_HEADERS_INSTALLABLE=1
+assert_supported
+[[ "$TCP_BRUTAL_HEADERS_STATE" == *"linux-headers-${TEST_KERNEL}"* ]]
+
+TEST_HEADERS_INSTALLABLE=0
+assert_rejected "不能使用其他版本头文件替代"
+
 DOWNLOAD_CALLED=0
 brand() { :; }
 subsection() { :; }
@@ -74,6 +99,16 @@ key_value() { :; }
 red() { :; }
 menu_hint() { :; }
 download() { DOWNLOAD_CALLED=1; return 1; }
+
+TEST_KERNEL="6.12.43+deb13-amd64"
+TEST_HEADERS_DIR=0
+TEST_HEADERS_INSTALLABLE=0
+install_tcp_brutal_module
+[[ "$DOWNLOAD_CALLED" == "0" ]]
+
+TEST_HEADERS_DIR=1
+TEST_HEADERS_INSTALLABLE=1
+TEST_KERNEL="4.8.17-test"
 install_tcp_brutal_module
 [[ "$DOWNLOAD_CALLED" == "0" ]]
 

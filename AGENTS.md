@@ -29,7 +29,7 @@
 - 统计必须保留每分钟采集、服务停止前最终采集、进程重启/计数回退识别、SQLite 持久累加和重置新基线。
 - 保留安装、更新、诊断、备份恢复、卸载及 64 列中文终端 UI。
 - 三类 WS 入站固定启用多路复用；TCP Brutal 按 `brutal` 内核模块检测结果启用，带宽参数同步写入服务端与结构化订阅。
-- TCP Brutal 安装必须先拒绝低于 4.9 的内核、WSL/容器、缺失当前内核模块目录或禁用 `CONFIG_MODULES` 的环境；官方 DKMS 安装器和模块包必须分别固定版本并校验 SHA256，使用本地模块包安装，成功加载模块后才重生成配置。
+- TCP Brutal 安装必须先拒绝低于 4.9 的内核、WSL/容器、缺失当前内核模块目录、禁用 `CONFIG_MODULES`、APT/DKMS 不可用，或当前运行内核缺少且 APT 无法安装精确 `linux-headers-$(uname -r)` 的环境；不得使用其他版本头文件替代。官方 DKMS 安装器和模块包必须分别固定版本并校验 SHA256，使用本地模块包安装，成功加载模块后才重生成配置。
 - 不得自动接管或删除 `/etc/afs`；从旧组合项目迁移使用节点备份恢复显式完成。
 
 ## 安全与发布
@@ -53,6 +53,6 @@ git diff --check
 if grep -n $'\r' ags.sh; then exit 1; fi
 ```
 
-还必须检查：脚本只生成 VLESS、VMess、Trojan WS；非 TTY、`TERM=dumb`、`NO_COLOR` 无 ANSI；生成 JSON 可解析；三类节点、h2mux、TCP Brutal 开关及订阅可生成；TCP Brutal 预检覆盖支持、旧内核、WSL、容器与模块能力；Clash API 只取顶层全局计数，并覆盖累加、重启和重置逻辑。
+还必须检查：脚本只生成 VLESS、VMess、Trojan WS；非 TTY、`TERM=dumb`、`NO_COLOR` 无 ANSI；生成 JSON 可解析；三类节点、h2mux、TCP Brutal 开关及订阅可生成；TCP Brutal 预检覆盖支持、旧内核、WSL、容器、模块能力、APT、DKMS 与精确内核头文件可安装性；Clash API 只取顶层全局计数，并覆盖累加、重启和重置逻辑。
 
 没有真实 VPS 时，不得宣称 systemd、Nginx、Sing-box、Clash API 实时计数、Cloudflare 或公网 WS 已端到端通过。
