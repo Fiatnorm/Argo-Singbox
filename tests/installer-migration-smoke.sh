@@ -2,15 +2,16 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# shellcheck source=../ags.sh
-source "${ROOT_DIR}/ags.sh"
+# shellcheck source=../argo-singbox.sh
+source "${ROOT_DIR}/argo-singbox.sh"
 
-[[ "$PROJECT_NAME" == "AGS" ]]
+[[ "$PROJECT_NAME" == "Argo-Singbox" ]]
 [[ "$PROJECT_CODE" == "AGS" ]]
 [[ "$COMMAND_NAME" == "ags" && "$COMMAND_NAME_UPPER" == "AGS" ]]
-[[ "$WORK_DIR" == "/etc/ags" && "$LOCAL_SCRIPT" == "/etc/ags/ags.sh" ]]
-[[ "$CORE_SERVICE" == "ags-core" && "$ARGO_SERVICE" == "ags-tunnel" ]]
-[[ "$TRAFFIC_SERVICE" == "ags-traffic" && "$TRAFFIC_TIMER" == "ags-traffic" ]]
+[[ "$WORK_DIR" == "/etc/argo-singbox" && "$LOCAL_SCRIPT" == "/etc/argo-singbox/argo-singbox.sh" ]]
+[[ "$PREVIOUS_LOCAL_SCRIPT" == "/etc/argo-singbox/Argo-Singbox.sh" ]]
+[[ "$CORE_SERVICE" == "argo-singbox-core" && "$ARGO_SERVICE" == "argo-singbox-tunnel" ]]
+[[ "$TRAFFIC_SERVICE" == "argo-singbox-traffic" && "$TRAFFIC_TIMER" == "argo-singbox-traffic" ]]
 
 TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf -- "$TEST_ROOT"' EXIT
@@ -36,9 +37,10 @@ set_test_paths() {
   CONFIG_DIR="${WORK_DIR}/config"
   DATA_DIR="${WORK_DIR}/data"
   SUBSCRIPTION_DIR="${WORK_DIR}/subscriptions"
-  ENV_FILE="${CONFIG_DIR}/ags.env"
+  ENV_FILE="${CONFIG_DIR}/argo-singbox.env"
   NODES_CONFIG="${CONFIG_DIR}/nodes.conf"
-  LOCAL_SCRIPT="${WORK_DIR}/ags.sh"
+  LOCAL_SCRIPT="${WORK_DIR}/argo-singbox.sh"
+  PREVIOUS_LOCAL_SCRIPT="${WORK_DIR}/Argo-Singbox.sh"
   BACKUP_DIR="${WORK_DIR}/backup"
   MANAGED_FILE="${WORK_DIR}/managed"
   LEGACY_MIGRATED=0
@@ -52,10 +54,10 @@ set_test_paths \
   "${TEST_ROOT}/absent-legacy"
 install -d -m 700 "$WORK_DIR"
 printf '%s\n' '#!/usr/bin/env bash' >"$LOCAL_SCRIPT"
-printf '%s\n' 'project=AGS' >"$MANAGED_FILE"
+printf '%s\n' 'project=Argo-Singbox' >"$MANAGED_FILE"
 migrate_legacy_install
 [[ -f "$LOCAL_SCRIPT" ]]
-[[ ! -e "${BACKUP_DIR}/pre-ags-namespace" ]]
+[[ ! -e "${BACKUP_DIR}/pre-argo-singbox-namespace" ]]
 
 # A real legacy flat environment file is still migrated and backed up, while
 # the script already at LOCAL_SCRIPT remains in place.
@@ -70,24 +72,24 @@ migrate_legacy_install
 [[ -f "$LOCAL_SCRIPT" ]]
 [[ -f "$ENV_FILE" ]]
 [[ ! -e "${WORK_DIR}/asb.env" ]]
-[[ -f "${BACKUP_DIR}/pre-ags-namespace/asb.env" ]]
+[[ -f "${BACKUP_DIR}/pre-argo-singbox-namespace/asb.env" ]]
 
-# The immediately previous namespace is migrated to /etc/ags semantics while
+# The immediately previous /etc/ags namespace is migrated to Argo-Singbox while
 # preserving a compatibility symlink until the runtime health check succeeds.
 set_test_paths \
-  "${TEST_ROOT}/ags-current" \
-  "${TEST_ROOT}/argo-singbox-previous" \
+  "${TEST_ROOT}/argo-singbox-current" \
+  "${TEST_ROOT}/ags-previous" \
   "${TEST_ROOT}/asb-legacy"
 install -d -m 700 "${PREVIOUS_WORK_DIR}/config"
-printf '%s\n' '#!/usr/bin/env bash' >"${PREVIOUS_WORK_DIR}/argo-singbox.sh"
-printf '%s\n' 'project=ASB' >"${PREVIOUS_WORK_DIR}/managed"
-printf '%s\n' 'UUID=test-value' >"${PREVIOUS_WORK_DIR}/config/argo-singbox.env"
+printf '%s\n' '#!/usr/bin/env bash' >"${PREVIOUS_WORK_DIR}/ags.sh"
+printf '%s\n' 'project=AGS' >"${PREVIOUS_WORK_DIR}/managed"
+printf '%s\n' 'UUID=test-value' >"${PREVIOUS_WORK_DIR}/config/ags.env"
 migrate_legacy_install
 [[ -d "$WORK_DIR" ]]
 [[ -e "$PREVIOUS_WORK_DIR" || -L "$PREVIOUS_WORK_DIR" ]]
-[[ -f "${BACKUP_DIR}/pre-ags-namespace/argo-singbox.sh" ]]
+[[ -f "${BACKUP_DIR}/pre-argo-singbox-namespace/ags.sh" ]]
 migrate_project_layout
 [[ -f "$ENV_FILE" ]]
-[[ ! -e "${CONFIG_DIR}/argo-singbox.env" ]]
+[[ ! -e "${CONFIG_DIR}/ags.env" ]]
 
 printf '%s\n' 'INSTALLER_MIGRATION_SMOKE_OK'

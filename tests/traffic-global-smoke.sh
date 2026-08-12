@@ -2,8 +2,8 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# shellcheck source=../ags.sh
-source "${ROOT_DIR}/ags.sh"
+# shellcheck source=../argo-singbox.sh
+source "${ROOT_DIR}/argo-singbox.sh"
 
 TEST_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEST_DIR"' EXIT
@@ -15,7 +15,7 @@ SUBSCRIPTION_DIR="${WORK_DIR}/subscriptions"
 SING_BOX_CONFIG="${CONFIG_DIR}/sing-box.json"
 TRAFFIC_DB="${DATA_DIR}/traffic.db"
 TRAFFIC_ERROR_FILE="${DATA_DIR}/traffic.last_error"
-CORE_SERVICE="ags-core"
+CORE_SERVICE="argo-singbox-core"
 STATS_API_PORT=18085
 TEST_PID="$$"
 TEST_START=100
@@ -49,17 +49,19 @@ awk() {
   fi
 }
 curl() { command cat "$TEST_RESPONSE"; }
-jq() {
-  local args="$*" file
-  if [[ "$args" == *"external_controller"* ]]; then
-    file="${*: -1}"
-    node -e 'const f=require("fs");const j=JSON.parse(f.readFileSync(process.argv[1],"utf8"));process.stdout.write(j.experimental?.clash_api?.external_controller||"")' "$file"
-  elif [[ "${1:-}" == "-e" ]]; then
-    node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);process.exit(Number.isFinite(j.uploadTotal)&&j.uploadTotal>=0&&Number.isFinite(j.downloadTotal)&&j.downloadTotal>=0?0:1)})'
-  else
-    node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);process.stdout.write(`${j.uploadTotal}\t${j.downloadTotal}\n`)})'
-  fi
-}
+if ! command -v jq >/dev/null 2>&1; then
+  jq() {
+    local args="$*" file
+    if [[ "$args" == *"external_controller"* ]]; then
+      file="${*: -1}"
+      node -e 'const f=require("fs");const j=JSON.parse(f.readFileSync(process.argv[1],"utf8"));process.stdout.write(j.experimental?.clash_api?.external_controller||"")' "$file"
+    elif [[ "${1:-}" == "-e" ]]; then
+      node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);process.exit(Number.isFinite(j.uploadTotal)&&j.uploadTotal>=0&&Number.isFinite(j.downloadTotal)&&j.downloadTotal>=0?0:1)})'
+    else
+      node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);process.stdout.write(`${j.uploadTotal}\t${j.downloadTotal}\n`)})'
+    fi
+  }
+fi
 
 assert_sql() {
   local sql="$1" expected="$2" actual
@@ -111,4 +113,12 @@ traffic_collect
 assert_sql "SELECT uplink,downlink FROM global_totals WHERE id=1;" "7|11"
 
 [[ ! -e "$TRAFFIC_ERROR_FILE" ]]
+[[ "$(format_traffic_bytes 0)" == "0 B" ]]
+[[ "$(format_traffic_bytes 1099511627776)" == "1.0 TiB" ]]
+[[ "$(format_traffic_bytes 1125899906842624)" == "1.0 PiB" ]]
+[[ "$(format_traffic_bytes 9223372036854775807)" == "8.0 EiB" ]]
+table_output="$({ traffic_table_header; traffic_table_row "全局流量" 1125899906842624 2251799813685248; })"
+while IFS= read -r line; do
+  (( $(display_width "$line") <= 64 )) || { printf 'traffic row exceeds 64 columns: %s\n' "$line" >&2; exit 1; }
+done <<<"$table_output"
 printf '%s\n' 'TRAFFIC_GLOBAL_SMOKE_OK'
