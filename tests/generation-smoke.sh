@@ -187,13 +187,32 @@ fi
 
 nginx() { :; }
 write_nginx_config
-grep -Fq "<h1>Index of /${UUID}/</h1>" "$NGINX_CONFIG"
-grep -Fq "<td class=\"size\">$(stat -c %s "$SUB_FILE")</td>" "$NGINX_CONFIG"
-grep -Fq '<a href="auto">auto</a></td><td>—</td><td class="size">—</td>' "$NGINX_CONFIG"
-! grep -Eq 'class=hero|class=card|<script|<img' "$NGINX_CONFIG"
+PANEL_FILE="${SUBSCRIPTION_DIR}/index.html"
+ICON_FILE="${SUBSCRIPTION_DIR}/favicon.svg"
+grep -Fq "alias ${PANEL_FILE};" "$NGINX_CONFIG"
+grep -Fq "alias ${SUBSCRIPTION_DIR}/;" "$NGINX_CONFIG"
+grep -Fq 'index index.html;' "$NGINX_CONFIG"
+grep -Fq "location = /${UUID}/index.html {" "$NGINX_CONFIG"
+grep -Fq "alias ${ICON_FILE};" "$NGINX_CONFIG"
+grep -Fq '<h1>AGS 订阅中心</h1>' "$PANEL_FILE"
+grep -Fq '<meta name="color-scheme" content="light">' "$PANEL_FILE"
+grep -Fq "<span class=\"size\">$(stat -c %s "$SUB_FILE")</span>" "$PANEL_FILE"
+grep -Fq '<small>auto</small></span><time>—</time><span class="size">按客户端</span>' "$PANEL_FILE"
+grep -Fq 'src="auto-qr.svg"' "$PANEL_FILE"
+! grep -Eq '<script|https?://[^" ]+\.(css|js)' "$PANEL_FILE"
+cmp "$ROOT_DIR/assets/singbox-icon.svg" "$ICON_FILE"
+[[ "$(stat -c %a "$PANEL_FILE")" == 644 ]]
+[[ "$(stat -c %a "$ICON_FILE")" == 644 ]]
+begin_config_change
+cmp "$PANEL_FILE" "$CONFIG_SNAPSHOT/index.html"
+cmp "$ICON_FILE" "$CONFIG_SNAPSHOT/favicon.svg"
+rm -rf "$CONFIG_SNAPSHOT"
 if [[ -n "${SUBSCRIPTION_PREVIEW_FILE:-}" ]]; then
-  sed -n "s/^[[:space:]]*return 200 '\(.*\)';$/\1/p" "$NGINX_CONFIG" >"$SUBSCRIPTION_PREVIEW_FILE"
+  install -m 644 "$PANEL_FILE" "$SUBSCRIPTION_PREVIEW_FILE"
   preview_dir="$(dirname "$SUBSCRIPTION_PREVIEW_FILE")"
+  install -m 644 "$NGINX_CONFIG" "$preview_dir/nginx-fixture.conf"
+  install -m 644 "$ICON_FILE" "$preview_dir/favicon.svg"
+  install -m 644 "$SUB_AUTO_QR_FILE" "$preview_dir/auto-qr.svg"
   install -m 644 "$SUB_FILE" "$preview_dir/raw"
   install -m 644 "$SUB_BASE64_FILE" "$preview_dir/base64"
   install -m 644 "$SUB_BASE64_FILE" "$preview_dir/auto"

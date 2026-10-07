@@ -1274,26 +1274,6 @@ link_value() {
   field_label "$1"
   printf '%s%s%s%s\n' "$C_BRIGHT_WHITE" "$C_UNDERLINE" "$2" "$C_RESET"
 }
-node_output_width() {
-  local rows columns="" limit=128
-  if [[ -t 1 ]]; then
-    read -r rows columns < <(stty size 2>/dev/null </dev/tty) || true
-    columns="${columns:-${COLUMNS:-}}"
-    if [[ "$columns" =~ ^[1-9][0-9]{0,4}$ ]] && ((columns < limit)); then
-      limit="$columns"
-    fi
-  fi
-  printf -v "$1" '%s' "$limit"
-}
-print_node_uri() {
-  # URI data is ASCII (labels and paths are URL/Base64 encoded). Wrap only display.
-  local LC_ALL=C node="$1" width
-  node_output_width width
-  while [[ -n "$node" ]]; do
-    printf '%s%s%s\n' "$C_BRIGHT_WHITE" "${node:0:width}" "$C_RESET"
-    node="${node:width}"
-  done
-}
 prompt() { printf '%s%s› %s%s' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$(ui_text "$*")" "$C_RESET"; }
 read_choice() {
   prompt "$1"
@@ -2363,23 +2343,136 @@ subscription_index_rows() {
       modified="$(LC_ALL=C date -r "$file" '+%d-%b-%Y %H:%M')"
       size="$(stat -c %s "$file")"
     fi
-    printf '<tr><td><a href="%s">%s</a></td><td>%s</td><td class="size">%s</td><td>%s</td></tr>' \
-      "$route" "$route" "$modified" "$size" "$format"
+    printf '<li><a class="file-row" href="%s"><span class="file-icon" aria-hidden="true">↗</span><span class="file-name">%s<small>%s</small></span><time>%s</time><span class="size">%s</span><span class="open" aria-hidden="true">打开 ↗</span></a></li>' \
+      "$route" "$format" "$route" "$modified" "${size/—/按客户端}"
   done <<EOF
-raw|${SUB_FILE}|节点链接格式 · URI
-auto||自适应订阅 · User-Agent
+raw|${SUB_FILE}|节点链接格式
+auto||自适应订阅
 base64|${SUB_BASE64_FILE}|Base64 订阅
-clash|${SUB_CLASH_FILE}|Clash/Mihomo · YAML
-sing-box|${SUB_SING_BOX_FILE}|Sing-box · JSON
+clash|${SUB_CLASH_FILE}|Clash/Mihomo 订阅
+sing-box|${SUB_SING_BOX_FILE}|Sing-box 订阅
 EOF
 }
 
+write_subscription_panel() (
+  local panel_temp icon_temp
+  panel_temp="$(mktemp "${SUBSCRIPTION_DIR}/.panel.XXXXXX")"
+  icon_temp="$(mktemp "${SUBSCRIPTION_DIR}/.icon.XXXXXX")"
+  trap 'rm -f "$panel_temp" "$icon_temp"' EXIT
+  cat >"$panel_temp" <<EOF
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>AGS 订阅中心</title><link rel="icon" type="image/svg+xml" href="favicon.svg"><style>
+:root{color-scheme:light;font-family:"Roboto Flex",Roboto,"Noto Sans SC","Microsoft YaHei",sans-serif;--surface:#fdf8ff;--low:#f7f2fa;--high:#eee8f4;--ink:#1d1b20;--muted:#625b71;--outline:#ddd7e5;--primary:#6750a4;--container:#eaddff}
+*{box-sizing:border-box}body{margin:0;background:var(--surface);color:var(--ink);font-size:15px;line-height:1.5}a{color:inherit}a:focus-visible{outline:3px solid var(--primary);outline-offset:3px}.topbar{height:72px;padding:0 24px;display:flex;align-items:center;justify-content:space-between;background:var(--low);border-bottom:1px solid var(--outline)}.brand{display:flex;align-items:center;gap:12px;text-decoration:none;font-size:22px;font-weight:700}.brand img{width:44px;height:44px;object-fit:contain}.chip{padding:10px 16px;border-radius:999px;background:var(--container);color:#4f378b;font-size:13px;font-weight:650;white-space:nowrap}.rail{position:fixed;top:72px;bottom:0;width:88px;background:var(--low);border-right:1px solid var(--outline);padding:16px 8px;display:flex;flex-direction:column;gap:12px}.rail a{display:grid;place-content:center;gap:4px;min-height:64px;border-radius:22px;text-align:center;text-decoration:none;font-size:12px;color:var(--muted)}.rail .active{background:var(--container);color:#4f378b}.rail .github{margin-top:auto}.rail svg{margin:auto;width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.shell{margin-left:88px;padding:48px 32px 64px}main{max-width:960px;margin:auto}.page-header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:28px}.eyebrow{margin:0 0 8px;color:var(--primary);font-size:12px;font-weight:700;letter-spacing:.14em}h1{margin:0;font-size:clamp(28px,4vw,44px);line-height:1.25;letter-spacing:-.03em}.hero{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:28px 32px;margin-bottom:32px;border-radius:28px;background:var(--container)}h2{margin:0 0 8px;font-size:24px}.hero p{margin:0 0 20px;max-width:520px;color:var(--muted)}.button{display:inline-flex;align-items:center;min-height:48px;padding:0 24px;border-radius:999px;background:var(--primary);color:#fff;text-decoration:none;font-weight:650}.qr{flex:none;display:block;width:140px;height:140px;background:#fff;border-radius:16px;padding:10px}.qr img{width:100%;height:100%}.list-title{margin-bottom:16px;font-size:20px}.file-list{overflow:hidden;border:1px solid var(--outline);border-radius:24px;background:var(--low)}.list-head,.file-row{display:grid;grid-template-columns:36px minmax(180px,1fr) 155px 100px 80px;align-items:center;gap:16px;padding:0 20px}.list-head{min-height:44px;background:var(--high);color:var(--primary);font-size:12px;font-weight:700}.file-list ul{list-style:none;margin:0;padding:0}.file-list li+li{border-top:1px solid var(--outline)}.file-row{min-height:80px;text-decoration:none;transition:background .16s}.file-row:hover{background:var(--high)}.file-icon{display:grid;place-items:center;width:36px;height:36px;border-radius:12px;background:var(--high);color:var(--primary);font-size:22px}.file-name{font-weight:650}.file-name small{display:block;margin-top:3px;color:var(--muted);font-size:12px;font-weight:400}.file-row time,.size{color:var(--muted);font-size:12px}.open{padding:8px 12px;border-radius:999px;background:var(--container);color:#4f378b;font-size:12px;text-align:center}footer{padding-top:20px;color:var(--muted);font-size:12px}
+@media(max-width:980px){.list-head{display:none}.file-row{grid-template-columns:36px minmax(0,1fr) 80px;gap:12px;padding:14px 16px}.file-row time{display:none}.size{text-align:right}.open{display:none}}
+@media(max-width:600px){.topbar{height:64px;padding:0 16px}.brand{font-size:20px}.brand img{width:38px;height:38px}.topbar .chip{display:none}.rail{display:none}.shell{margin-left:0;padding:28px 16px 40px}.page-header{align-items:flex-start;gap:8px}.page-header .chip{padding:8px 12px;font-size:12px}.hero{padding:24px;flex-direction:column;align-items:flex-start;gap:20px;border-radius:24px}.qr{align-self:center}.file-list{border-radius:20px}.file-row{grid-template-columns:32px minmax(0,1fr) 66px;gap:10px;padding:14px 12px}.file-icon{width:32px;height:32px}.file-name{font-size:14px}h2{font-size:22px}}
+</style></head>
+<body><header class="topbar"><a class="brand" href="./"><img src="favicon.svg" alt="Sing-box"><span>AGS</span></a><span class="chip">VLESS · VMess · Trojan</span></header>
+<nav class="rail" aria-label="导航"><a class="active" href="#subscriptions" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h6l2 2h8v11H4Z"/></svg>订阅</a><a class="github" href="https://github.com/Fiatnorm/Argo-Singbox" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4h5v5M20 4L10 14M18 13v7H4V6h7"/></svg>GitHub</a></nav>
+<div class="shell"><main><header class="page-header"><div><p class="eyebrow">ARGO-SINGBOX</p><h1>AGS 订阅中心</h1></div><span class="chip">5 种格式</span></header>
+<section class="hero" aria-labelledby="adaptive-title"><div><h2 id="adaptive-title">一个链接，自动适配</h2><p>使用自适应订阅，按客户端选择合适的格式。也可以在下方直接打开指定格式。</p><a class="button" href="auto">打开自适应订阅 ↗</a></div><a class="qr" href="auto" aria-label="打开自适应订阅"><img src="auto-qr.svg" alt="自适应订阅二维码"></a></section>
+<section id="subscriptions" aria-labelledby="formats-title"><h2 class="list-title" id="formats-title">订阅格式</h2><div class="file-list"><div class="list-head" aria-hidden="true"><span></span><span>格式</span><span>修改时间</span><span>大小 / 字节</span><span>打开</span></div><ul>$(subscription_index_rows)</ul></div></section><footer>Argo-Singbox · 自适应订阅的内容与大小随客户端格式变化。</footer></main></div></body></html>
+EOF
+  # Exact user-supplied assets/singbox-icon.svg, embedded for single-file installs.
+  base64 -d >"$icon_temp" <<'SVG'
+PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjE0OCA5MCA3
+MjggODIwIj4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iYmcyNSIgeDE9IjAiIHkx
+PSIwIiB4Mj0iMCIgeTI9IjEiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiMy
+NDJGMzciLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMEQxMzE3Ii8+CiAg
+ICA8L2xpbmVhckdyYWRpZW50PgogICAgPHJhZGlhbEdyYWRpZW50IGlkPSJzcG90MjUiIGN4PSIw
+LjUiIGN5PSIwLjUiIHI9IjAuNSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0i
+IzQ2NTY1RiIgc3RvcC1vcGFjaXR5PSIwLjQ1Ii8+CiAgICAgIDxzdG9wIG9mZnNldD0iMSIgc3Rv
+cC1jb2xvcj0iIzQ2NTY1RiIgc3RvcC1vcGFjaXR5PSIwIi8+CiAgICA8L3JhZGlhbEdyYWRpZW50
+PgogICAgPGZpbHRlciBpZD0ic29mdDI1IiB4PSItNDAlIiB5PSItNDAlIiB3aWR0aD0iMTgwJSIg
+aGVpZ2h0PSIxODAlIj4KICAgICAgPGZlR2F1c3NpYW5CbHVyIHN0ZERldmlhdGlvbj0iMTgiLz4K
+ICAgIDwvZmlsdGVyPgogICAgPGxpbmVhckdyYWRpZW50IGlkPSJ0b3AyNSIgZ3JhZGllbnRVbml0
+cz0idXNlclNwYWNlT25Vc2UiIHgxPSIzMzAiIHkxPSIzMjAiIHgyPSI3MDAiIHkyPSI0OTAiPgog
+ICAgICA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiM0NDU4NjMiLz4KICAgICAgPHN0b3Ag
+b2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMzk0QzU3Ii8+CiAgICA8L2xpbmVhckdyYWRpZW50Pgog
+ICAgPGxpbmVhckdyYWRpZW50IGlkPSJsZWZ0MjUiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9u
+VXNlIiB4MT0iMjY5LjUiIHkxPSI0ODAiIHgyPSI1MTIiIHkyPSI3MjAiPgogICAgICA8c3RvcCBv
+ZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiMyNjMyM0EiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxIiBz
+dG9wLWNvbG9yPSIjMUYyQTMxIi8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogICAgPGxpbmVhckdy
+YWRpZW50IGlkPSJyaWdodDI1IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgeDE9IjUx
+MiIgeTE9IjY1MCIgeDI9Ijc1NC41IiB5Mj0iNTAwIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwIiBz
+dG9wLWNvbG9yPSIjMzA0MDRBIi8+CiAgICAgIDxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0i
+IzM3NDg1NCIvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICAgIDxmaWx0ZXIgaWQ9ImdyYWluMjUi
+IHg9IjAiIHk9IjAiIHdpZHRoPSIyODAiIGhlaWdodD0iMjgwIiBmaWx0ZXJVbml0cz0idXNlclNw
+YWNlT25Vc2UiPgogICAgICA8ZmVUdXJidWxlbmNlIHR5cGU9ImZyYWN0YWxOb2lzZSIgYmFzZUZy
+ZXF1ZW5jeT0iMC4yMiIgbnVtT2N0YXZlcz0iNCIgc2VlZD0iMTciIHJlc3VsdD0ibiIvPgogICAg
+ICA8ZmVDb2xvck1hdHJpeCBpbj0ibiIgdHlwZT0ibWF0cml4IiB2YWx1ZXM9IjAgMCAwIDAgMSAg
+MCAwIDAgMCAxICAwIDAgMCAwIDEgIDAuNDUgMCAwIDAgLTAuMSIvPgogICAgPC9maWx0ZXI+CiAg
+ICA8ZmlsdGVyIGlkPSJncmFpbkQyNSIgeD0iMCIgeT0iMCIgd2lkdGg9IjI4MCIgaGVpZ2h0PSIy
+ODAiIGZpbHRlclVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CiAgICAgIDxmZVR1cmJ1bGVuY2UgdHlw
+ZT0iZnJhY3RhbE5vaXNlIiBiYXNlRnJlcXVlbmN5PSIwLjI4IiBudW1PY3RhdmVzPSI0IiBzZWVk
+PSI0MSIgcmVzdWx0PSJuIi8+CiAgICAgIDxmZUNvbG9yTWF0cml4IGluPSJuIiB0eXBlPSJtYXRy
+aXgiIHZhbHVlcz0iMCAwIDAgMCAwLjAyICAwIDAgMCAwIDAuMDUgIDAgMCAwIDAgMC4wNyAgMC40
+NSAwIDAgMCAtMC4xIi8+CiAgICA8L2ZpbHRlcj4KICAgIDxjbGlwUGF0aCBpZD0iY2xpcFRvcEQi
+PjxwYXRoIGQ9Ik01MTIgMjYyIDc1NC41IDQwMiA1MTIgNTQyIDI2OS41IDQwMloiLz48L2NsaXBQ
+YXRoPgogICAgPGNsaXBQYXRoIGlkPSJjbGlwTGVmdEQiPjxwYXRoIGQ9Ik0yNjkuNSA0MDIgNTEy
+IDU0MiA1MTIgODEyIDI2OS41IDY3MloiLz48L2NsaXBQYXRoPgogICAgPGNsaXBQYXRoIGlkPSJj
+bGlwUmlnaHREIj48cGF0aCBkPSJNNTEyIDU0MiA3NTQuNSA0MDIgNzU0LjUgNjcyIDUxMiA4MTJa
+Ii8+PC9jbGlwUGF0aD4KICA8L2RlZnM+CiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTIyNS4y
+OCAtMjczLjI4KSBzY2FsZSgxLjQ0KSI+CjwhLS0gZGVlcCBjYXJkYm9hcmQgZmFjZXMgLS0+CiAg
+PHBhdGggZD0iTTUxMiAyNjIgNzU0LjUgNDAyIDUxMiA1NDIgMjY5LjUgNDAyWiIgZmlsbD0idXJs
+KCN0b3AyNSkiLz4KICA8cGF0aCBkPSJNMjY5LjUgNDAyIDUxMiA1NDIgNTEyIDgxMiAyNjkuNSA2
+NzJaIiBmaWxsPSJ1cmwoI2xlZnQyNSkiLz4KICA8cGF0aCBkPSJNNTEyIDU0MiA3NTQuNSA0MDIg
+NzU0LjUgNjcyIDUxMiA4MTJaIiBmaWxsPSJ1cmwoI3JpZ2h0MjUpIi8+CgogIDwhLS0gcGFwZXIg
+Z3JhaW4sIGZvcmVzaG9ydGVuZWQgcGVyIGZhY2UgLS0+CiAgPGcgY2xpcC1wYXRoPSJ1cmwoI2Ns
+aXBUb3BEKSI+PGcgdHJhbnNmb3JtPSJtYXRyaXgoMC44NjYgMC41IDAuODY2IC0wLjUgMjY5LjUg
+NDAyKSI+CiAgICA8cmVjdCB3aWR0aD0iMjgwIiBoZWlnaHQ9IjI4MCIgZmlsdGVyPSJ1cmwoI2dy
+YWluMjUpIiBvcGFjaXR5PSIwLjMwIi8+CiAgICA8cmVjdCB3aWR0aD0iMjgwIiBoZWlnaHQ9IjI4
+MCIgZmlsdGVyPSJ1cmwoI2dyYWluRDI1KSIgb3BhY2l0eT0iMC4zOCIvPgogIDwvZz48L2c+CiAg
+PGcgY2xpcC1wYXRoPSJ1cmwoI2NsaXBMZWZ0RCkiPjxnIHRyYW5zZm9ybT0ibWF0cml4KDAuODY2
+IDAuNSAwIDAuOTY0MjggMjY5LjUgNDAyKSI+CiAgICA8cmVjdCB3aWR0aD0iMjgwIiBoZWlnaHQ9
+IjI4MCIgZmlsdGVyPSJ1cmwoI2dyYWluMjUpIiBvcGFjaXR5PSIwLjIwIi8+CiAgICA8cmVjdCB3
+aWR0aD0iMjgwIiBoZWlnaHQ9IjI4MCIgZmlsdGVyPSJ1cmwoI2dyYWluRDI1KSIgb3BhY2l0eT0i
+MC4zNCIvPgogIDwvZz48L2c+CiAgPGcgY2xpcC1wYXRoPSJ1cmwoI2NsaXBSaWdodEQpIj48ZyB0
+cmFuc2Zvcm09Im1hdHJpeCgwLjg2NiAtMC41IDAgMC45NjQyOCA1MTIgNTQyKSI+CiAgICA8cmVj
+dCB3aWR0aD0iMjgwIiBoZWlnaHQ9IjI4MCIgZmlsdGVyPSJ1cmwoI2dyYWluMjUpIiBvcGFjaXR5
+PSIwLjI1Ii8+CiAgICA8cmVjdCB3aWR0aD0iMjgwIiBoZWlnaHQ9IjI4MCIgZmlsdGVyPSJ1cmwo
+I2dyYWluRDI1KSIgb3BhY2l0eT0iMC4zNCIvPgogIDwvZz48L2c+CgogIDwhLS0gbGlkIGZsYXAg
+c2VhbTogdHdvIGxpZCBoYWx2ZXMsIHBhcGVyLWVkZ2UgY2F0Y2hsaWdodCAtLT4KICA8cGF0aCBk
+PSJNMzkwLjc1IDQ3MiA2MzMuMjUgMzMyIiBzdHJva2U9IiMxNDFFMjQiIHN0cm9rZS13aWR0aD0i
+NCIgZmlsbD0ibm9uZSIgb3BhY2l0eT0iMC45Ii8+CiAgPHBhdGggZD0iTTM5MC43NSA0NzIgNjMz
+LjI1IDMzMiIgc3Ryb2tlPSIjNkU4Nzk0IiBzdHJva2Utd2lkdGg9IjIiIGZpbGw9Im5vbmUiIG9w
+YWNpdHk9IjAuNyIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMCAtMykiLz4KCiAgPCEtLSBzb2Z0IGFt
+YmllbnQgb2NjbHVzaW9uIGF0IGp1bmN0aW9ucyAtLT4KICA8cGF0aCBkPSJNMjY5LjUgNDAyIDUx
+MiA1NDIiIHN0cm9rZT0iIzBCMTQxQSIgc3Ryb2tlLXdpZHRoPSIxMCIgb3BhY2l0eT0iMC4yOCIg
+ZmlsdGVyPSJ1cmwoI3NvZnQyNSkiIGZpbGw9Im5vbmUiLz4KICA8cGF0aCBkPSJNNTEyIDU0MiA3
+NTQuNSA0MDIiIHN0cm9rZT0iIzBCMTQxQSIgc3Ryb2tlLXdpZHRoPSIxMCIgb3BhY2l0eT0iMC4y
+MiIgZmlsdGVyPSJ1cmwoI3NvZnQyNSkiIGZpbGw9Im5vbmUiLz4KICA8cGF0aCBkPSJNNTEyIDU0
+MiA1MTIgODEyIiBzdHJva2U9IiMwNjBEMTEiIHN0cm9rZS13aWR0aD0iOSIgb3BhY2l0eT0iMC4z
+MCIgZmlsdGVyPSJ1cmwoI3NvZnQyNSkiIGZpbGw9Im5vbmUiLz4KCiAgPCEtLSBwYXBlci1lZGdl
+IGhpZ2hsaWdodHMgb24gdGhlIHRvcCBlZGdlcyAtLT4KICA8cGF0aCBkPSJNNTEyIDI2MiA3NTQu
+NSA0MDIiIHN0cm9rZT0iIzY2ODA4RCIgc3Ryb2tlLXdpZHRoPSIyLjUiIGZpbGw9Im5vbmUiLz4K
+ICA8cGF0aCBkPSJNNTEyIDI2MiAyNjkuNSA0MDIiIHN0cm9rZT0iIzVBNzM3RiIgc3Ryb2tlLXdp
+ZHRoPSIyLjUiIGZpbGw9Im5vbmUiLz4KICA8cGF0aCBkPSJNMjY5LjUgNDAyIDUxMiA1NDIgNzU0
+LjUgNDAyIiBzdHJva2U9IiM0RTY3NzMiIHN0cm9rZS13aWR0aD0iMiIgZmlsbD0ibm9uZSIgb3Bh
+Y2l0eT0iMC45Ii8+CiAgPHBhdGggZD0iTTUxMiA1NDIgNTEyIDgxMiIgc3Ryb2tlPSIjNDQ1OTYz
+IiBzdHJva2Utd2lkdGg9IjIiIGZpbGw9Im5vbmUiIG9wYWNpdHk9IjAuOSIvPgoKICA8IS0tIG9y
+aWdpbmFsIHR3by10b25lIHRhcGUsIGFsaWduZWQgdGFpbHMgLS0+CiAgPHBhdGggZD0iTTM1Ni44
+IDM1MS42IDM5MC43NSAzMzIgNjMzLjI1IDQ3MiA1OTkuMyA0OTEuNloiIGZpbGw9IiM5OUFBQjUi
+Lz4KICA8cGF0aCBkPSJNMzkwLjc1IDMzMiA0MjQuNyAzMTIuNCA2NjcuMiA0NTIuNCA2MzMuMjUg
+NDcyWiIgZmlsbD0iI0UxRThFRCIvPgogIDxwYXRoIGQ9Ik01OTkuMyA0OTEuNiA2MzMuMjUgNDcy
+IDYzMy4yNSA1OTIgNTk5LjMgNjExLjZaIiBmaWxsPSIjODI5NkExIi8+CiAgPHBhdGggZD0iTTYz
+My4yNSA0NzIgNjY3LjIgNDUyLjQgNjY3LjIgNTcyLjQgNjMzLjI1IDU5MloiIGZpbGw9IiNDQ0Q2
+REQiLz4KICA8IS0tIHRhcGUgc29mdCBzaGFkb3cgb250byB0aGUgcGFwZXIgLS0+CiAgPHBhdGgg
+ZD0iTTM2MCAzNTggNjAyLjUgNDk4IiBzdHJva2U9IiMwMDAwMDAiIG9wYWNpdHk9IjAuMjUiIHN0
+cm9rZS13aWR0aD0iNyIgZmlsdGVyPSJ1cmwoI3NvZnQyNSkiIGZpbGw9Im5vbmUiLz4KICA8L2c+
+Cjwvc3ZnPgo=
+SVG
+  chmod 644 "$panel_temp" "$icon_temp"
+  mv -f "$panel_temp" "${SUBSCRIPTION_DIR}/index.html"
+  mv -f "$icon_temp" "${SUBSCRIPTION_DIR}/favicon.svg"
+)
+
 write_nginx_config() {
-  local tag protocol path port socks index_rows
+  local tag protocol path port socks
   ensure_nodes_config
   validate_environment
   validate_nodes_config
-  index_rows="$(subscription_index_rows)"
+  write_subscription_panel
   cat >"$NGINX_CONFIG" <<EOF
 map \$http_upgrade \$connection_upgrade {
     default upgrade;
@@ -2421,8 +2514,16 @@ EOF
         return 302 /${UUID}/;
     }
     location = /${UUID}/ {
+        alias ${SUBSCRIPTION_DIR}/;
+        index index.html;
+    }
+    location = /${UUID}/index.html {
         default_type text/html;
-        return 200 '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Index of /${UUID}/ · Argo-Singbox</title><style>body{margin:24px;background:#fff;color:#222}main{max-width:1100px}h1{margin:0 0 22px;font:700 clamp(22px,3vw,36px)/1.3 Georgia,serif;overflow-wrap:anywhere}a{color:#06c}a:hover{color:#004399}.files{overflow-x:auto;border-top:1px solid #aaa;border-bottom:1px solid #aaa;padding:16px 0}table{width:100%;border-collapse:collapse;font:14px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:nowrap}th,td{text-align:left;padding:3px 20px 3px 0}th{color:#666;font-weight:400;border-bottom:1px solid #eee}tbody tr:hover{background:#f5f8fc}.size{text-align:right}footer{margin-top:14px;color:#777;font:12px/1.6 system-ui,sans-serif}@media(max-width:600px){body{margin:18px 12px}th,td{padding-right:14px}table{font-size:13px}}</style><main><h1>Index of /${UUID}/</h1><div class="files"><table aria-label="订阅文件"><thead><tr><th>文件 / File</th><th>修改时间 / Modified</th><th class="size">字节 / Bytes</th><th>格式 / Format</th></tr></thead><tbody>${index_rows}</tbody></table></div><footer>Argo-Singbox · auto 按客户端返回格式，大小随格式变化。</footer></main></html>';
+        alias ${SUBSCRIPTION_DIR}/index.html;
+    }
+    location = /${UUID}/favicon.svg {
+        default_type image/svg+xml;
+        alias ${SUBSCRIPTION_DIR}/favicon.svg;
     }
     location = /${UUID}/auto-qr.svg {
         default_type image/svg+xml;
@@ -2451,12 +2552,6 @@ EOF
     location / { return 404; }
 }
 EOF
-  if ! LC_ALL=C awk '
-    /return 200 / { found=1; if (length($0) >= 3500) invalid=1 }
-    END { exit !(found && !invalid) }
-  ' "$NGINX_CONFIG"; then
-    die "订阅中心页面过长，拒绝写入可能导致 Nginx 配置失败的 return 指令。"
-  fi
   nginx -t
 }
 
@@ -3334,8 +3429,7 @@ report_node_port_owners() {
 
 show_install_nodes() {
   section "原始节点"
-  local node
-  while IFS= read -r node; do print_node_uri "$node"; done <"$NODES_FILE"
+  cat "$NODES_FILE"
   printf '\n'
 }
 
@@ -3497,6 +3591,7 @@ begin_config_change() {
     "/etc/systemd/system/${TRAFFIC_SERVICE}.service" "/etc/systemd/system/${TRAFFIC_TIMER}.timer" \
     "$NODES_FILE" "$SUB_FILE" "$SUB_BASE64_FILE" "$SUB_CLASH_FILE" \
     "$SUB_SING_BOX_FILE" "$SUB_AUTO_QR_FILE" \
+    "${SUBSCRIPTION_DIR}/index.html" "${SUBSCRIPTION_DIR}/favicon.svg" \
     "$CONFIG_SNAPSHOT/" 2>/dev/null || true
 }
 
@@ -3524,13 +3619,16 @@ apply_runtime_config() {
   [[ -f "$snapshot/${TRAFFIC_SERVICE}.service" ]] && install -m 600 "$snapshot/${TRAFFIC_SERVICE}.service" "/etc/systemd/system/${TRAFFIC_SERVICE}.service"
   [[ -f "$snapshot/${TRAFFIC_TIMER}.timer" ]] && install -m 600 "$snapshot/${TRAFFIC_TIMER}.timer" "/etc/systemd/system/${TRAFFIC_TIMER}.timer"
   rm -f "$NODES_FILE" "$SUB_FILE" "$SUB_BASE64_FILE" "$SUB_CLASH_FILE" \
-    "$SUB_SING_BOX_FILE" "$SUB_AUTO_QR_FILE"
+    "$SUB_SING_BOX_FILE" "$SUB_AUTO_QR_FILE" \
+    "${SUBSCRIPTION_DIR}/index.html" "${SUBSCRIPTION_DIR}/favicon.svg"
   [[ -f "$snapshot/$(basename "$NODES_FILE")" ]] && install -m 600 "$snapshot/$(basename "$NODES_FILE")" "$NODES_FILE"
   [[ -f "$snapshot/$(basename "$SUB_FILE")" ]] && install -m 644 "$snapshot/$(basename "$SUB_FILE")" "$SUB_FILE"
   [[ -f "$snapshot/$(basename "$SUB_BASE64_FILE")" ]] && install -m 644 "$snapshot/$(basename "$SUB_BASE64_FILE")" "$SUB_BASE64_FILE"
   [[ -f "$snapshot/$(basename "$SUB_CLASH_FILE")" ]] && install -m 644 "$snapshot/$(basename "$SUB_CLASH_FILE")" "$SUB_CLASH_FILE"
   [[ -f "$snapshot/$(basename "$SUB_SING_BOX_FILE")" ]] && install -m 644 "$snapshot/$(basename "$SUB_SING_BOX_FILE")" "$SUB_SING_BOX_FILE"
   [[ -f "$snapshot/$(basename "$SUB_AUTO_QR_FILE")" ]] && install -m 644 "$snapshot/$(basename "$SUB_AUTO_QR_FILE")" "$SUB_AUTO_QR_FILE"
+  [[ -f "$snapshot/index.html" ]] && install -m 644 "$snapshot/index.html" "${SUBSCRIPTION_DIR}/index.html"
+  [[ -f "$snapshot/favicon.svg" ]] && install -m 644 "$snapshot/favicon.svg" "${SUBSCRIPTION_DIR}/favicon.svg"
   rm -rf "$snapshot"
   load_env
   systemctl daemon-reload
@@ -4520,10 +4618,10 @@ show_nodes() {
     IFS= read -r node <&3 || break
     ((index+=1))
     ((index > 1)) && printf '\n'
-    printf '%s%s[%02d]%s %s%s%s %s· %s%s\n' \
+    printf '%s%s[%02d]%s %s%s%s %s· %s%s\n%s%s%s\n' \
       "$C_BOLD" "$C_BRIGHT_CYAN" "$index" "$C_RESET" "$C_BRIGHT_MAGENTA" "$tag" "$C_RESET" \
-      "$C_BRIGHT_GREEN" "$(node_type_label "$protocol")" "$C_RESET"
-    print_node_uri "$node"
+      "$C_BRIGHT_GREEN" "$(node_type_label "$protocol")" "$C_RESET" \
+      "$C_BRIGHT_WHITE" "$node" "$C_RESET"
   done <"$NODES_CONFIG" 3<"$NODES_FILE"
   printf '\n'
 }
