@@ -6,7 +6,7 @@ TEST_DIR="$(mktemp -d)"
 unset UI_LANGUAGE
 source "$SCRIPT"
 trap 'rm -rf "$TEST_DIR"' EXIT
-[[ "$UI_LANGUAGE" == en ]]
+[[ "$UI_LANGUAGE" == zh ]]
 CONFIG_DIR="$TEST_DIR/config"
 require_root() { :; }
 # Git Bash cannot apply Unix directory modes to these NTFS fixtures.
@@ -27,7 +27,8 @@ EOF
 printf 'invalid\n' >"$CONFIG_DIR/language"
 UI_LANGUAGE=invalid
 load_language
-[[ "$UI_LANGUAGE" == en ]]
+[[ "$UI_LANGUAGE" == zh ]]
+UI_LANGUAGE=en
 [[ "$(ui_text '节点概览')" == Nodes ]]
 [[ "$(ui_text '执行 6 次')" == 'Executed 6 times' ]]
 [[ "$(ui_text '不可用 · 缺少 brutal 内核模块')" == 'Unavailable · Missing brutal kernel module' ]]
@@ -50,7 +51,7 @@ for mode in en zh; do
       state_value '节点概览' 'VLESS 1 · VMess 2 · Trojan 1'
       state_value 'WARP 分流' "$(warp_status)"
       ip_value 'VPS IPv6' None
-      version_bar
+      component_version_value
       menu_item 11 '语言设置'
       ui_warn '提醒'; ui_err '错误'; ui_info '当前状态'
     ) >"$TEST_DIR/$mode-$terminal_mode" 2>"$TEST_DIR/$mode-$terminal_mode.err"
@@ -64,7 +65,7 @@ for mode in en zh; do
     grep -Fq 'Enter · Default | 0 · Exit' "$TEST_DIR/$mode-plain"
     ! grep -P '[\x{4E00}-\x{9FFF}]' "$TEST_DIR/$mode-plain" "$TEST_DIR/$mode-plain.err"
   else
-    grep -Fq '执行 6 次' "$TEST_DIR/$mode-plain"
+    grep -Fq 'Executed 6 times' "$TEST_DIR/$mode-plain"
     grep -Fq 'Enter · 默认 | 0 · 退出' "$TEST_DIR/$mode-plain"
   fi
 done
@@ -75,5 +76,5 @@ C_BRIGHT_YELLOW=yellow C_BRIGHT_RED=red C_BRIGHT_GREEN=green C_BRIGHT_MAGENTA=pu
 [[ "$(state_value '节点概览' 'VLESS 1 · VMess 2 · Trojan 1')" == *purple* ]]
 [[ "$(state_value WARP 'Enabled · Running')" == *green* ]]
 [[ "$(state_value WARP 'Enabled · Error: process not running')" == *red* ]]
-[[ "$(version_bar)" == *yellow*2026.10.07*yellow*1.13.18* ]]
+[[ "$(component_version_value)" == *yellow*2026.10.07*yellow*1.13.18* ]]
 printf 'LANGUAGE_SMOKE_OK\n'

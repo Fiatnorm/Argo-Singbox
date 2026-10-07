@@ -1,6 +1,6 @@
 # Argo-Singbox v2026.10.07
 
-Argo-Singbox 是单内核项目，`AGS` 是管理命令和终端紧凑显示使用的简称。当前脚本版本 `2026.10.07`。默认使用英语，可通过 `ags -l` 或控制中心的语言设置切换为简体中文，选择保存后持续生效。运行时只安装和管理官方 Sing-box，保留节点、订阅、WARP、长期全局流量统计、诊断、备份恢复和安装更新能力。
+Argo-Singbox 是单内核项目，`AGS` 是管理命令和终端紧凑显示使用的简称。当前脚本版本 `2026.10.07`。默认使用中文，可通过 `ags -l` 或控制中心的语言设置切换为简体中文，选择保存后持续生效。运行时只安装和管理官方 Sing-box，保留节点、订阅、WARP、长期全局流量统计、诊断、备份恢复和安装更新能力。
 
 ## 项目结构
 
@@ -119,7 +119,7 @@ WS early-data 与 SBA/ArgoX 一致为 `2560`。节点输出不再强制 XUDP 或
 
 菜单与输入页统一显示高亮的 `Enter · 默认 | 0 · 退出`。菜单按最安全选项处理 Enter；危险确认 `[y/N]` 的 Enter 默认拒绝。0 在菜单和文本输入中都直接退出脚本，不返回上一级。项目卸载必须输入 `REMOVE`。脚本启动时不执行 `clear`。
 
-首页以 64 列显示系统环境、功能特性与运行状态。运行状态依次显示服务与功能状态、节点概览、Argo 域名/优选入口/回源、VPS IPv4、VPS IPv6、节点落地 IP、全局流量、运行内存、项目/组件版本标题栏。公网 IP 信息来自 GeoJS `https://get.geojs.io/v1/ip/geo.json`，IPv4 与 IPv6 分别通过 `curl -4` 和 `curl -6` 验证；IPv4 检测失败会明确显示 GeoJS 查询失败，IPv6 未确认时显示 None，不以多个“未知”字段冒充结果。GeoJS 的 `country_code`、`asn`、`organization_name`（缺失时使用 `organization`）分别用于国家/地区代码、`AS` 编号和组织名。双栈时配置中心允许选择节点 `direct` 出站使用 IPv4 或 IPv6，默认 IPv4；IPv4 不可用而 IPv6 可用时自动使用 IPv6。该设置控制节点的直连出口，与订阅优选入口无关。运行内存是管理脚本和项目服务进程的 RSS 总和，包含 Sing-box、cloudflared、流量采集、Nginx 与已安装的 WARP；它不是脚本文件大小，也不包含 VPS 上无关进程。项目没有 Node.js 运行组件。正常启用状态使用绿色，警告和提醒使用黄色，错误和异常使用红色；节点概览使用紫色，菜单编号、Enter、0 及项目/组件版本值使用黄色。控制中心使用 `TERMINAL_UI_DESIGN.md` 品牌头部中的六行 ASCII 大字标，最大显示宽度为 64 列。脚本每次运行退出时会在标准输出末尾追加一行空行。WARP 是可选能力，未启用不会计入诊断警告。
+首页以 64 列显示系统环境、功能特性与运行状态。运行状态依次显示服务与功能状态、节点概览、Argo 域名/优选入口/回源、VPS IPv4、VPS IPv6、全局流量、运行内存、组件版本。公网 IP 信息来自 GeoJS `https://get.geojs.io/v1/ip/geo.json`，IPv4 与 IPv6 分别通过 `curl -4` 和 `curl -6` 验证；IPv4 检测失败会明确显示 GeoJS 查询失败，IPv6 未确认时显示 None，不以多个“未知”字段冒充结果。GeoJS 的 `country_code`、`asn`、`organization_name`（缺失时使用 `organization`）分别用于国家/地区代码、`AS` 编号和组织名。双栈时配置中心允许选择节点 `direct` 出站使用 IPv4 或 IPv6，默认 IPv4；IPv4 不可用而 IPv6 可用时自动使用 IPv6。该设置控制节点的直连出口，与订阅优选入口无关。运行内存是管理脚本和项目服务进程的 RSS 总和，包含 Sing-box、cloudflared、流量采集、Nginx 与已安装的 WARP；它不是脚本文件大小，也不包含 VPS 上无关进程。项目没有 Node.js 运行组件。正常启用状态使用绿色，警告和提醒使用黄色，错误和异常使用红色；节点概览使用紫色，菜单编号、Enter、0 及项目/组件版本值使用黄色。控制中心使用 `TERMINAL_UI_DESIGN.md` 品牌头部中的六行 ASCII 大字标，最大显示宽度为 64 列。脚本每次运行退出时会在标准输出末尾追加一行空行。WARP 是可选能力，未启用不会计入诊断警告。
 
 控制中心按“常用操作、运行观测、系统维护、项目管理”分组；配置页将 WARP 开关与域名/geosite 规则、TCP Brutal 操作与 h2mux 操作分别分组。终端对象名固定使用 `Argo Tunnel`、`Sing-box Core`、`WARP`、`h2mux`、`TCP Brutal`、`SOCKS5` 与 `Clash API`。结果行统一使用 `✓ / ! / ✗ / •` 表达成功、提醒、错误和过程信息；诊断使用对象名加状态的报告行；完整 URL 与节点 URI 不截断。标准输出与标准错误分别根据对应终端状态控制 ANSI 颜色。
 
@@ -172,10 +172,20 @@ grep -n $'\r' argo-singbox.sh && exit 1 || true
 
 ## 2026.10.07 界面与节点代理
 
-- 默认英语；中文与英语共享菜单、颜色、危险确认和退出逻辑。语言保存在 `/etc/argo-singbox/config/language`（权限 600）。
-- 控制中心使用六行斜体 ASCII 字标，单行标题为 `Argo-Singbox  v2026.10.07 Argo Tunnel · Sing-box Core · WSS Proxy`。系统/内核信息换行保留全文，节点概览为紫色，项目/组件版本统一置于黄色版本栏。
-- 脚本统计保留原联网计数源及单次限时请求，只显示 `Executed 6 times` / `执行 6 次`；不显示“全局累计”。没有确认到 IPv6 时显示 `None`。
+- 默认中文；中文与英语共享菜单、颜色、危险确认和退出逻辑。语言保存在 `/etc/argo-singbox/config/language`（权限 600）。
+- 控制中心使用六行斜体 ASCII 字标，单行标题为 `Argo-Singbox  v2026.10.07 Argo Tunnel · Sing-box Core · WSS Proxy`。系统环境单行显示，Kernel 仅显示数字版本，节点概览为紫色；运行状态内以组件版本字段显示 AGS / Sing-box / cloudflared，只有版本号为黄色，名称与分隔符为白色。
+- 脚本统计保留原联网计数源及单次限时请求，中英文均显示 `Executed 6 times`；不显示“全局累计”。没有确认到 IPv6 时显示 `None`。
 - 第五字段支持 `http://user:pass@host:port`、`socks5://user:pass@host:port`，IPv6 主机使用方括号；兼容旧 `host:port:user:pass` 和逐节点 `direct:ipv4` / `direct:ipv6`。凭据继续限于字母、数字及 `._~-`，不支持 URL 编码或省略认证。概览仅显示类型和主机端口。
 - 出站优先级为 `WARP → 节点 HTTP/SOCKS5 → direct`。HTTP 使用 Sing-box 的 HTTP CONNECT 出站。
 
 配置生成使用 1.13.18 的 `domain_resolver` 与本地 DNS，不依赖已停用的旧 `domain_strategy` 兼容开关。普通布局 64 列；用户指定的完整品牌标题为 65 列并保持单行。
+
+## 2026.10.07 排版修订
+
+- 默认中文，已显式保存的语言选择继续有效；中文和英文使用同一布局。
+- 字标首行之前严格一行空白。所有键值标签占 20 个显示列，后跟两个空格；值起始列为 23。使用 UTF-8 字符码点计算显示宽度，避免 locale 改变中文宽度或误判英文。
+- 品牌、功能特性、系统环境、脚本统计各占一行。系统环境示例为 `Debian GNU/Linux 13 (trixie) · amd64 · Kernel 6.12.101`，不显示 `+deb13-amd64` 构建后缀。
+- 执行次数始终为 `Executed 17 times`，失败为 `Unavailable`，不会人为递增 API 返回的次数。
+- 删除运行状态中的节点落地 IP 行；保留配置页的直连地址族功能。组件版本在运行状态下显示为 `AGS 2026.10.07 · Sing-box 1.13.18 · cloudflared 2026.7.3`，只有数字版本为黄色，组件名和分隔符为白色。
+- 蓝色分隔线及页面 Enter/0 提示保持 64 列；信息字段不因这条线而截断或换行。
+- 内存采用唯一 PID 的 RSS 总和：管理脚本、Nginx master/workers、Sing-box、cloudflared、活跃流量采集及 SQLite 子进程、已安装 WARP。重叠 MainPID/cgroup/后代 PID 只算一次。SQLite 数据库文件不是进程内存；库页已经计入进程 RSS。RSS 可能包含各进程共享页，不能视为去重后的物理内存或 PSS；不可读进程会标记统计不完整。

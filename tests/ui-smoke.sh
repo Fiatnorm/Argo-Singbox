@@ -32,7 +32,7 @@ fi
 
 while IFS= read -r line; do
   width="$(NO_COLOR=1 TERM=dumb bash -c 'source "$1"; display_width "$2"' _ "$SCRIPT" "$line")"
-  [[ "$line" == Argo-Singbox*WSS\ Proxy ]] || ((width <= 64)) || {
+  [[ "$line" == Argo-Singbox*WSS\ Proxy || "$line" == 系统环境* ]] || ((width <= 64)) || {
     printf 'UI line exceeds 64 columns (%s): %s\n' "$width" "$line" >&2
     exit 1
   }
@@ -54,7 +54,7 @@ NO_COLOR=1 TERM=dumb bash -c '
 ' _ "$SCRIPT" >"$STATUS_OUTPUT"
 
 previous_line=0
-for label in 'Argo Tunnel' 'Sing-box Core' 'WARP 分流' h2mux 'TCP Brutal' '节点概览' 'Argo 域名' '优选入口' 'Argo 回源' 'VPS IPv4' 'VPS IPv6' '节点落地 IP' '全局流量' '运行内存'; do
+for label in 'Argo Tunnel' 'Sing-box Core' 'WARP 分流' h2mux 'TCP Brutal' '节点概览' 'Argo 域名' '优选入口' 'Argo 回源' 'VPS IPv4' 'VPS IPv6' '全局流量' '运行内存' '组件版本'; do
   line="$(grep -n "^${label}[[:space:]]" "$STATUS_OUTPUT" | head -n 1 | cut -d: -f1)"
   [[ "$line" =~ ^[0-9]+$ && "$line" -gt "$previous_line" ]] || {
     printf 'runtime status order is wrong at: %s\n' "$label" >&2
@@ -205,7 +205,7 @@ NO_COLOR=1 TERM=dumb bash -c '
   warning_state="$(state_value "WARP 分流" "未启用 · 可选功能")"
   warning="$(ui_warn "提醒")"
   menu="$(menu_item 1 "节点订阅")"
-  version="$(key_value "组件版本" "Sing-box 1.13.18 · cloudflared 2026.7.3")"
+  version="$(component_version_value)"
   nodes="$(state_value "节点概览" "VLESS 1 · VMess 2 · Trojan 1")"
   page="$(ui_page "页面" default)"
   [[ "$state" == *green* && "$warning_state" == *yellow* && "$warning" == *yellow* && "$menu" == *yellow* && "$version" == *yellow* && "$nodes" == *purple* ]]

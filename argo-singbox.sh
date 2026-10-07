@@ -74,7 +74,7 @@ TCP_BRUTAL_ENABLED=1
 WARP_GEOSITES=""
 OUTBOUND_IP_FAMILY="auto"
 
-UI_LANGUAGE="${UI_LANGUAGE:-en}"
+UI_LANGUAGE="${UI_LANGUAGE:-zh}"
 SCRIPT_STATS_URL="https://abacus.jasoncameron.dev"
 SCRIPT_STATS_NAMESPACE="ags"
 SCRIPT_STATS_KEY="fiatnorm"
@@ -82,6 +82,7 @@ SCRIPT_RUNS_TOTAL=""
 SCRIPT_RUNS_REQUESTED=0
 SCRIPT_RUNS_SHOWN=0
 UI_WIDTH=64
+UI_LABEL_WIDTH=20
 if [[ -t 1 && -z "${NO_COLOR:-}" && "${TERM:-dumb}" != "dumb" ]]; then
   C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'; C_DIM=$'\033[2m'; C_UNDERLINE=$'\033[4m'
   C_RED=$'\033[31m'; C_GREEN=$'\033[32m'; C_YELLOW=$'\033[33m'
@@ -857,8 +858,8 @@ declare -A UI_EN=(
   ['默认）']='default)'
 )
 ui_text() {
-  local rest="$*" output="" prefix part translated
-  if [[ "${UI_LANGUAGE:-en}" == zh ]]; then builtin printf '%s' "$rest"; return; fi
+  local LC_ALL=C.UTF-8 rest="$*" output="" prefix part translated
+  if [[ "${UI_LANGUAGE:-zh}" == zh ]]; then builtin printf '%s' "$rest"; return; fi
   # Translate fixed Chinese UI fragments; leave dynamic ASCII values untouched.
   while [[ "$rest" =~ ^([^一-龥]*)([一-龥][一-龥，。；：、（）“”？]*)(.*)$ ]]; do
     prefix="${BASH_REMATCH[1]}"; part="${BASH_REMATCH[2]}"; rest="${BASH_REMATCH[3]}"
@@ -892,10 +893,19 @@ yellow() { ui_warn "$@"; }
 red() { ui_err "$@"; }
 info() { ui_info "$@"; }
 display_width() {
-  local text="$1" character width=0
+  local LC_ALL=C.UTF-8 text="$1" character code width=0
   while [[ -n "$text" ]]; do
     character="${text:0:1}"; text="${text:1}"
-    if [[ "$character" =~ [一-龥㐀-䶿，。；：、（）？！🌀-🫿] ]]; then width=$((width + 2))
+    printf -v code '%d' "'$character"
+    if (( (code >= 0x0300 && code <= 0x036f) || (code >= 0xfe00 && code <= 0xfe0f) )); then
+      continue
+    elif (( (code >= 0x1100 && code <= 0x115f) || code == 0x2329 || code == 0x232a ||
+      (code >= 0x2e80 && code <= 0xa4cf && code != 0x303f) ||
+      (code >= 0xac00 && code <= 0xd7a3) || (code >= 0xf900 && code <= 0xfaff) ||
+      (code >= 0xfe10 && code <= 0xfe19) || (code >= 0xfe30 && code <= 0xfe6f) ||
+      (code >= 0xff00 && code <= 0xff60) || (code >= 0xffe0 && code <= 0xffe6) ||
+      (code >= 0x1f300 && code <= 0x1faff) || (code >= 0x20000 && code <= 0x3fffd) )); then
+      width=$((width + 2))
     else width=$((width + 1)); fi
   done
   printf '%s' "$width"
@@ -946,9 +956,9 @@ ui_page() {
   [[ -z "$hint_text" ]] || hint="0 · ${hint_text}"
   printf '\n%s%s◆ %s%s' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$title" "$C_RESET"
   if [[ -n "$hint" ]]; then
-    title_width="$(display_width "$title")"
+    title_width="$(display_width "◆ $title")"
     hint_width="$(display_width "$hint")"
-    padding=$((UI_WIDTH - 4 - title_width - hint_width))
+    padding=$((UI_WIDTH - title_width - hint_width))
     if ((padding >= 2)); then
       if [[ "$mode" == "default" ]]; then
         printf '%*s%sEnter%s · %s%s%s | %s0%s · %s%s%s\n' "$padding" '' \
@@ -993,7 +1003,7 @@ system_summary() {
     *) arch="$(uname -m)" ;;
   esac
   kernel="$(uname -r)"
-  printf '%s · %s · Kernel %s' "$os" "$arch" "$kernel"
+  printf '%s · %s · Kernel %s' "$os" "$arch" "${kernel%%[+-]*}"
 }
 geojs_field() {
   if command -v jq >/dev/null 2>&1; then
@@ -1141,7 +1151,8 @@ node_overview() {
   ' "$NODES_CONFIG"
 }
 control_panel() {
-  printf '\n%s%s' "$C_BOLD" "$C_BRIGHT_CYAN"
+  printf '\n'
+  printf '%s%s' "$C_BOLD" "$C_BRIGHT_CYAN"
   cat <<'EOF'
     ___                     _____ _             __
    /   |  _________ _____  / ___/(_)___  ____ _/ /_  ____  _  __
@@ -1195,10 +1206,18 @@ component_versions() {
     "$(local_core_version 2>/dev/null || ui_printf '未安装')" \
     "$(local_cloudflared_version 2>/dev/null || ui_printf '未安装')"
 }
-version_bar() {
-  ui_line
-  printf '%s%s%s %s%s%s · %s%s%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$PROJECT_CODE" \
-    "$C_BRIGHT_YELLOW" "$VERSION" "$C_RESET" "$C_BRIGHT_YELLOW" "$(component_versions)" "$C_RESET"
+component_version_value() {
+  local core_version tunnel_version version_color
+  core_version="$(local_core_version 2>/dev/null || ui_printf '未安装')"
+  tunnel_version="$(local_cloudflared_version 2>/dev/null || ui_printf '未安装')"
+  field_label "组件版本"
+  printf '%s%s %s%s%s · Sing-box ' "$C_BRIGHT_WHITE" "$PROJECT_CODE" "$C_BRIGHT_YELLOW" "$VERSION" "$C_BRIGHT_WHITE"
+  version_color="$C_BRIGHT_WHITE"
+  [[ "$core_version" != [0-9]* ]] || version_color="$C_BRIGHT_YELLOW"
+  printf '%s%s%s · cloudflared ' "$version_color" "$core_version" "$C_BRIGHT_WHITE"
+  version_color="$C_BRIGHT_WHITE"
+  [[ "$tunnel_version" != [0-9]* ]] || version_color="$C_BRIGHT_YELLOW"
+  printf '%s%s%s\n' "$version_color" "$tunnel_version" "$C_RESET"
 }
 section() {
   if [[ "${UI_TIGHT_SECTION:-0}" == "1" || "${UI_LAST_WAS_LINE:-0}" == "1" ]]; then
@@ -1210,54 +1229,30 @@ section() {
   printf '%s%s▸ %s%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$(ui_text "$*")" "$C_RESET"
 }
 subsection() { section "$*"; }
-field_text() {
-  local value="$1" color="$2" word line="" width=0 word_width
-  local -a words
-  read -r -a words <<<"$value"
-  printf '%s' "$color"
-  for word in "${words[@]}"; do
-    word_width="$(display_width "$word")"
-    if [[ -n "$line" ]] && ((width + 1 + word_width > UI_WIDTH - 15)); then
-      printf '%s%s\n%15s%s' "$line" "$C_RESET" '' "$color"
-      line=""; width=0
-    fi
-    line+="${line:+ }${word}"
-        if ((word_width > UI_WIDTH - 15)); then
-      while ((${#line} > UI_WIDTH - 15)); do
-        printf '%s%s\n%15s%s' "${line:0:UI_WIDTH-15}" "$C_RESET" '' "$color"
-        line="${line:UI_WIDTH-15}"
-      done
-      width="$(display_width "$line")"
-    else
-      width=$((width + word_width + 1))
-    fi
-  done
-  printf '%s%s\n' "$line" "$C_RESET"
+field_label() {
+  printf '%s' "$C_BRIGHT_CYAN"
+  pad_right "$(ui_text "$1")" "$UI_LABEL_WIDTH"
+  printf '%s  ' "$C_RESET"
 }
+field_text() { printf '%s%s%s\n' "$2" "$1" "$C_RESET"; }
 key_value() {
   local value value_color="$C_BRIGHT_WHITE"
   if [[ "$2" == /* ]]; then value="$2"; else value="$(ui_text "$2")"; fi
-  case "$1" in
-    项目版本|组件版本) value_color="$C_BRIGHT_YELLOW" ;;
-  esac
-  printf '%s' "$C_BRIGHT_CYAN"
-  pad_right "$(ui_text "$1")" 13
-  printf '%s  ' "$C_RESET"; field_text "$value" "$value_color"
+  field_label "$1"
+  field_text "$value" "$value_color"
 }
 ip_value() {
   local value
   value="$(ui_text "$2")"
-  printf '%s' "$C_BRIGHT_CYAN"
-  pad_right "$(ui_text "$1")" 13
-  printf '%s  ' "$C_RESET"; field_text "$value" "$C_BRIGHT_MAGENTA"
+  field_label "$1"
+  field_text "$value" "$C_BRIGHT_MAGENTA"
 }
 endpoint_value() {
   local label="$1" host="$2" port="$3" color="$C_BRIGHT_WHITE" display_host="$2"
   [[ "$host" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ || "$host" =~ ^[0-9A-Fa-f:]+$ ]] && color="$C_BRIGHT_MAGENTA"
   [[ "$host" == *:* && "$host" != \[*\] ]] && display_host="[${host}]"
-  printf '%s' "$C_BRIGHT_CYAN"
-  pad_right "$(ui_text "$label")" 13
-  printf '%s  %s%s:%s%s\n' "$C_RESET" "$color" "$display_host" "$port" "$C_RESET"
+  field_label "$label"
+  printf '%s%s:%s%s\n' "$color" "$display_host" "$port" "$C_RESET"
 }
 state_value() {
   local color="$C_BRIGHT_YELLOW" value="$2"
@@ -1270,14 +1265,12 @@ state_value() {
     color="$C_BRIGHT_MAGENTA"
   fi
   value="$(ui_text "$value")"
-  printf '%s' "$C_BRIGHT_CYAN"
-  pad_right "$(ui_text "$1")" 13
-  printf '%s  ' "$C_RESET"; field_text "$value" "$color"
+  field_label "$1"
+  field_text "$value" "$color"
 }
 link_value() {
-  printf '%s' "$C_BRIGHT_CYAN"
-  pad_right "$(ui_text "$1")" 18
-  printf '%s  %s%s%s%s\n' "$C_RESET" "$C_BRIGHT_WHITE" "$C_UNDERLINE" "$2" "$C_RESET"
+  field_label "$1"
+  printf '%s%s%s%s\n' "$C_BRIGHT_WHITE" "$C_UNDERLINE" "$2" "$C_RESET"
 }
 prompt() { printf '%s%s› %s%s' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$(ui_text "$*")" "$C_RESET"; }
 read_choice() {
@@ -2700,7 +2693,7 @@ runtime_memory_usage() {
 
 runtime_overview() {
   local totals upload download ipv4_details ipv6_details ip country asn isp
-  local ipv6_ip ipv6_country outbound_family
+  local ipv6_ip ipv6_country
   totals="$(read_traffic_totals)"
   IFS='|' read -r upload download <<<"$totals"
   subsection "运行状态"
@@ -2730,23 +2723,9 @@ runtime_overview() {
   else
     ip_value "VPS IPv6" "None"
   fi
-  if [[ "${OUTBOUND_IP_FAMILY:-auto}" == "auto" ]]; then
-    if [[ -n "$ipv4_details" ]]; then outbound_family="IPv4"
-    elif [[ -n "$ipv6_details" ]]; then outbound_family="IPv6"
-    else outbound_family="未确认"
-    fi
-  else
-    outbound_family="${OUTBOUND_IP_FAMILY^^}"
-  fi
-  case "$outbound_family" in
-    IPv4) ip="${ipv4_details%%|*}" ;;
-    IPv6) ip="${ipv6_details%%|*}" ;;
-    *) ip=None ;;
-  esac
-  ip_value "节点落地 IP" "${ip:-None} · $outbound_family · direct"
   key_value "全局流量" "↑ $(format_traffic_bytes "$upload") · ↓ $(format_traffic_bytes "$download")"
   key_value "运行内存" "$(runtime_memory_usage)"
-  version_bar
+  component_version_value
 }
 
 traffic_table_header() {
@@ -4388,7 +4367,7 @@ doctor() {
   else
     ip_value "VPS IPv6" "None"
   fi
-  version_bar
+  component_version_value
   key_value "系统内存" "${system_memory:-未知}"
   key_value "运行内存" "$(runtime_memory_usage)"
   endpoint_value "优选入口" "${SERVER:-未知}" "${SERVER_PORT:-未知}"
@@ -4786,14 +4765,14 @@ load_language() {
     IFS= read -r stored <"${CONFIG_DIR}/language" || true
     case "${stored:-}" in en|zh) UI_LANGUAGE="$stored" ;; esac
   fi
-  case "$UI_LANGUAGE" in en|zh) ;; *) UI_LANGUAGE=en ;; esac
+  case "$UI_LANGUAGE" in en|zh) ;; *) UI_LANGUAGE=zh ;; esac
 }
 configure_language() {
   local choice temp
   require_root
   brand "${PROJECT_NAME} · 语言设置" default
-  menu_item 1 "English (default)"
-  menu_item 2 "简体中文"
+  menu_item 1 "English"
+  menu_item 2 "简体中文（默认）"
   menu_item 0 "退出脚本"
   read_choice "请选择："; choice="$REPLY"
   case "$choice" in 1) UI_LANGUAGE=en ;; 2) UI_LANGUAGE=zh ;; 0) exit 0 ;; *) die "无效选项" ;; esac
@@ -4820,9 +4799,9 @@ show_script_runs() {
   ((SCRIPT_RUNS_REQUESTED == 1 && SCRIPT_RUNS_SHOWN == 0)) || return 0
   SCRIPT_RUNS_SHOWN=1
   if [[ -n "$SCRIPT_RUNS_TOTAL" ]]; then
-    key_value "脚本统计" "执行 ${SCRIPT_RUNS_TOTAL} 次"
+    key_value "脚本统计" "Executed ${SCRIPT_RUNS_TOTAL} times"
   else
-    key_value "脚本统计" "暂不可用"
+    key_value "脚本统计" "Unavailable"
   fi
 }
 

@@ -29,7 +29,7 @@ grep -q -- '--connect-timeout 2 --max-time 3' "${TEST_DIR}/requests"
 ! grep -Eq -- '--retry|Authorization|admin_key' "${TEST_DIR}/requests"
 { brand '测试页面'; brand '后续页面'; } >"${TEST_DIR}/output"
 [[ "$(grep -c '脚本统计' "${TEST_DIR}/output")" == 1 ]]
-grep -q '执行 1234 次' "${TEST_DIR}/output"
+grep -q 'Executed 1234 times' "${TEST_DIR}/output"
 for MOCK_RESPONSE in '{"value":0}' $' \n{ "value" : 42 }\n' '{"value":99999999999999999999999999999999999999999999999999999999999}'; do
   reset_stats
   record_script_run
@@ -40,7 +40,7 @@ for MOCK_RESPONSE in '' '<html>error</html>' '{"value":-1}' '{"value":"12"}' '{"
   record_script_run
   [[ -z "$SCRIPT_RUNS_TOTAL" ]]
   show_script_runs >"${TEST_DIR}/output"
-  grep -q '暂不可用' "${TEST_DIR}/output"
+  grep -q 'Unavailable' "${TEST_DIR}/output"
 done
 for failure_status in 22 28 60; do
   reset_stats
@@ -73,7 +73,7 @@ reset_stats
 set --
 eval "$dispatcher" >"${TEST_DIR}/output"
 grep -q '/hit/' "${TEST_DIR}/requests"
-grep -q '执行 42 次' "${TEST_DIR}/output"
+grep -q 'Executed 42 times' "${TEST_DIR}/output"
 reset_stats
 command() { [[ "${2:-}" != curl ]] && builtin command "$@"; }
 record_script_run

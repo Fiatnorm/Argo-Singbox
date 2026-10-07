@@ -39,6 +39,19 @@ WARP_ENABLED=1
 # Without cgroups, Nginx workers are still counted through MainPID ancestry.
 CGROUP_ROOT="$TEST_DIR/missing"
 [[ "$(runtime_memory_usage)" == '35.5 MiB' ]]
+# A live SQLite collector child is counted once, whether in cgroup or ancestry.
+mkdir -p "$PROC_ROOT/402"
+printf 'VmRSS:\t512 kB\n' >"$PROC_ROOT/402/status"
+ps() { printf '%s\n' "$$ 1" '101 1' '102 101' '201 1' '301 1' '401 1' '402 401' '501 1' '999 1'; }
+[[ "$(runtime_memory_usage)" == '36.0 MiB' ]]
+CGROUP_ROOT="$TEST_DIR/cgroup"
+printf '401\n402\n402\n' >"$CGROUP_ROOT/traffic/cgroup.procs"
+[[ "$(runtime_memory_usage)" == '36.0 MiB' ]]
+# A cgroup member missing from ps is still counted.
+ps() { printf '%s\n' "$$ 1" '101 1' '102 101' '201 1' '301 1' '401 1' '501 1' '999 1'; }
+[[ "$(runtime_memory_usage)" == '36.0 MiB' ]]
+rm -f "$PROC_ROOT/402/status"
+rmdir "$PROC_ROOT/402"
 printf 'Name: inaccessible\n' >"$PROC_ROOT/201/status"
 [[ "$(runtime_memory_usage)" == '27.5 MiB · 部分进程不可读' ]]
 PROC_ROOT="$TEST_DIR/missing-proc"

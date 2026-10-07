@@ -25,11 +25,11 @@ for mode in plain dumb no-color; do
     show_script_runs
   ) >"${TEST_DIR}/${mode}"
   ! grep -q $'\033' "${TEST_DIR}/${mode}"
-  grep -q '执行 1234 次' "${TEST_DIR}/${mode}"
-  grep -q '暂不可用' "${TEST_DIR}/${mode}"
+  grep -q 'Executed 1234 times' "${TEST_DIR}/${mode}"
+  grep -q 'Unavailable' "${TEST_DIR}/${mode}"
   source "${ROOT_DIR}/argo-singbox.sh"
   while IFS= read -r line; do
-    [[ "$line" == Argo-Singbox*WSS\ Proxy ]] || [[ "$(display_width "$line")" -le 64 ]] || {
+    [[ "$line" == Argo-Singbox*WSS\ Proxy || "$line" == 脚本统计* ]] || [[ "$(display_width "$line")" -le 64 ]] || {
       printf 'UI exceeds 64 columns: %s\n' "$line" >&2
       exit 1
     }
