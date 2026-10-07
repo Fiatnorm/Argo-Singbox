@@ -330,7 +330,7 @@ TERM=dumb
 ### 6.1 普通操作页
 
 ```text
-◆ Argo-Singbox · 页面名称                         Enter · 默认 | 0 · 退出
+◆ Argo-Singbox · 页面名称            Enter · 默认 | 0 · 退出
 ----------------------------------------------------------------
 ▸ 当前状态
 字段           内容
@@ -405,7 +405,7 @@ TERM=dumb
 推荐品牌区：
 
 ```text
-Argo-Singbox  v2026.10.07 Argo Tunnel · Sing-box Core · WSS Proxy
+Argo-Singbox  v2026.10.07 · Argo Tunnel · Sing-box Core
 功能特性      WS/TLS · WARP · h2mux · TCP Brutal
 系统环境      Debian GNU/Linux 13 · amd64 · Kernel 6.12.101
 ----------------------------------------------------------------
@@ -589,21 +589,20 @@ ags -f     配置导入
 
 ```text
 ▸ 运行状态
-Argo Tunnel    已启用 · 运行中
-Sing-box Core  已启用 · 运行中
-WARP 分流      未启用 · 可选功能
-h2mux          已启用 · 16 streams · padding
-TCP Brutal     不可用 · 缺少 brutal 内核模块
-节点概览       VLESS 1 · VMess 1 · Trojan 1
-Argo 域名      example.com
-优选入口       polestar.com:443
-Argo 回源      127.0.0.1:3010
-VPS IPv4       107.173.211.29 · US · AS36352 · HostPapa
-VPS IPv6       2001:db8::1 · US
-节点落地 IP    IPv4 · direct
-全局流量       ↑ 201.9 MiB · ↓ 1.1 GiB
-运行内存       56.8 MiB
-组件版本              AGS 2026.10.07 · Sing-box 1.13.18 · cloudflared 2026.7.3
+Argo Tunnel         已启用 · 运行中
+Sing-box Core       已启用 · 运行中
+WARP 分流           未启用 · 可选功能
+h2mux               已启用 · 16 streams · padding
+TCP Brutal          不可用 · 缺少 brutal 内核模块
+节点概览            VLESS 1 · VMess 1 · Trojan 1
+Argo 域名           example.com
+优选入口            polestar.com:443
+Argo 回源           127.0.0.1:3010
+VPS IPv4            107.173.211.29 · US · AS36352 · HostPapa
+VPS IPv6            2001:db8::1 · US
+全局流量            ↑ 201.9 MiB · ↓ 1.1 GiB
+运行内存            56.8 MiB
+组件版本            Sing-box 1.13.18 · cloudflared 2026.7.3
 ```
 
 IPv6 是运行状态的独立一行；仅展示公网地址和国家/地区代码，不加入其他诊断型信息。首页不要继续加入 CPU、磁盘、Swap、Load Average 或 DNS 等诊断型信息。
@@ -917,7 +916,7 @@ SOCKS5 出站    127.0.0.1:1080 · 已配置认证
 原始订阅          https://.../raw
 Base64 订阅       https://.../base64
 Clash/Mihomo      https://.../clash
-Sing-box          https://.../sing-box
+Sing-box       https://.../sing-box
 
 ▸ 自适应 QR
 [QR]
@@ -1267,7 +1266,7 @@ VPS IPv4       107.173.211.29 · US · AS36352 · HostPapa
 VPS IPv6       2001:db8::1 · US
 系统内存       320/1024 MiB (31%)
 运行内存       56.8 MiB
-组件版本              AGS 2026.10.07 · Sing-box 1.13.18 · cloudflared 2026.7.3
+组件版本            Sing-box 1.13.18 · cloudflared 2026.7.3
 优选入口       polestar.com:443
 Argo 回源      127.0.0.1:3010
 
@@ -1820,7 +1819,7 @@ TCP Brutal     不可用 · 缺少 brutal 内核模块
 
 ## 29. 键值对齐
 
-中英文统一采用 20 列键名加 2 列空格，值从第 23 列开始。
+中英文顶部信息采用 12 列键名加 2 列空格，值与版本号同在第 15 列；普通字段采用 18 列键名加 2 列空格，值从第 21 列开始。
 
 ```text
 Argo Tunnel    已启用 · 运行中
@@ -1834,7 +1833,7 @@ Argo 回源      127.0.0.1:3010
 
 ```text
 Argo:
-Sing-box Core    :
+Sing-box Core  :
 WARP状态:
 ```
 
@@ -2071,48 +2070,47 @@ Argo Tunnel 回源端口     → Argo 回源
 # # # #  ##  #      ##  ### # #  ## ##   #  # #
 # # # #  ##  #      ##  ### # #  ## ##   #  # #
 
-Argo-Singbox  v2026.10.07 Argo Tunnel · Sing-box Core · WSS Proxy
+Argo-Singbox  v2026.10.07 · Argo Tunnel · Sing-box Core
 功能特性      WS/TLS · WARP · h2mux · TCP Brutal
 系统环境      Debian GNU/Linux 13 · amd64 · Kernel 6.12.101
 ----------------------------------------------------------------
 ▸ 运行状态
-Argo Tunnel    已启用 · 运行中
-Sing-box Core  已启用 · 运行中
-WARP 分流      未启用 · 可选功能
-h2mux          已启用 · 16 streams · padding
-TCP Brutal     不可用 · 缺少 brutal 内核模块
-节点概览       VLESS 1 · VMess 1 · Trojan 1
-Argo 域名      tunnel.example.com
-优选入口       polestar.com:443
-Argo 回源      127.0.0.1:3010
-VPS IPv4       107.173.211.29 · US · AS36352 · HostPapa
-VPS IPv6       2001:db8::1 · US
-节点落地 IP    IPv4 · direct
-全局流量       ↑ 201.9 MiB · ↓ 1.1 GiB
-运行内存       56.8 MiB
-组件版本              AGS 2026.10.07 · Sing-box 1.13.18 · cloudflared 2026.7.3
+Argo Tunnel         已启用 · 运行中
+Sing-box Core       已启用 · 运行中
+WARP 分流           未启用 · 可选功能
+h2mux               已启用 · 16 streams · padding
+TCP Brutal          不可用 · 缺少 brutal 内核模块
+节点概览            VLESS 1 · VMess 1 · Trojan 1
+Argo 域名           tunnel.example.com
+优选入口            polestar.com:443
+Argo 回源           127.0.0.1:3010
+VPS IPv4            107.173.211.29 · US · AS36352 · HostPapa
+VPS IPv6            2001:db8::1 · US
+全局流量            ↑ 201.9 MiB · ↓ 1.1 GiB
+运行内存            56.8 MiB
+组件版本            Sing-box 1.13.18 · cloudflared 2026.7.3
 ----------------------------------------------------------------
 
-◆ Argo-Singbox · 控制中心                         0 · 退出
+◆ Argo-Singbox · 控制中心  0 · 退出
 ----------------------------------------------------------------
 ▸ 常用操作
-  1  节点订阅                    [ags -n]
-  2  配置中心                    [ags -c]
-  3  服务管理                    [ags -a]
+                    1  节点订阅                    [ags -n]
+                    2  配置中心                    [ags -c]
+                    3  服务管理                    [ags -a]
 
 ▸ 运行观测
-  4  流量统计                    [ags -t]
-  5  运行诊断                    [ags -x]
+                    4  流量统计                    [ags -t]
+                    5  运行诊断                    [ags -x]
 
 ▸ 系统维护
-  6  组件更新                    [ags -v]
-  7  备份恢复                    [ags -k]
-  8  系统工具                    [ags -b]
+                    6  组件更新                    [ags -v]
+                    7  备份恢复                    [ags -k]
+                    8  系统工具                    [ags -b]
 
 ▸ 项目管理
-  9  项目安装                    [ags -i]
- 10  项目卸载                    [ags -u]
-  0  退出脚本
+                    9  项目安装                    [ags -i]
+ 10                 项目卸载                    [ags -u]
+                    0  退出脚本
 ----------------------------------------------------------------
 › 请选择：
 ```
@@ -2244,20 +2242,24 @@ Argo-Singbox Terminal UI 的目标不是“做得像图形界面”，而是成�
 
 中文为默认语言，控制中心第 11 项或 `ags -l` 可切换英语/简体中文；页面、提示、状态、成功、警告和错误使用所选语言，组件与协议名固定。中文示例用于对应中文模式。所有菜单/input 的 0 直接退出，危险确认 Enter 默认 No。英语提示为 `Enter · Default | 0 · Exit`，中文为 `Enter · 默认 | 0 · 退出`，Enter/0 黄色。
 
-控制中心六行字标采用本节之前的用户参考 ASCII 图案；品牌标题完整显示于同一行。普通字段和菜单保持 64 列；字段均按统一列宽单行显示，系统内核去除发行版构建后缀。节点概览值为紫色，运行状态中的组件版本字段包括 AGS、Sing-box、cloudflared，只有三个版本号为黄色，其余内容为白色。
+控制中心六行字标采用本节之前的用户参考 ASCII 图案；品牌标题完整显示于同一行。普通字段和菜单保持 64 列；字段均按统一列宽单行显示，系统内核去除发行版构建后缀。节点概览值为紫色，运行状态中的组件版本字段包括 Sing-box、cloudflared，只有两个组件版本号为黄色，其余内容为白色。
 
 统计在中英文模式均显示 `Executed 6 times`，保留既有统计请求与失败处理。IPv6 未确认时显示 `None`。
 
 节点出站字段支持认证 HTTP/SOCKS5 URL、旧 SOCKS5 字段与 direct 地址族；展示不回显密码。运行时生成 HTTP CONNECT 或 SOCKS5 出站，WARP 路由优先。
 
-品牌标题单行完整显示为 65 列，这是用户指定的例外；其余分隔线和普通布局仍为 64 列。
+品牌标题单行完整显示；分隔线和菜单布局仍为 64 列。
 
 ## 2026.10.07 排版修订
 
 - 默认中文，已显式保存的语言选择继续有效；中文和英文使用同一布局。
-- 字标首行之前严格一行空白。所有键值标签占 20 个显示列，后跟两个空格；值起始列为 23。使用 UTF-8 字符码点计算显示宽度，避免 locale 改变中文宽度或误判英文。
-- 品牌、功能特性、系统环境、脚本统计各占一行。系统环境示例为 `Debian GNU/Linux 13 (trixie) · amd64 · Kernel 6.12.101`，不显示 `+deb13-amd64` 构建后缀。
-- 执行次数始终为 `Executed 17 times`，失败为 `Unavailable`，不会人为递增 API 返回的次数。
-- 删除运行状态中的节点落地 IP 行；保留配置页的直连地址族功能。组件版本在运行状态下显示为 `AGS 2026.10.07 · Sing-box 1.13.18 · cloudflared 2026.7.3`，只有数字版本为黄色，组件名和分隔符为白色。
+- 字标首行之前严格一行空白。顶部信息标签占 12 个显示列，后跟两个空格，与标题版本号同在第 15 列；其余键值标签占 18 列，后跟两个空格，值起始列为 21。使用 UTF-8 字符码点计算显示宽度，避免 locale 改变中文宽度或误判英文。
+- 品牌、功能特性、系统环境、脚本统计各占一行。系统环境示例为 `Debian GNU/Linux 13 · amd64 · Kernel 6.12.101`，不显示 `+deb13-amd64` 构建后缀。
+- 执行次数始终为 `Executed N times`，失败为 `Unavailable`，不会人为递增 API 返回的次数。
+- 删除运行状态中的节点落地 IP 行；保留配置页的直连地址族功能。组件版本在运行状态下显示为 `Sing-box 1.13.18 · cloudflared 2026.7.3`，只有数字版本为黄色，组件名和分隔符为白色。
 - 蓝色分隔线及页面 Enter/0 提示保持 64 列；信息字段不因这条线而截断或换行。
 - 内存采用唯一 PID 的 RSS 总和：管理脚本、Nginx master/workers、Sing-box、cloudflared、活跃流量采集及 SQLite 子进程、已安装 WARP。重叠 MainPID/cgroup/后代 PID 只算一次。SQLite 数据库文件不是进程内存；库页已经计入进程 RSS。RSS 可能包含各进程共享页，不能视为去重后的物理内存或 PSS；不可读进程会标记统计不完整。
+
+## 2026.10.07 紧凑布局补充
+
+顶部标题为 `Argo-Singbox  v2026.10.07 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。

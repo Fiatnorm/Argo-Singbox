@@ -82,7 +82,7 @@ SCRIPT_RUNS_TOTAL=""
 SCRIPT_RUNS_REQUESTED=0
 SCRIPT_RUNS_SHOWN=0
 UI_WIDTH=64
-UI_LABEL_WIDTH=20
+UI_LABEL_WIDTH=18
 if [[ -t 1 && -z "${NO_COLOR:-}" && "${TERM:-dumb}" != "dumb" ]]; then
   C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'; C_DIM=$'\033[2m'; C_UNDERLINE=$'\033[4m'
   C_RED=$'\033[31m'; C_GREEN=$'\033[32m'; C_YELLOW=$'\033[33m'
@@ -994,7 +994,7 @@ system_summary() {
     os="$(
       # shellcheck disable=SC1091
       source /etc/os-release
-      printf '%s' "${PRETTY_NAME:-${NAME:-Linux}}"
+      printf '%s' "${NAME:-${PRETTY_NAME:-Linux}}${VERSION_ID:+ $VERSION_ID}"
     )"
   fi
   case "$(uname -m)" in
@@ -1151,6 +1151,7 @@ node_overview() {
   ' "$NODES_CONFIG"
 }
 control_panel() {
+  local UI_LABEL_WIDTH=12
   printf '\n'
   printf '%s%s' "$C_BOLD" "$C_BRIGHT_CYAN"
   cat <<'EOF'
@@ -1162,7 +1163,7 @@ control_panel() {
             /____/                    /____/
 EOF
   printf '%s\n' "$C_RESET"
-  printf '%s%s%s  %sv%s%s Argo Tunnel · Sing-box Core · WSS Proxy\n' \
+  printf '%s%s%s  %sv%s%s · Argo Tunnel · Sing-box Core\n' \
     "$C_BOLD" "$C_BRIGHT_MAGENTA" "$PROJECT_NAME" "$C_BRIGHT_YELLOW" "$VERSION" "$C_RESET"
   key_value "功能特性" "WS/TLS · WARP · h2mux · TCP Brutal"
   key_value "系统环境" "$(system_summary)"
@@ -1211,7 +1212,7 @@ component_version_value() {
   core_version="$(local_core_version 2>/dev/null || ui_printf '未安装')"
   tunnel_version="$(local_cloudflared_version 2>/dev/null || ui_printf '未安装')"
   field_label "组件版本"
-  printf '%s%s %s%s%s · Sing-box ' "$C_BRIGHT_WHITE" "$PROJECT_CODE" "$C_BRIGHT_YELLOW" "$VERSION" "$C_BRIGHT_WHITE"
+  printf '%sSing-box ' "$C_BRIGHT_WHITE"
   version_color="$C_BRIGHT_WHITE"
   [[ "$core_version" != [0-9]* ]] || version_color="$C_BRIGHT_YELLOW"
   printf '%s%s%s · cloudflared ' "$version_color" "$core_version" "$C_BRIGHT_WHITE"
@@ -4796,6 +4797,7 @@ record_script_run() {
   return 0
 }
 show_script_runs() {
+  local UI_LABEL_WIDTH=12
   ((SCRIPT_RUNS_REQUESTED == 1 && SCRIPT_RUNS_SHOWN == 0)) || return 0
   SCRIPT_RUNS_SHOWN=1
   if [[ -n "$SCRIPT_RUNS_TOTAL" ]]; then

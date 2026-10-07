@@ -32,7 +32,7 @@ fi
 
 while IFS= read -r line; do
   width="$(NO_COLOR=1 TERM=dumb bash -c 'source "$1"; display_width "$2"' _ "$SCRIPT" "$line")"
-  [[ "$line" == Argo-Singbox*WSS\ Proxy || "$line" == 系统环境* ]] || ((width <= 64)) || {
+  [[ "$line" == 系统环境* ]] || ((width <= 64)) || {
     printf 'UI line exceeds 64 columns (%s): %s\n' "$width" "$line" >&2
     exit 1
   }
@@ -205,6 +205,8 @@ NO_COLOR=1 TERM=dumb bash -c '
   warning_state="$(state_value "WARP 分流" "未启用 · 可选功能")"
   warning="$(ui_warn "提醒")"
   menu="$(menu_item 1 "节点订阅")"
+  local_core_version() { printf 1.13.18; }
+  local_cloudflared_version() { printf 2026.7.3; }
   version="$(component_version_value)"
   nodes="$(state_value "节点概览" "VLESS 1 · VMess 2 · Trojan 1")"
   page="$(ui_page "页面" default)"

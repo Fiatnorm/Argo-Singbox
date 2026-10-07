@@ -57,7 +57,7 @@ for mode in en zh; do
     ) >"$TEST_DIR/$mode-$terminal_mode" 2>"$TEST_DIR/$mode-$terminal_mode.err"
     ! grep -q $'\033' "$TEST_DIR/$mode-$terminal_mode" "$TEST_DIR/$mode-$terminal_mode.err"
     grep -Fq '6.12.57+deb13-amd64' "$TEST_DIR/$mode-$terminal_mode"
-    grep -Fq 'AGS 2026.10.07 · Sing-box 1.13.18 · cloudflared 2026.7.3' "$TEST_DIR/$mode-$terminal_mode"
+    grep -Fq 'Sing-box 1.13.18 · cloudflared 2026.7.3' "$TEST_DIR/$mode-$terminal_mode"
     ! grep -q '全局累计' "$TEST_DIR/$mode-$terminal_mode"
   done
   if [[ "$mode" == en ]]; then
@@ -76,5 +76,5 @@ C_BRIGHT_YELLOW=yellow C_BRIGHT_RED=red C_BRIGHT_GREEN=green C_BRIGHT_MAGENTA=pu
 [[ "$(state_value '节点概览' 'VLESS 1 · VMess 2 · Trojan 1')" == *purple* ]]
 [[ "$(state_value WARP 'Enabled · Running')" == *green* ]]
 [[ "$(state_value WARP 'Enabled · Error: process not running')" == *red* ]]
-[[ "$(component_version_value)" == *yellow*2026.10.07*yellow*1.13.18* ]]
+[[ "$(component_version_value)" == *yellow*1.13.18*yellow*2026.7.3* ]]
 printf 'LANGUAGE_SMOKE_OK\n'
