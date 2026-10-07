@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2026.08.12"
+VERSION="2026.10.07"
 PROJECT_NAME="Argo-Singbox"
 PROJECT_CODE="AGS"
 SCRIPT_NAME="argo-singbox.sh"
@@ -10,6 +10,12 @@ COMMAND_NAME="ags"
 COMMAND_NAME_UPPER="AGS"
 PROJECT_REPO="Fiatnorm/Argo-Singbox"
 PROJECT_BRANCH="main"
+SCRIPT_STATS_URL="https://abacus.jasoncameron.dev"
+SCRIPT_STATS_NAMESPACE="ags"
+SCRIPT_STATS_KEY="fiatnorm"
+SCRIPT_RUNS_TOTAL=""
+SCRIPT_RUNS_REQUESTED=0
+SCRIPT_RUNS_SHOWN=0
 SING_BOX_REPO="SagerNet/sing-box"
 TCP_BRUTAL_REPO="apernet/tcp-brutal"
 TCP_BRUTAL_INSTALLER_REV="f11e52d88c7ad2285896de018c2d96d4687f0ab6"
@@ -94,7 +100,13 @@ ui_line() {
 }
 green() { printf '%s✓ %s%s\n' "$C_BRIGHT_GREEN" "$*" "$C_RESET"; }
 yellow() { printf '%s! %s%s\n' "$C_BRIGHT_YELLOW" "$*" "$C_RESET"; }
-red() { printf '%s✗ %s%s\n' "$C_BRIGHT_RED" "$*" "$C_RESET" >&2; }
+red() {
+  local color="" reset=""
+  if [[ -t 2 && -z "${NO_COLOR:-}" && "${TERM:-dumb}" != dumb ]]; then
+    color=$'\033[91m'; reset=$'\033[0m'
+  fi
+  printf '%s✗ %s%s\n' "$color" "$*" "$reset" >&2
+}
 info() { printf '%s• %s%s\n' "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
 display_width() {
   local text="$1" bytes chars
@@ -133,45 +145,39 @@ fit_text() {
   target="$2"
   pad_right "$text" "$target"
 }
-ui_page() {
-  local title="$1" mode="${2:-none}" hint="" hint_text="" title_width hint_width padding
-  case "$mode" in
-    main) hint_text="退出" ;;
-    back) hint_text="返回" ;;
-    cancel) hint_text="取消" ;;
-    default) hint="Enter · 默认 | 0 · 取消" ;;
-    none) ;;
-    *) die "未知页面提示模式：${mode}" ;;
-  esac
-  [[ -z "$hint_text" ]] || hint="0 · ${hint_text}"
-  printf '\n%s%s◆ %s%s' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$title" "$C_RESET"
-  if [[ -n "$hint" ]]; then
-    title_width="$(display_width "$title")"
-    hint_width="$(display_width "$hint")"
-    padding=$((UI_WIDTH - 2 - title_width - hint_width))
-    if ((padding >= 2)); then
-      if [[ "$mode" == "default" ]]; then
-        printf '%*s%sEnter%s · %s%s%s %s|%s %s0%s · %s取消%s\n' "$padding" '' \
-          "$C_BRIGHT_YELLOW" "$C_BRIGHT_WHITE" \
-          "默认" "$C_RESET" \
-          "$C_BRIGHT_WHITE" "$C_RESET" "$C_BRIGHT_YELLOW" "$C_BRIGHT_WHITE" "$C_RESET"
-      else
-        printf '%*s%s0%s · %s%s\n' "$padding" '' "$C_BRIGHT_YELLOW" "$C_BRIGHT_WHITE" \
-          "$hint_text" "$C_RESET"
-      fi
-    else
-      if [[ "$mode" == "default" ]]; then
-        printf '\n  %sEnter%s · %s%s%s %s|%s %s0%s · %s取消%s\n' \
-          "$C_BRIGHT_YELLOW" "$C_BRIGHT_WHITE" \
-          "默认" "$C_RESET" \
-          "$C_BRIGHT_WHITE" "$C_RESET" "$C_BRIGHT_YELLOW" "$C_BRIGHT_WHITE" "$C_RESET"
-      else
-        printf '\n  %s0%s · %s%s\n' "$C_BRIGHT_YELLOW" "$C_BRIGHT_WHITE" "$hint_text" "$C_RESET"
-      fi
-    fi
-  else
-    printf '\n'
+record_script_run() {
+  local response mode="${1:-hit}" value_pattern
+  ((SCRIPT_RUNS_REQUESTED == 0)) || return 0
+  SCRIPT_RUNS_REQUESTED=1
+  command -v curl >/dev/null 2>&1 || return 0
+  # /hit 有副作用：限时单次请求，不重试，避免响应丢失后重复计数。
+  if response="$(curl -fsS --connect-timeout 2 --max-time 3 \
+    "${SCRIPT_STATS_URL}/${mode}/${SCRIPT_STATS_NAMESPACE}/${SCRIPT_STATS_KEY}" 2>/dev/null)"; then
+    value_pattern='^[[:space:]]*\{[[:space:]]*"value"[[:space:]]*:[[:space:]]*(0|[1-9][0-9]*)[[:space:]]*\}[[:space:]]*$'
+    [[ "$response" =~ $value_pattern ]] && SCRIPT_RUNS_TOTAL="${BASH_REMATCH[1]}"
   fi
+  return 0
+}
+show_script_runs() {
+  ((SCRIPT_RUNS_REQUESTED == 1 && SCRIPT_RUNS_SHOWN == 0)) || return 0
+  SCRIPT_RUNS_SHOWN=1
+  if [[ -n "$SCRIPT_RUNS_TOTAL" ]]; then
+    key_value "脚本统计" "全局累计 ${SCRIPT_RUNS_TOTAL} 次"
+  else
+    key_value "脚本统计" "暂不可用"
+  fi
+}
+input_hint() {
+  printf '%sEnter%s · 默认 | %s0%s · 取消%s\n' \
+    "$C_BRIGHT_YELLOW" "$C_BRIGHT_WHITE" "$C_BRIGHT_YELLOW" "$C_BRIGHT_WHITE" "$C_RESET"
+}
+ui_page() {
+  local title="$1" hint="Enter · 默认 | 0 · 取消" padding
+  printf '\n%s%s◆ %s%s' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$title" "$C_RESET"
+  padding=$((UI_WIDTH - $(display_width "◆ ${title}${hint}")))
+  if ((padding >= 2)); then printf '%*s' "$padding" ''; else printf '\n  '; fi
+  input_hint
+  show_script_runs
   ui_line
 }
 brand() { ui_page "$1" "${2:-none}"; }
@@ -192,51 +198,106 @@ system_summary() {
   kernel="$(uname -r)"
   printf '%s · %s · Kernel %s' "$os" "$arch" "${kernel%%+*}"
 }
-public_ipv4() {
-  curl -4fsS --connect-timeout 2 --max-time 3 https://api.ipify.org 2>/dev/null ||
-    hostname -I 2>/dev/null | awk '{print $1}' || true
-}
-public_ipv4_details() {
-  local json ip country asn isp
-  json="$(curl -4fsS --connect-timeout 2 --max-time 4 https://ip.cloudflare.now.cc 2>/dev/null || true)"
-  if [[ -n "$json" ]] && command -v jq >/dev/null 2>&1; then
-    ip="$(jq -r '.ip // empty' <<<"$json" 2>/dev/null || true)"
-    country="$(jq -r '.country // empty' <<<"$json" 2>/dev/null || true)"
-    asn="$(jq -r '.asn // empty' <<<"$json" 2>/dev/null || true)"
-    isp="$(jq -r '.isp // empty' <<<"$json" 2>/dev/null || true)"
+geojs_field() {
+  if command -v jq >/dev/null 2>&1; then
+    jq -r --arg key "$2" '.[$key] // empty' <<<"$1" 2>/dev/null || true
   else
-    ip="$(sed -n 's/.*"ip"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$json" | head -n 1)"
-    country="$(sed -n 's/.*"country"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$json" | head -n 1)"
-    asn="$(sed -n 's/.*"asn"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$json" | head -n 1)"
-    isp="$(sed -n 's/.*"isp"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$json" | head -n 1)"
+    # 首次安装尚无 jq；GeoJS 是平面 JSON，兼容紧凑与多行响应。
+    tr '\n' ' ' <<<"$1" | sed -n "s/.*\"$2\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -n 1
   fi
-  [[ -n "$ip" ]] || ip="$(public_ipv4)"
-  printf '%s|%s|%s|%s' "${ip:-未知}" "${country:-未知}" "${asn:-未知}" "${isp:-未知}"
+}
+geojs_query() {
+  local family="$1" source destination
+  local -a bind=()
+  destination=1.1.1.1
+  [[ "$family" == 6 ]] && destination=2606:4700:4700::1111
+  # 与 SBA 一样按地址族检测并绑定默认公网路由，排除环境代理。
+  source="$(ip -"$family" route get "$destination" 2>/dev/null | awk '{for(i=1;i<NF;i++) if($i=="src") {print $(i+1); exit}}' || true)"
+  [[ -z "$source" ]] || bind=(--interface "$source")
+  curl -"$family"fsS --noproxy '*' "${bind[@]}" --connect-timeout 2 --max-time 4 \
+    --retry 1 --retry-delay 0 --retry-all-errors https://get.geojs.io/v1/ip/geo.json 2>/dev/null || true
+}
+detect_public_ips() {
+  [[ "${PUBLIC_IPS_DETECTED:-0}" == 1 ]] && return 0
+  PUBLIC_IPV4_JSON="$(geojs_query 4)"
+  PUBLIC_IPV6_JSON="$(geojs_query 6)"
+  PUBLIC_IPV4="$(geojs_field "$PUBLIC_IPV4_JSON" ip)"
+  PUBLIC_IPV6="$(geojs_field "$PUBLIC_IPV6_JSON" ip)"
+  [[ "$PUBLIC_IPV4" =~ ^[0-9]+(\.[0-9]+){3}$ ]] && valid_ipv4 "$PUBLIC_IPV4" || PUBLIC_IPV4=""
+  [[ "$PUBLIC_IPV6" == *:* && "$PUBLIC_IPV6" != :: && "$PUBLIC_IPV6" != ::1 ]] &&
+    valid_endpoint_host "$PUBLIC_IPV6" || PUBLIC_IPV6=""
+  PUBLIC_IPS_DETECTED=1
+}
+public_ipv4() { detect_public_ips; printf '%s' "$PUBLIC_IPV4"; }
+public_ipv6() { detect_public_ips; printf '%s' "$PUBLIC_IPV6"; }
+public_ipv4_details() {
+  local country asn isp
+  detect_public_ips
+  country="$(geojs_field "$PUBLIC_IPV4_JSON" country_code)"
+  asn="$(geojs_field "$PUBLIC_IPV4_JSON" asn)"
+  if ! command -v jq >/dev/null 2>&1; then
+    asn="$(tr '\n' ' ' <<<"$PUBLIC_IPV4_JSON" | sed -n 's/.*"asn"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p')"
+  fi
+  isp="$(geojs_field "$PUBLIC_IPV4_JSON" organization_name)"
+  isp="$(sed -E 's/^AS[0-9]+[[:space:]]+//' <<<"$isp")"
+  [[ "$country" =~ ^[A-Z]{2}$ ]] || country="未知"
+  [[ "$asn" =~ ^[0-9]+$ && "$asn" != 64512 ]] && asn="AS${asn}" || asn="未知"
+  [[ "$isp" != Unknown ]] || isp="未知"
+  printf '%s|%s|%s|%s' "${PUBLIC_IPV4:-没有}" "$country" "$asn" "${isp:-未知}"
+}
+direct_strategy() {
+  if [[ -n "$PUBLIC_IPV4" && -z "$PUBLIC_IPV6" ]]; then printf ipv4_only; return
+  elif [[ -z "$PUBLIC_IPV4" && -n "$PUBLIC_IPV6" ]]; then printf ipv6_only; return; fi
+  case "${1:-}" in
+    direct:ipv4) printf prefer_ipv4 ;;
+    direct:ipv6) printf prefer_ipv6 ;;
+    *) printf prefer_ipv4 ;;
+  esac
+}
+is_direct_outbound() { [[ -z "$1" || "$1" == direct:ipv4 || "$1" == direct:ipv6 ]]; }
+select_node_egress() {
+  local current="$1" choice default=4
+  detect_public_ips
+  [[ "$current" == direct:ipv6 || ( -z "$PUBLIC_IPV4" && -n "$PUBLIC_IPV6" ) ]] && default=6
+  [[ -n "$PUBLIC_IPV4" || -n "$PUBLIC_IPV6" ]] || die "未能验证公网出口，请检查网络或 GeoJS 后重试。"
+  key_value "IPv4 出口" "${PUBLIC_IPV4:-没有}"
+  key_value "IPv6 出口" "${PUBLIC_IPV6:-没有}"
+  if [[ -n "$PUBLIC_IPV4" && -n "$PUBLIC_IPV6" ]]; then
+    info "选择域名连接的优先出口；目标不支持时使用另一地址族。"
+    read_input "直连出口 [4 IPv4 / 6 IPv6；${default}]：" choice
+    is_exit_input "$choice" && return 1
+    choice="${choice:-$default}"
+    [[ "$choice" == 4 || "$choice" == 6 ]] || die "出口只能选择 4 或 6。"
+  elif [[ -n "$PUBLIC_IPV4" ]]; then choice=4
+  else choice=6; fi
+  NODE_EGRESS="direct:ipv${choice}"
 }
 node_overview() {
-  [[ -s "$NODES_CONFIG" ]] || { printf 'Vless 0 · Vmess 0 · Trojan 0'; return; }
+  [[ -s "$NODES_CONFIG" ]] || { printf 'VLESS 0 · VMess 0 · Trojan 0'; return; }
   awk -F'|' '
     {protocols[$2]++}
     END {
-      printf "Vless %d · Vmess %d · Trojan %d", protocols["vless"], protocols["vmess"], protocols["trojan"]
+      printf "VLESS %d · VMess %d · Trojan %d", protocols["vless"], protocols["vmess"], protocols["trojan"]
     }
   ' "$NODES_CONFIG"
 }
 control_panel() {
   printf '\n%s%s' "$C_BOLD" "$C_BRIGHT_CYAN"
-  printf '%s\n' '    ___                  _____ _             __'
-  printf '%s\n' '   /   |  _________ ____/ ___/(_)___  ____ _/ /_  ____  _  __'
-  printf '%s\n' '  / /| | / ___/ __ `/ __\__ \/ / __ \/ __ `/ __ \/ __ \| |/_/'
-  printf '%s\n' ' / ___ |/ /  / /_/ / /_/__/ / / / / / /_/ / /_/ / /_/ />  <'
-  printf '%s\n' '/_/  |_/_/   \__, /\__/____/_/_/ /_/\__, /_.___/\____/_/|_|'
-  printf '%s\n' '            /____/                  /____/'
+  printf '%s\n' ' _ _   _ _   _ _   _ _    _ _  _ _ _   _  _ _   _ _   _ _  \   /'
+  printf '%s\n' '/   \ |   \ /   \ /   \  /   \  |  |\  | /   \ |   \ /   \ \   /'
+  printf '%s\n' '|   | |   | |     |   |  |      |  | \ | |     |   | |   |  \ / '
+  printf '%s\n' '|_ _| |_ _/ |  _  |   |  \_ _   |  |  \| |  _  |_ _/ |   |   X  '
+  printf '%s\n' '|   | | \   |   | |   |      |  |  |   | |   | |   \ |   |  / \ '
+  printf '%s\n' '|   | |  \  |   | |   |  |   |  |  |   | |   | |   | |   | /   \'
+  printf '%s\n' '|   | |   \ \_ _/ \_ _/  \_ _/ _|_ |   | \_ _/ |_ _/ \_ _/ /   \'
   printf '\n%s%s' "$C_BOLD" "$C_BRIGHT_MAGENTA"
   pad_right "$PROJECT_NAME" 14
-  printf '%s%s%s%s%s · Argo Tunnel · Sing-box Core · WSS Proxy%s\n' \
-    "$C_RESET" "$C_BRIGHT_YELLOW" "v${VERSION}" "$C_RESET" "$C_DIM" "$C_RESET"
+  printf '%s%s%s%s\n' "$C_RESET" "$C_BRIGHT_YELLOW" "v${VERSION}" "$C_RESET"
+  printf '%sArgo Tunnel · Sing-box Core · WSS Proxy%s\n' "$C_DIM" "$C_RESET"
   printf '%s' "$C_BRIGHT_CYAN"
   pad_right "系统环境" 14
-  printf '%s%s%s%s\n' "$C_RESET" "$C_BRIGHT_WHITE" "$(system_summary)" "$C_RESET"
+  printf '%s%s%s%s\n' "$C_RESET" "$C_BRIGHT_WHITE" "$(clip_text "$(system_summary)" "$((UI_WIDTH - 14))")" "$C_RESET"
+  show_script_runs
   ui_line
   UI_TIGHT_SECTION=1
 }
@@ -244,9 +305,11 @@ service_status() {
   local service="$1"
   if ! systemctl list-unit-files "${service}.service" --no-legend 2>/dev/null |
     grep -q "^${service}.service"; then
-    printf '未启用 · 原因：未安装'
+    printf '未安装'
   elif systemctl is-active --quiet "$service"; then
     printf '已启用 · 运行中'
+  elif systemctl is-enabled --quiet "$service" 2>/dev/null; then
+    printf '已启用 · 异常：进程未运行'
   else
     printf '未启用 · 已停止'
   fi
@@ -259,18 +322,23 @@ service_label() {
     *) printf '%s' "$1" ;;
   esac
 }
+traffic_timer_status() {
+  if systemctl is-active --quiet "${TRAFFIC_TIMER}.timer" 2>/dev/null; then
+    printf '已启用 · 每分钟'
+  else printf '未启用 · 定时器已停止'; fi
+}
 warp_status() {
   if [[ "${WARP_ENABLED:-0}" != "1" ]]; then
-    printf '未启用'
+    printf '未启用 · 可选功能'
   elif systemctl is-active --quiet warp-svc 2>/dev/null &&
     ss -lntH "sport = :${WARP_PROXY_PORT}" 2>/dev/null | grep -q .; then
     printf '已启用 · 运行中 · 127.0.0.1:%s' "$WARP_PROXY_PORT"
   else
-    printf '已启用 · 异常：本地代理不可用'
+    printf '已启用 · 异常：本地 SOCKS5 不可用'
   fi
 }
 component_versions() {
-  printf '%s %s · %s %s · CF %s' "$PROJECT_CODE" "$VERSION" "$(core_label)" \
+  printf 'Sing-box %s · cloudflared %s' \
     "$(local_core_version 2>/dev/null || printf '未安装')" \
     "$(local_cloudflared_version 2>/dev/null || printf '未安装')"
 }
@@ -309,8 +377,8 @@ endpoint_value() {
 state_value() {
   local color="$C_BRIGHT_YELLOW" value="$2"
   case "$2" in
-    *异常*|*错误*|*无效*) color="$C_BRIGHT_RED" ;;
-    已启用*|运行中*|*'· 运行中'|已配置) color="$C_BRIGHT_GREEN" ;;
+    *异常*|*错误*|*无效*|*不可用*|*失败*|未运行*) color="$C_BRIGHT_RED" ;;
+    已启用*|运行中*|*'· 运行中'|已配置*|已通过*) color="$C_BRIGHT_GREEN" ;;
     未配置*|未启用*|已停止*|未安装*) color="$C_BRIGHT_YELLOW" ;;
   esac
   value="$(clip_text "$value" "$((UI_WIDTH - 15))")"
@@ -324,15 +392,32 @@ link_value() {
   printf '%s  %s%s%s%s\n' "$C_RESET" "$C_BRIGHT_WHITE" "$C_UNDERLINE" "$2" "$C_RESET"
 }
 prompt() { printf '%s%s› %s%s' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$*" "$C_RESET"; }
-read_choice() { prompt "$1"; IFS= read -r REPLY; REPLY="${REPLY%$'\r'}"; }
-read_input() { prompt "$1"; IFS= read -r "$2"; printf -v "$2" '%s' "${!2%$'\r'}"; }
+cancel_and_exit() {
+  yellow "已取消后续操作 · 本次脚本执行结束"
+  exit 0
+}
+read_choice() {
+  prompt "$1"
+  IFS= read -r REPLY || cancel_and_exit
+  REPLY="${REPLY%$'\r'}"
+  REPLY="${REPLY:-0}"
+  [[ "$REPLY" != 0 ]] || cancel_and_exit
+}
+read_input() {
+  prompt "$1"
+  IFS= read -r "$2" || cancel_and_exit
+  printf -v "$2" '%s' "${!2%$'\r'}"
+  [[ "${!2}" != 0 ]] || cancel_and_exit
+  # 无明确默认值的必填输入，Enter 选择取消，避免无效或危险动作。
+  if [[ -z "${!2}" && ( "$1" != *'['* || "$1" == *必填* || "$1" == *'以 / 开头'* || "$1" == 新增* ) ]]; then cancel_and_exit; fi
+}
 is_exit_input() {
   case "${1:-}" in
     0) return 0 ;;
     *) return 1 ;;
   esac
 }
-is_confirmed() { [[ -z "${1:-}" || "${1:-}" =~ ^[Yy]$ ]]; }
+is_confirmed() { [[ "${1:-}" =~ ^[Yy]$ ]]; }
 return_notice() { :; }
 
 cancel_config_change() {
@@ -356,8 +441,8 @@ menu_hint() {
 }
 protocol_label() {
   case "$1" in
-    vless) printf 'Vless' ;;
-    vmess) printf 'Vmess' ;;
+    vless) printf 'VLESS' ;;
+    vmess) printf 'VMess' ;;
     trojan) printf 'Trojan' ;;
     *) printf '%s' "$1" ;;
   esac
@@ -365,8 +450,8 @@ protocol_label() {
 
 node_type_label() {
   case "$1" in
-    vless) printf 'Vless+WS+TLS' ;;
-    vmess) printf 'Vmess+WS+TLS' ;;
+    vless) printf 'VLESS+WS+TLS' ;;
+    vmess) printf 'VMess+WS+TLS' ;;
     trojan) printf 'Trojan+WS+TLS' ;;
     *) printf '%s' "$1" ;;
   esac
@@ -809,21 +894,21 @@ detect_tcp_brutal() {
 tcp_brutal_status() {
   detect_tcp_brutal
   if [[ "$TCP_BRUTAL_ENABLED" != "1" ]]; then
-    printf '未启用 · 模块%s' "$([[ "$IS_BRUTAL" == "true" ]] && printf '已加载' || printf '未加载')"
+    printf '未启用 · brutal 内核模块%s' "$([[ "$IS_BRUTAL" == "true" ]] && printf '已加载' || printf '未加载')"
   elif [[ "$MULTIPLEX_ENABLED" != "1" ]]; then
     printf '未启用 · 原因：h2mux 未启用'
   elif [[ "$IS_BRUTAL" == "true" ]]; then
     printf '已启用 · %s/%s Mbps' "$BRUTAL_UP_MBPS" "$BRUTAL_DOWN_MBPS"
   else
-    printf '未启用 · 原因：缺少 brutal 内核模块'
+    printf '不可用 · 缺少 brutal 内核模块'
   fi
 }
 
 multiplex_status() {
   if [[ "$MULTIPLEX_ENABLED" == "1" ]]; then
-    printf '已启用 · h2mux · %s streams · padding' "$MULTIPLEX_MAX_STREAMS"
+    printf '已启用 · %s streams · padding' "$MULTIPLEX_MAX_STREAMS"
   else
-    printf '未启用 · h2mux'
+    printf '未启用'
   fi
 }
 
@@ -942,6 +1027,7 @@ valid_socks5() {
 
 node_outbound_value() {
   local socks="$1" host port _
+  case "$socks" in direct:ipv4) printf 'IPv4 直连'; return ;; direct:ipv6) printf 'IPv6 直连'; return ;; esac
   [[ -n "$socks" ]] || {
     printf 'direct'
     return 0
@@ -985,7 +1071,7 @@ validate_nodes_config() {
     [[ "$seen_tags" != *"|${tag}|"* && "$seen_paths" != *"|${path}|"* &&
       "$seen_ports" != *"|${port}|"* ]] || die "节点标签、路径或端口重复。"
     seen_tags+="${tag}|"; seen_paths+="${path}|"; seen_ports+="${port}|"
-    [[ -z "$socks" ]] || parse_socks5 "$socks" >/dev/null
+    is_direct_outbound "$socks" || parse_socks5 "$socks" >/dev/null
   done <"$NODES_CONFIG"
 }
 
@@ -1073,7 +1159,7 @@ install_cloudflare_warp() {
   local mode="${1:-prompt}" answer codename key_file fingerprint
   command -v warp-cli >/dev/null 2>&1 && return
   if [[ "$mode" != "auto" ]]; then
-    read_input "确认安装 Cloudflare WARP 客户端？[Y/n]：" answer
+    read_input "确认安装 Cloudflare WARP 客户端？[y/N]：" answer
     is_exit_input "$answer" && die "已取消安装 Cloudflare WARP 客户端。"
     is_confirmed "$answer" || die "已取消安装 Cloudflare WARP 客户端。"
   fi
@@ -1139,7 +1225,7 @@ ensure_warp_registration() {
   if grep -qi "Old registration is still around" "$output"; then
     cat "$output" >&2
     rm -f "$output"
-    read_input "确认删除并重新注册旧 WARP 注册？[Y/n]：" answer
+    read_input "确认删除并重新注册旧 WARP 注册？[y/N]：" answer
     is_exit_input "$answer" && die "已取消 WARP 重新注册。"
     is_confirmed "$answer" ||
       die "未清理旧 WARP 注册，已取消启用。"
@@ -1244,12 +1330,13 @@ local_cloudflared_version() {
 
 write_sing_box_config() (
   local config_target="${1:-$SING_BOX_CONFIG}" check_binary="${2:-${BIN_DIR}/sing-box}"
-  local tag protocol path port socks first=1 values host proxy_port username password brutal_value multiplex_json category
+  local tag protocol path port socks first=1 values host proxy_port username password brutal_value multiplex_json category strategy
   SING_BOX_CONFIG="$config_target"
   ensure_project_layout
   ensure_nodes_config
   validate_environment
   validate_nodes_config
+  detect_public_ips
   ensure_warp_geosite_files
   detect_tcp_brutal
   brutal_value="$(tcp_brutal_config_value)"
@@ -1258,7 +1345,7 @@ write_sing_box_config() (
   else
     multiplex_json='"multiplex":{"enabled":false}'
   fi
-  printf '{"log":{"level":"info","timestamp":true},"inbounds":[\n' >"$SING_BOX_CONFIG"
+  printf '{"log":{"level":"info","timestamp":true},"dns":{"servers":[{"type":"local","tag":"local"}]},"inbounds":[\n' >"$SING_BOX_CONFIG"
   while IFS='|' read -r tag protocol path port socks; do
     ((first)) || printf ',\n' >>"$SING_BOX_CONFIG"; first=0
     printf '{"type":"%s","tag":"%s","listen":"127.0.0.1","listen_port":%s,' "$protocol" "$tag" "$port" >>"$SING_BOX_CONFIG"
@@ -1270,7 +1357,8 @@ write_sing_box_config() (
     printf '"transport":{"type":"ws","path":"%s","max_early_data":2560,"early_data_header_name":"Sec-WebSocket-Protocol"},' "$path" >>"$SING_BOX_CONFIG"
     printf '%s}' "$multiplex_json" >>"$SING_BOX_CONFIG"
   done <"$NODES_CONFIG"
-  printf '\n],"outbounds":[{"type":"direct","tag":"direct"}' >>"$SING_BOX_CONFIG"
+  strategy="$(direct_strategy)"
+  printf '\n],"outbounds":[{"type":"direct","tag":"direct","domain_resolver":{"server":"local","strategy":"%s"}}' "$strategy" >>"$SING_BOX_CONFIG"
   if [[ "$WARP_ENABLED" == "1" ]]; then
     valid_port "$WARP_PROXY_PORT" || die "WARP 本地代理端口无效。"
     WARP_DOMAINS="$(normalize_warp_domains "$WARP_DOMAINS")"
@@ -1280,11 +1368,16 @@ write_sing_box_config() (
   fi
   while IFS='|' read -r tag protocol path port socks; do
     [[ -n "$socks" ]] || continue
+    if is_direct_outbound "$socks"; then
+      printf ',{"type":"direct","tag":"direct-%s","domain_resolver":{"server":"local","strategy":"%s"}}' \
+        "$tag" "$(direct_strategy "$socks")" >>"$SING_BOX_CONFIG"
+      continue
+    fi
     values="$(parse_socks5 "$socks")"; IFS='|' read -r host proxy_port username password <<<"$values"
     printf ',{"type":"socks","tag":"socks-%s","server":"%s","server_port":%s,"version":"5","username":"%s","password":"%s"}' \
       "$tag" "$host" "$proxy_port" "$username" "$password" >>"$SING_BOX_CONFIG"
   done <"$NODES_CONFIG"
-  printf '],"experimental":{"clash_api":{"external_controller":"127.0.0.1:%s"}},"route":{"rules":[' \
+  printf '],"experimental":{"clash_api":{"external_controller":"127.0.0.1:%s"}},"route":{"default_domain_resolver":"local","rules":[' \
     "$STATS_API_PORT" >>"$SING_BOX_CONFIG"; first=1
   if [[ "$WARP_ENABLED" == "1" ]]; then
     printf '{"action":"sniff"}' >>"$SING_BOX_CONFIG"
@@ -1303,7 +1396,11 @@ write_sing_box_config() (
   while IFS='|' read -r tag protocol path port socks; do
     [[ -n "$socks" ]] || continue
     ((first)) || printf ',' >>"$SING_BOX_CONFIG"; first=0
-    printf '{"inbound":["%s"],"action":"route","outbound":"socks-%s"}' "$tag" "$tag" >>"$SING_BOX_CONFIG"
+    if is_direct_outbound "$socks"; then
+      printf '{"inbound":["%s"],"action":"route","outbound":"direct-%s"}' "$tag" "$tag" >>"$SING_BOX_CONFIG"
+    else
+      printf '{"inbound":["%s"],"action":"route","outbound":"socks-%s"}' "$tag" "$tag" >>"$SING_BOX_CONFIG"
+    fi
   done <"$NODES_CONFIG"
   printf ']' >>"$SING_BOX_CONFIG"
   if [[ -n "$WARP_GEOSITES" ]]; then
@@ -1547,12 +1644,12 @@ traffic_collect() (
 
   pid="$(systemctl show "$CORE_SERVICE" -p MainPID --value 2>/dev/null || true)"
   [[ "$pid" =~ ^[1-9][0-9]*$ && -r "/proc/${pid}/stat" ]] ||
-    traffic_collect_fail "代理核心未运行或无法读取进程信息。"
+    traffic_collect_fail "Sing-box Core未运行或无法读取进程信息。"
   actual_binary="$(readlink -f "/proc/${pid}/exe" 2>/dev/null || true)"
   actual_binary="${actual_binary% (deleted)}"
   [[ "${actual_binary##*/}" == "sing-box" ]] || traffic_collect_fail "当前运行进程不是 Sing-box。"
   start_time="$(awk '{print $22}' "/proc/${pid}/stat" 2>/dev/null || true)"
-  [[ "$start_time" =~ ^[0-9]+$ ]] || traffic_collect_fail "无法读取代理核心启动标识。"
+  [[ "$start_time" =~ ^[0-9]+$ ]] || traffic_collect_fail "无法读取Sing-box Core启动标识。"
   process_token="${pid}:${start_time}"
 
   api_address="$(jq -r '.experimental.clash_api.external_controller // empty' "$SING_BOX_CONFIG" 2>/dev/null || true)"
@@ -1658,37 +1755,71 @@ read_traffic_totals() {
   printf '%s' "$values"
 }
 
-runtime_memory_usage() {
-  local rss_kib
-  rss_kib="$(awk '/^VmRSS:/{print $2; exit}' "/proc/$$/status" 2>/dev/null || true)"
-  [[ "$rss_kib" =~ ^[0-9]+$ ]] || { printf '未知'; return; }
-  format_traffic_bytes "$((10#$rss_kib * 1024))"
+service_process_ids() {
+  local unit="$1" group main base
+  main="$(systemctl show "$unit" -p MainPID --value 2>/dev/null || true)"
+  [[ "$main" =~ ^[1-9][0-9]*$ ]] && printf '%s\n' "$main"
+  group="$(systemctl show "$unit" -p ControlGroup --value 2>/dev/null || true)"
+  # 不读取根 cgroup，避免将整台 VPS 或其他服务统计为项目进程。
+  [[ "$group" == /* && "$group" != / && "$group" != *..* ]] || return 0
+  for base in "${CGROUP_ROOT:-/sys/fs/cgroup}" "${CGROUP_ROOT:-/sys/fs/cgroup}/systemd"; do
+    [[ -d "$base$group" ]] || continue
+    find "$base$group" -type f -name cgroup.procs -exec cat {} + 2>/dev/null || true
+  done
 }
-
+runtime_memory_usage() {
+  local unit roots pids pid rss total=0 readable=0 incomplete=0 proc="${PROC_ROOT:-/proc}"
+  roots="$({
+    printf '%s\n' "$$"
+    for unit in nginx "$CORE_SERVICE" "$ARGO_SERVICE" "$TRAFFIC_SERVICE"; do
+      service_process_ids "$unit"
+    done
+    [[ "${WARP_ENABLED:-0}" != 1 ]] || service_process_ids warp-svc
+  } | awk '/^[1-9][0-9]*$/ && !seen[$0]++')"
+  # MainPID 回退也覆盖 Nginx worker、采集器及管理脚本的子进程。
+  pids="$(ps -eo pid=,ppid= 2>/dev/null | awk -v roots="$roots" '
+    BEGIN {n=split(roots,a,"\n"); for(i=1;i<=n;i++) seen[a[i]]=1}
+    {parent[$1]=$2}
+    END {
+      changed=1
+      while(changed) {changed=0; for(p in parent) if(!seen[p] && seen[parent[p]]) {seen[p]=1; changed=1}}
+      for(p in seen) if(seen[p] && p ~ /^[1-9][0-9]*$/) print p
+    }' | sort -nu)"
+  while IFS= read -r pid; do
+    [[ -n "$pid" && -d "$proc/$pid" ]] || continue
+    rss="$(awk '/^VmRSS:/{print $2; exit}' "$proc/$pid/status" 2>/dev/null || true)"
+    if [[ "$rss" =~ ^[0-9]+$ ]]; then
+      total=$((total + 10#$rss)); readable=$((readable + 1))
+    else incomplete=1; fi
+  done <<<"$pids"
+  ((readable)) || { printf '未知 · 进程内存不可读'; return; }
+  format_traffic_bytes "$((total * 1024))"
+  ((incomplete == 0)) || printf ' · 部分进程不可读'
+}
 runtime_overview() {
   local totals upload download ip_details ip country asn isp
   totals="$(read_traffic_totals)"
   IFS='|' read -r upload download <<<"$totals"
   subsection "运行状态"
   state_value "Argo Tunnel" "$(service_status "$ARGO_SERVICE")"
-  state_value "代理核心" "$(service_status "$CORE_SERVICE") · $(core_label)"
+  state_value "Sing-box Core" "$(service_status "$CORE_SERVICE")"
   state_value "WARP 分流" "$(warp_status)"
-  state_value "多路复用" "$(multiplex_status)"
+  state_value "h2mux" "$(multiplex_status)"
   state_value "TCP Brutal" "$(tcp_brutal_status)"
+  key_value "节点概览" "$(node_overview)"
+  key_value "Argo 域名" "${ARGO_DOMAIN:-未配置}"
+  endpoint_value "优选入口" "${SERVER:-未配置}" "${SERVER_PORT:-443}"
+  key_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
+  detect_public_ips
   ip_details="$(public_ipv4_details)"
   IFS='|' read -r ip country asn isp <<<"$ip_details"
   ip_value "VPS IPv4" "$ip · $country · $asn · $isp"
-  key_value "流量统计" "Total Upload $(format_traffic_bytes "$upload") · Total Download $(format_traffic_bytes "$download")"
+  ip_value "VPS IPv6" "${PUBLIC_IPV6:-没有}"
+  key_value "全局流量" "↑ $(format_traffic_bytes "$upload") · ↓ $(format_traffic_bytes "$download")"
   key_value "运行内存" "$(runtime_memory_usage)"
-  key_value "节点概览" "$(node_overview)"
-  if [[ -n "${ARGO_DOMAIN:-}" ]]; then
-    key_value "Argo 域名" "$ARGO_DOMAIN"
-    endpoint_value "优选入口" "$SERVER" "$SERVER_PORT"
-    key_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
-  fi
+  key_value "项目版本" "AGS ${VERSION}"
   key_value "组件版本" "$(component_versions)"
 }
-
 traffic_table_header() {
   printf '  %s' "$C_BRIGHT_CYAN"
   pad_right "范围" 12
@@ -1747,15 +1878,15 @@ traffic_statistics_menu() {
   section "统计操作"
   menu_item 1 "刷新统计"
   menu_item 2 "重置统计"
-  menu_item 0 "返回上级"
+  menu_item 0 "取消并退出脚本"
   ui_line
   read_choice "请选择："; choice="$REPLY"
   case "$choice" in
     1) traffic_collect && green "流量统计已刷新。" ;;
     2)
-      read_input "确认清空全部历史流量？[Y/n]：" answer
+      read_input "确认清空全部历史流量？[y/N]：" answer
       is_exit_input "$answer" && return 0
-      is_confirmed "$answer" || { yellow "已取消重置。"; return 0; }
+      is_confirmed "$answer" || { yellow "已取消重置 · 统计数据未变更"; return 0; }
       traffic_reset
       green "流量统计已重置。"
       ;;
@@ -2371,7 +2502,7 @@ install_project() {
     fi
   fi
   runtime_overview
-  key_value "节点文件" "$NODES_FILE"
+  link_value "节点文件" "$NODES_FILE"
   key_value "管理命令" "${COMMAND_NAME} / ${COMMAND_NAME_UPPER}"
   show_install_nodes
 }
@@ -2383,7 +2514,7 @@ install_menu() {
   menu_item 1 "本地安装"
   menu_item 2 "在线安装"
   menu_hint "在线安装会先校验并替换本地脚本。"
-  menu_item 0 "返回上级"
+  menu_item 0 "取消并退出脚本"
   ui_line
   read_choice "请选择："; choice="$REPLY"
   case "$choice" in
@@ -2457,24 +2588,29 @@ import_configuration() {
 
 list_node_profiles() {
   local mode="${1:-compact}" tag protocol path port socks direct_ip
-  direct_ip="$(public_ipv4)"
+  detect_public_ips
   if [[ "$mode" == "spaced" ]]; then
     printf '\n'
     UI_TIGHT_SECTION=1
   fi
   subsection "节点列表"
   printf '%s%s' "$C_BOLD" "$C_BRIGHT_CYAN"
-  pad_right "标签" 13; printf '  '; pad_right "协议" 6; printf '  '; pad_right "传输路径" 14
-  printf '  '; pad_right "端口" 5; printf '  %s%s\n' "出站 IP" "$C_RESET"
+  pad_right "标签" 13; printf '  '; pad_right "协议" 6; printf '  '; pad_right "WS 路径" 14
+  printf '  '; pad_right "端口" 5; printf '  %s%s\n' "出站" "$C_RESET"
   printf '%s%s%s\n' "$C_DIM" '-------------  ------  --------------  -----  ------------------' "$C_RESET"
   while IFS='|' read -r tag protocol path port socks; do
     printf '%s' "$C_BRIGHT_WHITE"; fit_text "$tag" 13; printf '%s  %s' "$C_RESET" "$C_BRIGHT_BLUE"
     fit_text "$(protocol_label "$protocol")" 6; printf '%s  %s' "$C_RESET" "$C_BRIGHT_WHITE"; fit_text "$path" 14
     printf '%s  %s' "$C_RESET" "$C_BRIGHT_YELLOW"; fit_text "$port" 5; printf '%s  %s' "$C_RESET" "$C_BRIGHT_MAGENTA"
-    if [[ -n "$socks" ]]; then
+    if ! is_direct_outbound "$socks"; then
       fit_text "$(node_outbound_value "$socks")" 18; printf '%s\n' "$C_RESET"
     else
+      direct_ip="$PUBLIC_IPV4"
+      case "$(direct_strategy "$socks")" in prefer_ipv6|ipv6_only) direct_ip="$PUBLIC_IPV6" ;; esac
       fit_text "${direct_ip:-未知}" 18; printf '%s\n' "$C_RESET"
+      if [[ "$direct_ip" == *:* ]]; then
+        ip_value "IPv6 出口" "$direct_ip"
+      fi
     fi
   done <"$NODES_CONFIG"
 }
@@ -2485,19 +2621,19 @@ add_node_profile() {
   list_node_profiles
   default_port="$(next_node_port)"
   section "节点参数"
-  read_input "节点标签 [常用字符，禁用 |]：" tag
+  read_input "节点标签 [必填]：" tag
   is_exit_input "$tag" && return 0
   valid_node_tag "$tag" || die "节点标签无效：不能为空、首尾不能留空，且不能包含 | 或控制字符。"
   ! awk -F'|' -v tag="$tag" '$1 == tag {found=1} END {exit !found}' "$NODES_CONFIG" || die "节点标签已存在：${tag}"
-  read_input "节点协议 [vless/vmess/trojan]：" protocol
+  read_input "节点协议 [VLESS/VMess/Trojan；必填]：" protocol
   is_exit_input "$protocol" && return 0
   protocol="${protocol,,}"
-  [[ "$protocol" =~ ^(vless|vmess|trojan)$ ]] || die "节点协议无效，仅支持 vless、vmess、trojan。"
-  read_input "传输路径 [以 / 开头]：" path
+  [[ "$protocol" =~ ^(vless|vmess|trojan)$ ]] || die "节点协议无效，仅支持 VLESS / VMess / Trojan。"
+  read_input "WS 路径 [以 / 开头]：" path
   is_exit_input "$path" && return 0
   valid_path "$path" || die "传输路径无效。"
   ! awk -F'|' -v path="$path" '$3 == path {found=1} END {exit !found}' "$NODES_CONFIG" || die "传输路径已存在：${path}"
-  read_input "监听端口 [${default_port}]：" port
+  read_input "本地端口 [${default_port}]：" port
   is_exit_input "$port" && return 0
   port="${port:-$default_port}"
   valid_port "$port" || die "监听端口无效。"
@@ -2506,6 +2642,10 @@ add_node_profile() {
   read_input "SOCKS5 出站 [主机:端口:用户名:密码，留空直连]：" socks
   is_exit_input "$socks" && return 0
   [[ -z "$socks" ]] || valid_socks5 "$socks" || die "SOCKS5 出站格式无效。"
+  if [[ -z "$socks" ]]; then
+    select_node_egress "" || return 0
+    socks="$NODE_EGRESS"
+  fi
   begin_config_change
   printf '%s|%s|%s|%s|%s\n' "$tag" "$protocol" "$path" "$port" "$socks" >>"$NODES_CONFIG"
   validate_nodes_config
@@ -2514,12 +2654,12 @@ add_node_profile() {
 
 change_origin_port() {
   local value temp next_port
-  brand "${PROJECT_NAME} · Argo Tunnel 回源端口" default
+  brand "${PROJECT_NAME} · Argo 回源" default
   subsection "当前配置"
   key_value "回源端口" "$ORIGIN_PORT"
   section "修改配置"
   begin_config_change
-  read_input "Argo Tunnel 回源端口 [${ORIGIN_PORT}]：" value
+  read_input "Argo 回源 [${ORIGIN_PORT}]：" value
   is_exit_input "$value" && { cancel_config_change; return 0; }
   value="${value:-$ORIGIN_PORT}"
   valid_port "$value" || die "端口格式错误。"
@@ -2547,7 +2687,7 @@ delete_node_profile() {
   read_input "节点标签：" tag
   is_exit_input "$tag" && return 0
   awk -F'|' -v wanted="$tag" '$1 == wanted {found=1} END {exit !found}' "$NODES_CONFIG" || die "未找到节点：${tag}"
-  read_input "确认删除节点 ${tag}？[Y/n]：" answer
+  read_input "确认删除节点 ${tag}？[y/N]：" answer
   is_exit_input "$answer" && return 0
   is_confirmed "$answer" || { yellow "已取消删除，配置未变更。"; return 0; }
   begin_config_change
@@ -2570,35 +2710,46 @@ edit_node_profile() {
     [[ "$tag" == "$wanted" ]] && break
   done <"$NODES_CONFIG"
   [[ "${tag:-}" == "$wanted" ]] || die "未找到节点：${wanted}"
-  section "新的节点参数"
+  subsection "当前节点"
+  key_value "节点标签" "$tag"
+  key_value "节点协议" "$(protocol_label "$protocol")"
+  key_value "WS 路径" "$path"
+  key_value "本地端口" "$port"
+  key_value "SOCKS5 出站" "$(node_outbound_value "$socks")"
+  section "修改参数"
   read_input "节点标签 [${tag}]：" new_tag
   is_exit_input "$new_tag" && return 0
   new_tag="${new_tag:-$tag}"
   valid_node_tag "$new_tag" || die "节点标签无效：不能为空、首尾不能留空，且不能包含 | 或控制字符。"
   ! awk -F'|' -v wanted="$wanted" -v value="$new_tag" '$1 != wanted && $1 == value {found=1} END {exit !found}' "$NODES_CONFIG" || die "节点标签已存在：${new_tag}"
   tag="$new_tag"
-  read_input "节点协议 [${protocol}]：" new_protocol
+  read_input "节点协议 [$(protocol_label "$protocol")]：" new_protocol
   is_exit_input "$new_protocol" && return 0
   new_protocol="${new_protocol:-$protocol}"; new_protocol="${new_protocol,,}"
-  [[ "$new_protocol" =~ ^(vless|vmess|trojan)$ ]] || die "节点协议无效，仅支持 vless、vmess、trojan。"
+  [[ "$new_protocol" =~ ^(vless|vmess|trojan)$ ]] || die "节点协议无效，仅支持 VLESS / VMess / Trojan。"
   protocol="$new_protocol"
-  read_input "传输路径 [${path}]：" new_path
+  read_input "WS 路径 [${path}]：" new_path
   is_exit_input "$new_path" && return 0
   new_path="${new_path:-$path}"
   valid_path "$new_path" || die "传输路径无效。"
   ! awk -F'|' -v wanted="$wanted" -v value="$new_path" '$1 != wanted && $3 == value {found=1} END {exit !found}' "$NODES_CONFIG" || die "传输路径已存在：${new_path}"
   path="$new_path"
-  read_input "监听端口 [${port}]：" new_port
+  read_input "本地端口 [${port}]：" new_port
   is_exit_input "$new_port" && return 0
   new_port="${new_port:-$port}"
   valid_port "$new_port" || die "监听端口无效。"
   ((10#$new_port != 10#$STATS_API_PORT)) || die "监听端口与流量统计 API 冲突：${new_port}"
   ! awk -F'|' -v wanted="$wanted" -v value="$new_port" '$1 != wanted && $4 == value {found=1} END {exit !found}' "$NODES_CONFIG" || die "监听端口已存在：${new_port}"
   port="$new_port"
-  read_input "SOCKS5 [$(node_outbound_value "$socks")；- 为 direct]：" new_socks
+  info "SOCKS5 新值格式：host:port:user:pass"
+  read_input "SOCKS5 出站 [Enter 保持当前；- 设为 direct]：" new_socks
   is_exit_input "$new_socks" && return 0
   [[ "$new_socks" == "-" ]] && new_socks="" || new_socks="${new_socks:-$socks}"
-  [[ -z "$new_socks" ]] || valid_socks5 "$new_socks" || die "SOCKS5 出站格式无效。"
+  is_direct_outbound "$new_socks" || valid_socks5 "$new_socks" || die "SOCKS5 出站格式无效。"
+  if is_direct_outbound "$new_socks"; then
+    select_node_egress "$new_socks" || return 0
+    new_socks="$NODE_EGRESS"
+  fi
   socks="$new_socks"
   begin_config_change
   temp="$(mktemp)"
@@ -2618,7 +2769,7 @@ configure_warp_geosites() {
   section "分类操作"
   menu_item 1 "添加分类"
   menu_item 2 "删除分类"
-  menu_item 0 "返回上级"
+  menu_item 0 "取消并退出脚本"
   ui_line
   read_choice "请选择："; choice="$REPLY"
   case "$choice" in
@@ -2663,7 +2814,7 @@ configure_warp_domains() {
   section "域名操作"
   menu_item 1 "添加域名"
   menu_item 2 "删除域名"
-  menu_item 0 "返回上级"
+  menu_item 0 "取消并退出脚本"
   ui_line
   read_choice "请选择："; choice="$REPLY"
   case "$choice" in
@@ -2704,26 +2855,27 @@ configure_warp() {
   local choice port targets geosites answer
   brand "${PROJECT_NAME} · WARP 分流" back
   subsection "当前状态"
-  state_value "WARP" "$(warp_status)"
-  key_value "代理端口" "$WARP_PROXY_PORT"
-  key_value "目标域名" "${WARP_DOMAINS:-无}"
-  key_value "geosite" "${WARP_GEOSITES:-无}"
-  subsection "WARP 操作"
-  menu_item 1 "启用配置"
-  menu_item 2 "域名管理"
-  menu_item 3 "geosite 分类"
-  menu_item 4 "停用 WARP"
-  menu_item 0 "返回上级"
+  state_value "WARP 分流" "$(warp_status)"
+  key_value "SOCKS5" "127.0.0.1:${WARP_PROXY_PORT}"
+  key_value "域名规则" "${WARP_DOMAINS:-无}"
+  key_value "geosite 规则" "${WARP_GEOSITES:-无}"
+  section "WARP 开关"
+  menu_item 1 "启用 WARP"
+  menu_item 2 "停用 WARP"
+  section "分流规则"
+  menu_item 3 "域名规则"
+  menu_item 4 "geosite 规则"
+  menu_item 0 "取消并退出脚本"
   ui_line
   read_choice "请选择："; choice="$REPLY"
   case "$choice" in
       1)
         brand "${PROJECT_NAME} · WARP 配置" default
         subsection "当前配置"
-        state_value "WARP" "$(warp_status)"
-        key_value "代理端口" "$WARP_PROXY_PORT"
-        key_value "目标域名" "${WARP_DOMAINS:-无}"
-        key_value "geosite" "${WARP_GEOSITES:-无}"
+        state_value "WARP 分流" "$(warp_status)"
+        key_value "SOCKS5" "127.0.0.1:${WARP_PROXY_PORT}"
+        key_value "域名规则" "${WARP_DOMAINS:-无}"
+        key_value "geosite 规则" "${WARP_GEOSITES:-无}"
         section "修改配置"
         read_input "WARP 本地 SOCKS5 端口 [${WARP_PROXY_PORT}]：" port
         is_exit_input "$port" && return 0
@@ -2744,12 +2896,12 @@ configure_warp() {
         configure_warp_proxy
         apply_runtime_config
         ;;
-      2) configure_warp_domains ;;
-      3) configure_warp_geosites ;;
-      4)
-        read_input "确认停用 WARP 分流？[Y/n]：" answer
+      3) configure_warp_domains ;;
+      4) configure_warp_geosites ;;
+      2)
+        read_input "确认停用 WARP 分流？[y/N]：" answer
         is_exit_input "$answer" && return 0
-        is_confirmed "$answer" || { yellow "已取消停用 WARP 分流。"; return 0; }
+        is_confirmed "$answer" || { yellow "已取消停用 WARP 分流 · 配置未变更"; return 0; }
         begin_config_change
         WARP_ENABLED=0; WARP_DOMAINS=""; WARP_GEOSITES=""
         apply_runtime_config
@@ -2787,9 +2939,9 @@ install_tcp_brutal_module() {
   section "安装说明"
   menu_hint "来源：apernet/tcp-brutal 官方 DKMS 安装器"
   menu_hint "将安装 DKMS、当前内核头文件并配置开机加载。"
-  read_input "确认安装或更新 TCP Brutal？[Y/n]：" answer
+  read_input "确认安装或更新 TCP Brutal？[y/N]：" answer
   is_exit_input "$answer" && { return_notice; return 0; }
-  is_confirmed "$answer" || { yellow "已取消 TCP Brutal 安装。"; return 0; }
+  is_confirmed "$answer" || { yellow "已取消安装 · 系统未变更"; return 0; }
 
   info "正在刷新 APT 并复核当前内核的官方安装条件..."
   apt-get update || die "APT 软件包索引更新失败，无法复核 TCP Brutal 安装条件。"
@@ -2855,18 +3007,19 @@ configure_transport_optimization() {
   local choice value new_up new_down answer
   brand "${PROJECT_NAME} · 传输优化" back
   subsection "当前状态"
-  state_value "多路复用" "$(multiplex_status)"
+  state_value "h2mux" "$(multiplex_status)"
   state_value "TCP Brutal" "$(tcp_brutal_status)"
   key_value "上传带宽" "${BRUTAL_UP_MBPS} Mbps"
   key_value "下载带宽" "${BRUTAL_DOWN_MBPS} Mbps"
-  section "传输操作"
+  section "TCP Brutal"
   menu_item 1 "安装 / 更新 TCP Brutal"
   menu_item 2 "启用 TCP Brutal"
   menu_item 3 "停用 TCP Brutal"
-  menu_item 4 "启用 h2mux"
-  menu_item 5 "停用 h2mux"
-  menu_item 6 "设置 Brutal 带宽"
-  menu_item 0 "返回上级"
+  menu_item 4 "设置 Brutal 带宽"
+  section "h2mux"
+  menu_item 5 "启用 h2mux"
+  menu_item 6 "停用 h2mux"
+  menu_item 0 "取消并退出脚本"
   ui_line
   read_choice "请选择："; choice="$REPLY"
   case "$choice" in
@@ -2883,31 +3036,31 @@ configure_transport_optimization() {
         green "TCP Brutal 已启用；h2mux 与 padding 已同步启用。"
         ;;
       3)
-        read_input "确认停用 TCP Brutal？模块将保留。[Y/n]：" answer
+        read_input "确认停用 TCP Brutal？模块将保留。[y/N]：" answer
         is_exit_input "$answer" && return 0
-        is_confirmed "$answer" || { yellow "已取消停用 TCP Brutal。"; return 0; }
+        is_confirmed "$answer" || { yellow "已取消停用 TCP Brutal · 配置未变更"; return 0; }
         begin_config_change
         TCP_BRUTAL_ENABLED=0
         apply_runtime_config
         green "TCP Brutal 已停用；内核模块仍保留。"
         ;;
-      4)
+      5)
         begin_config_change
         MULTIPLEX_ENABLED=1
         apply_runtime_config
         green "h2mux 与 padding 已启用。"
         ;;
-      5)
-        read_input "确认停用 h2mux？TCP Brutal 也会同时停用。[Y/n]：" answer
+      6)
+        read_input "确认停用 h2mux？TCP Brutal 也会同时停用。[y/N]：" answer
         is_exit_input "$answer" && return 0
-        is_confirmed "$answer" || { yellow "已取消停用 h2mux。"; return 0; }
+        is_confirmed "$answer" || { yellow "已取消停用 h2mux · 配置未变更"; return 0; }
         begin_config_change
         MULTIPLEX_ENABLED=0
         TCP_BRUTAL_ENABLED=0
         apply_runtime_config
         green "h2mux、padding 与 TCP Brutal 已停用。"
         ;;
-      6)
+      4)
         read_input "上传带宽 Mbps [${BRUTAL_UP_MBPS}]：" value
         is_exit_input "$value" && return 0
         new_up="${value:-$BRUTAL_UP_MBPS}"
@@ -2933,28 +3086,29 @@ manage_config() {
   load_env
   [[ -f "$ENV_FILE" ]] || die "${PROJECT_NAME} 尚未安装。"
   ensure_nodes_config
-  brand "${PROJECT_NAME} · 参数配置" back
-  subsection "Argo 配置"
-  menu_item 1 "Token 与域名"
+  brand "${PROJECT_NAME} · 配置中心" back
+  subsection "Argo Tunnel"
+  menu_item 1 "Token / 域名"
   menu_item 2 "优选入口"
   menu_item 3 "回源端口"
   menu_item 4 "全局 UUID"
   section "节点管理"
-  menu_item 5 "查看节点"
+  menu_item 5 "节点列表"
   menu_item 6 "添加节点"
   menu_item 7 "修改节点"
   menu_item 8 "删除节点"
-  section "路由与传输"
+  section "路由分流"
   menu_item 9 "WARP 分流"
+  section "传输优化"
   menu_item 10 "h2mux / TCP Brutal"
   section "配置维护"
-  menu_item 11 "导入配置文件"
-  menu_item 0 "返回上级"
+  menu_item 11 "配置导入"
+  menu_item 0 "取消并退出脚本"
   ui_line
   read_choice "请选择："; choice="$REPLY"
   case "$choice" in
       1)
-        brand "${PROJECT_NAME} · Token / Argo 域名" default
+        brand "${PROJECT_NAME} · Token / 域名" default
         subsection "当前配置"
         key_value "Argo 域名" "$ARGO_DOMAIN"
         state_value "Token 状态" "$([[ -n "$ARGO_TOKEN" ]] && printf '已配置' || printf '未配置')"
@@ -2966,12 +3120,12 @@ manage_config() {
         read_input "Argo 域名 [${ARGO_DOMAIN}]：" value
         is_exit_input "$value" && { cancel_config_change; return 0; }
         ARGO_DOMAIN="${value:-$ARGO_DOMAIN}"
-        valid_argo_token "$ARGO_TOKEN" && [[ "$ARGO_DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] ||
-          die "Token 或域名无效。"
+        valid_argo_token "$ARGO_TOKEN" || die "Argo Token 无效 · Token 格式检查未通过"
+        valid_domain "$ARGO_DOMAIN" || die "Argo 域名无效 · 请输入有效域名"
         apply_runtime_config
         ;;
       2)
-        brand "${PROJECT_NAME} · Cloudflare 优选入口" default
+        brand "${PROJECT_NAME} · 优选入口" default
         subsection "当前配置"
         endpoint_value "当前入口" "$SERVER" "$SERVER_PORT"
         section "修改配置"
@@ -3020,8 +3174,8 @@ backup_project() {
   [[ -f "$NODES_CONFIG" ]] || die "节点配置不存在：${NODES_CONFIG}"
   brand "${PROJECT_NAME} · 备份节点配置" default
   subsection "备份配置"
-  key_value "节点配置" "$NODES_CONFIG"
-  key_value "默认目录" "$BACKUP_DIR"
+  link_value "节点配置" "$NODES_CONFIG"
+  link_value "默认目录" "$BACKUP_DIR"
   validate_nodes_config
   if [[ -z "$output" ]]; then
     read_input "备份位置 [目录或 .tar.gz；${BACKUP_DIR}]：" output
@@ -3093,7 +3247,7 @@ restore_project() {
   require_root
   brand "${PROJECT_NAME} · 恢复节点配置" default
   subsection "恢复来源"
-  key_value "默认目录" "$BACKUP_DIR"
+  link_value "默认目录" "$BACKUP_DIR"
   if [[ -z "$archive" ]]; then
     read_input "备份来源 [文件或目录；${BACKUP_DIR} 最新备份]：" archive
     is_exit_input "$archive" && { return_notice; return 0; }
@@ -3162,12 +3316,12 @@ backup_restore_menu() {
   require_root
   brand "${PROJECT_NAME} · 备份恢复" back
   subsection "节点配置"
-  key_value "节点配置" "$NODES_CONFIG"
-  key_value "默认目录" "$BACKUP_DIR"
+  link_value "节点配置" "$NODES_CONFIG"
+  link_value "默认目录" "$BACKUP_DIR"
   subsection "备份恢复"
-  menu_item 1 "节点备份"
-  menu_item 2 "节点恢复"
-  menu_item 0 "返回上级"
+  menu_item 1 "创建备份"
+  menu_item 2 "恢复配置"
+  menu_item 0 "取消并退出脚本"
   ui_line
   read_choice "请选择："; choice="$REPLY"
   case "$choice" in
@@ -3205,96 +3359,105 @@ doctor() {
   load_env
   ensure_nodes_config
   system_memory="$(free -m | awk '/^Mem:/{printf "%s/%s MiB (%.0f%%)",$3,$2,$3*100/$2}')"
+  detect_public_ips
   ip_details="$(public_ipv4_details)"
   IFS='|' read -r ip country asn isp <<<"$ip_details"
   brand "${PROJECT_NAME} · 运行诊断"
-  subsection "系统与组件状态"
+  subsection "系统环境"
   ip_value "VPS IPv4" "$ip · $country · $asn · $isp"
-  key_value "脚本版本" "v${VERSION}"
+  ip_value "VPS IPv6" "${PUBLIC_IPV6:-没有}"
+  key_value "项目版本" "AGS ${VERSION}"
   key_value "组件版本" "$(component_versions)"
   key_value "系统内存" "${system_memory:-未知}"
   key_value "运行内存" "$(runtime_memory_usage)"
   endpoint_value "优选入口" "${SERVER:-未知}" "${SERVER_PORT:-未知}"
   key_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
-  state_value "多路复用" "$(multiplex_status)"
+  state_value "h2mux" "$(multiplex_status)"
   state_value "TCP Brutal" "$(tcp_brutal_status)"
   section "配置检查"
-  if validate_nodes_config && valid_uuid "$UUID" && valid_argo_token "$ARGO_TOKEN" &&
-    [[ -n "$ARGO_DOMAIN" ]]; then
-    green "AGS 配置已通过。"
+  if (validate_nodes_config && valid_uuid "$UUID" && valid_argo_token "$ARGO_TOKEN" &&
+    [[ -n "$ARGO_DOMAIN" ]]); then
+    state_value "AGS 配置" "已通过"
   else
-    red "AGS 配置无效。"
-    failed=1
+    state_value "AGS 配置" "无效"
+    failed=$((failed + 1))
   fi
-  if core_check >/dev/null 2>&1; then green "$(core_label) 配置已通过。"; else red "$(core_label) 配置无效。"; failed=1; fi
-  if nginx -t >/dev/null 2>&1; then green "Nginx 配置已通过。"; else red "Nginx 配置无效。"; failed=1; fi
-  detect_tcp_brutal
-  if [[ "$TCP_BRUTAL_ENABLED" != "1" ]]; then
-    yellow "TCP Brutal 已由配置停用；内核模块不受影响。"
-  elif [[ "$MULTIPLEX_ENABLED" != "1" ]]; then
-    yellow "TCP Brutal 已停用：h2mux 未启用。"
-  elif [[ "$IS_BRUTAL" == "true" ]]; then
-    green "TCP Brutal 内核模块已加载。"
-  else
-    yellow "TCP Brutal 待启用：服务器缺少 brutal 内核模块。"
-    warnings=1
-  fi
+  if core_check >/dev/null 2>&1; then state_value "Sing-box" "已通过"; else state_value "Sing-box" "无效"; failed=$((failed + 1)); fi
+  if nginx -t >/dev/null 2>&1; then state_value "Nginx" "已通过"; else state_value "Nginx" "无效"; failed=$((failed + 1)); fi
   for directory in "$CONFIG_DIR" "$DATA_DIR" "$SUBSCRIPTION_DIR"; do
     mode="$(stat -c '%a' "$directory" 2>/dev/null || true)"
     case "$directory:$mode" in
-      "$CONFIG_DIR:700") green "config 目录权限正确（700）。" ;;
-      "$DATA_DIR:700") green "data 目录权限正确（700）。" ;;
-      "$SUBSCRIPTION_DIR:755") green "subscriptions 目录权限正确（755）。" ;;
-      *) red "$(basename "$directory") 目录权限异常（当前 ${mode:-不存在}）。"; failed=1 ;;
+      "$CONFIG_DIR:700") state_value "config 权限" "已通过 · 700" ;;
+      "$DATA_DIR:700") state_value "data 权限" "已通过 · 700" ;;
+      "$SUBSCRIPTION_DIR:755") state_value "subscriptions" "已通过 · 755" ;;
+      *) state_value "$(basename "$directory")" "无效 · 权限 ${mode:-不存在}"; failed=$((failed + 1)) ;;
     esac
   done
   [[ -f "/etc/systemd/system/${ARGO_SERVICE}.service" ]] &&
     grep -Fq -- "--token ${ARGO_TOKEN}" "/etc/systemd/system/${ARGO_SERVICE}.service" && token_in_unit=1
-  ((token_in_unit)) && green "Argo Token 已配置且服务文件一致。" || { red "Argo Token 缺失或服务文件未同步。"; failed=1; }
+  ((token_in_unit)) && state_value "Argo Token" "已通过 · 服务文件一致" || { state_value "Argo Token" "无效 · 缺失或服务文件未同步"; failed=$((failed + 1)); }
   section "服务检查"
-  if systemctl is-active --quiet nginx; then green "Nginx 运行中。"; else red "Nginx 未运行。"; failed=1; fi
-  if systemctl is-active --quiet "$CORE_SERVICE"; then green "$(core_label) Core 运行中。"; else red "$(core_label) Core 未运行。"; failed=1; fi
-  if systemctl is-active --quiet "$ARGO_SERVICE"; then green "Argo Tunnel 运行中。"; else red "Argo Tunnel 未运行。"; failed=1; fi
+  if systemctl is-active --quiet nginx; then state_value "Nginx" "已通过 · 运行中"; else state_value "Nginx" "未运行"; failed=$((failed + 1)); fi
+  if systemctl is-active --quiet "$CORE_SERVICE"; then state_value "Sing-box Core" "已通过 · 运行中"; else state_value "Sing-box Core" "未运行"; failed=$((failed + 1)); fi
+  if systemctl is-active --quiet "$ARGO_SERVICE"; then state_value "Argo Tunnel" "已通过 · 运行中"; else state_value "Argo Tunnel" "未运行"; failed=$((failed + 1)); fi
+  if systemctl is-active --quiet "${TRAFFIC_TIMER}.timer"; then
+    state_value "流量采集" "已通过 · 定时器运行中"
+  else
+    state_value "流量采集" "未运行 · 定时器已停止"; failed=$((failed + 1))
+  fi
   if [[ "$WARP_ENABLED" == "1" ]]; then
     if systemctl is-active --quiet warp-svc &&
       ss -lntH "sport = :${WARP_PROXY_PORT}" | grep -q .; then
-      printf '%s✓ WARP：本地代理运行于 %s127.0.0.1:%s%s\n' \
-        "$C_BRIGHT_GREEN" "$C_BRIGHT_WHITE" "$WARP_PROXY_PORT" "$C_RESET"
+      state_value "WARP 分流" "已通过 · 本地 SOCKS5 运行中"
     else
-      red "WARP：服务或本地代理端口异常"
-      failed=1
+      state_value "WARP 分流" "未运行 · 服务或 SOCKS5 端口异常"
+      failed=$((failed + 1))
     fi
     warp_target="${WARP_DOMAINS%%,*}"
-    if curl -fsS --socks5-hostname "127.0.0.1:${WARP_PROXY_PORT}" --connect-timeout 5 \
-      --max-time 10 -o /dev/null "https://${warp_target}"; then
-      green "WARP 目标可访问：https://${warp_target}"
-    else
-      red "WARP 目标无法通过本地代理访问：https://${warp_target}"
-      failed=1
+    if [[ -n "$warp_target" ]]; then
+      if curl -fsS --socks5-hostname "127.0.0.1:${WARP_PROXY_PORT}" --connect-timeout 5 \
+        --max-time 10 -o /dev/null "https://${warp_target}"; then
+        state_value "WARP 目标" "已通过 · ${warp_target}"
+      else
+        state_value "WARP 目标" "失败 · ${warp_target}"
+        failed=$((failed + 1))
+      fi
     fi
   else
-    state_value "WARP" "未启用 · 可选功能"
+    state_value "WARP 分流" "未启用 · 可选功能"
   fi
-  health_check ws || failed=1
+  section "传输状态"
+  detect_tcp_brutal
+  if [[ "$TCP_BRUTAL_ENABLED" != "1" ]]; then
+    state_value "TCP Brutal" "$(tcp_brutal_status)"
+  elif [[ "$MULTIPLEX_ENABLED" != "1" ]]; then
+    state_value "TCP Brutal" "未启用 · h2mux 未启用"
+  elif [[ "$IS_BRUTAL" == "true" ]]; then
+    state_value "TCP Brutal" "已通过 · brutal 内核模块已加载"
+  else
+    state_value "TCP Brutal" "需注意 · 缺少 brutal 内核模块"
+    warnings=1
+  fi
+  health_check ws || failed=$((failed + 1))
   journalctl -u "$CORE_SERVICE" -u "$ARGO_SERVICE" -n 30 --no-pager -o short-iso 2>/dev/null |
     grep -qE ' ERROR | ERROR\[' && log_errors=1 || true
   section "诊断结果"
   if ((failed)); then
-    red "诊断异常 · 存在错误 · ${warnings} 警告"
+    red "诊断失败 · ${failed} 项错误 · ${warnings} 提醒"
   elif ((warnings)); then
-    yellow "诊断提示 · 0 错误 · ${warnings} 警告"
+    yellow "诊断需注意 · 0 错误 · ${warnings} 提醒"
   else
-    green "诊断通过 · 0 错误 · 0 警告"
+    green "诊断已通过 · 0 错误 · 0 提醒"
   fi
   if ((log_errors)); then
-    section "错误日志"
+    section "关键日志"
     journalctl -u "$CORE_SERVICE" -u "$ARGO_SERVICE" -n 30 --no-pager -o short-iso 2>/dev/null |
       filter_journal_noise |
       grep -E ' ERROR | ERROR\[' |
       tail -n 8 |
       colorize_journal || true
   fi
-  return "$failed"
+  return "$((failed > 0))"
 }
 
 show_nodes() {
@@ -3312,8 +3475,9 @@ show_nodes() {
   link_value "Clash/Mihomo 订阅" "https://${ARGO_DOMAIN}/${UUID}/clash"
   link_value "Sing-box 订阅" "https://${ARGO_DOMAIN}/${UUID}/sing-box"
   if command -v qrencode >/dev/null 2>&1; then
-    section "自动适配 QR"
-    qrencode -t ANSIUTF8 "$auto_url"
+    section "自适应 QR"
+    if [[ -n "$C_RESET" ]]; then qrencode -t ANSIUTF8 "$auto_url"
+    else qrencode -t UTF8 "$auto_url"; fi
   fi
   section "原始节点"
   while IFS='|' read -r tag protocol path port socks; do
@@ -3339,7 +3503,7 @@ toggle_service() {
   if systemctl is-active --quiet "$service"; then
     info "正在停止 ${label}..."
     systemctl disable --now "$service"
-    yellow "${label} 已停止。"
+    green "${label} 已停止。"
   else
     info "正在启动 ${label}..."
     systemctl enable --now "$service"
@@ -3351,15 +3515,18 @@ manage_services() {
   local choice
   require_root
   load_env
-  brand "${PROJECT_NAME} · 服务启停" back
-  subsection "服务状态"
+  brand "${PROJECT_NAME} · 服务管理" back
+  subsection "项目服务"
   state_value "Argo Tunnel" "$(service_status "$ARGO_SERVICE")"
-  state_value "代理核心" "$(service_status "$CORE_SERVICE") · $(core_label)"
+  state_value "Sing-box Core" "$(service_status "$CORE_SERVICE")"
+  state_value "流量采集" "$(traffic_timer_status)"
+  section "基础服务"
+  state_value "Nginx" "$(service_status nginx)"
   section "服务操作"
-  menu_item 1 "Argo 启停"
-  menu_item 2 "核心启停"
-  menu_item 3 "重启服务"
-  menu_item 0 "返回上级"
+  menu_item 1 "Argo Tunnel 启停"
+  menu_item 2 "Sing-box Core 启停"
+  menu_item 3 "重启核心服务"
+  menu_item 0 "取消并退出脚本"
   ui_line
   read_choice "请选择："; choice="$REPLY"
   case "$choice" in
@@ -3381,7 +3548,7 @@ sync_versions() {
   ensure_nodes_config
   validate_nodes_config
   [[ -f "/etc/systemd/system/${ARGO_SERVICE}.service" && -f "/etc/systemd/system/${CORE_SERVICE}.service" ]] ||
-    die "Argo 或代理核心服务文件不存在，请先执行安装。"
+    die "Argo 或Sing-box Core服务文件不存在，请先执行安装。"
   brand "${PROJECT_NAME} · 组件更新" back
   detect_arch
   old_argo="$(local_cloudflared_version || true)"
@@ -3394,7 +3561,7 @@ sync_versions() {
   key_value "当前版本" "${old_argo:-未安装}"
   key_value "目标版本" "${new_argo:-未知}"
   if [[ "$old_argo" != "$new_argo" ]]; then
-    read_input "确认更新 cloudflared？[Y/n]：" answer
+    read_input "确认更新 cloudflared？[y/N]：" answer
     is_exit_input "$answer" && { return_notice; return 0; }
     is_confirmed "$answer" && update_argo=1
   else
@@ -3404,7 +3571,7 @@ sync_versions() {
   key_value "当前版本" "${old_core:-未安装}"
   key_value "目标版本" "${new_core:-未知}"
   if [[ "$old_core" != "$new_core" ]]; then
-    read_input "确认更新 $(core_label)？[Y/n]：" answer
+    read_input "确认更新 $(core_label)？[y/N]：" answer
     is_exit_input "$answer" && { return_notice; return 0; }
     is_confirmed "$answer" && update_core=1
   else
@@ -3475,13 +3642,13 @@ manage_bbr() {
   local answer
   require_root
   command -v curl >/dev/null 2>&1 || die "缺少 curl，无法启动 BBR/内核管理脚本。"
-  brand "${PROJECT_NAME} · BBR / DD" default
+  brand "${PROJECT_NAME} · 系统工具" default
   section "风险提示"
   yellow "第三方脚本：Linux-NetSpeed"
   menu_hint "可能修改 Linux 内核、BBR 与系统磁盘。"
-  read_input "确认启动第三方脚本？[Y/n]：" answer
+  read_input "确认启动第三方脚本？[y/N]：" answer
   is_exit_input "$answer" && { return_notice; return 0; }
-  is_confirmed "$answer" || { yellow "已取消启动第三方脚本。"; return 0; }
+  is_confirmed "$answer" || { yellow "已取消启动 · 系统未变更"; return 0; }
   info "正在启动第三方脚本..."
   bash <(curl -fsSL --retry 3 --connect-timeout 10 \
     https://raw.githubusercontent.com/ylx2016/Linux-NetSpeed/master/tcp.sh)
@@ -3490,13 +3657,13 @@ manage_bbr() {
 restart_services() {
   require_root
   load_env
-  brand "${PROJECT_NAME} · 服务重启"
+  brand "${PROJECT_NAME} · 重启核心服务"
   subsection "重启范围"
-  key_value "重启服务" "Nginx · $(core_label) · Argo Tunnel"
-  info "正在重启全部服务..."
+  key_value "重启服务" "Nginx · Sing-box Core · Argo Tunnel"
+  info "正在重启核心服务..."
   systemctl daemon-reload
   systemctl restart nginx "$CORE_SERVICE" "$ARGO_SERVICE"
-  green "全部服务已重启。"
+  green "核心服务已重启 · Nginx · Sing-box Core · Argo Tunnel"
 }
 
 purge_installed_packages() {
@@ -3522,12 +3689,14 @@ uninstall_project() {
   menu_hint "Sing-box / cloudflared"
   menu_hint "${WORK_DIR} 配置与订阅"
   menu_hint "${COMMAND_NAME} / ${COMMAND_NAME_UPPER} 命令入口"
-  read_input "确认卸载 ${PROJECT_NAME}？[Y/n]：" answer
+  section "默认保留"
+  menu_hint "系统 Nginx · Cloudflare WARP · 第三方内核配置"
+  read_input "输入 REMOVE 确认卸载：" answer
   is_exit_input "$answer" && { return_notice; return 0; }
-  is_confirmed "$answer" || { yellow "已取消卸载。"; return 0; }
+  [[ "$answer" == REMOVE ]] || { yellow "已取消卸载 · 项目未变更"; return 0; }
   if command -v nginx >/dev/null 2>&1 ||
     dpkg-query -W -f='${Status}' nginx 2>/dev/null | grep -q 'install ok installed'; then
-    read_input "确认同时卸载 Nginx？可能被其他网站使用 [Y/n]：" answer
+    read_input "确认同时卸载 Nginx？可能被其他网站使用 [y/N]：" answer
     is_exit_input "$answer" && { return_notice; return 0; }
     is_confirmed "$answer" && remove_nginx=1
   fi
@@ -3535,11 +3704,11 @@ uninstall_project() {
     dpkg-query -W -f='${Status}' cloudflare-warp 2>/dev/null | grep -q 'install ok installed' ||
     [[ -e /etc/apt/sources.list.d/cloudflare-client.list ||
       -e /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg ]]; then
-    read_input "确认同时卸载 Cloudflare WARP 客户端、注册与软件源？[Y/n]：" answer
+    read_input "确认同时卸载 Cloudflare WARP 客户端、注册与软件源？[y/N]：" answer
     is_exit_input "$answer" && { return_notice; return 0; }
     is_confirmed "$answer" && remove_warp=1
   fi
-  read_input "确认同时卸载 curl 等通用工具？可能被其他程序使用 [Y/n]：" answer
+  read_input "确认同时卸载 curl 等通用工具？可能被其他程序使用 [y/N]：" answer
   is_exit_input "$answer" && { return_notice; return 0; }
   is_confirmed "$answer" && remove_tools=1
 
@@ -3595,32 +3764,33 @@ menu() {
   ui_line
   brand "${PROJECT_NAME} · 控制中心" main
   UI_TIGHT_SECTION=1
-  section "运行管理"
+  section "常用操作"
   menu_item 1 "节点订阅" "${COMMAND_NAME} -n"
-  menu_item 2 "服务启停" "${COMMAND_NAME} -a"
-  menu_item 3 "参数配置" "${COMMAND_NAME} -c"
-  section "状态观测"
+  menu_item 2 "配置中心" "${COMMAND_NAME} -c"
+  menu_item 3 "服务管理" "${COMMAND_NAME} -a"
+  section "运行观测"
   menu_item 4 "流量统计" "${COMMAND_NAME} -t"
   menu_item 5 "运行诊断" "${COMMAND_NAME} -x"
   section "系统维护"
-  menu_item 6 "项目安装" "${COMMAND_NAME} -i"
-  menu_item 7 "组件更新" "${COMMAND_NAME} -v"
-  menu_item 8 "备份恢复" "${COMMAND_NAME} -k"
-  menu_item 9 "BBR / DD" "${COMMAND_NAME} -b"
+  menu_item 6 "组件更新" "${COMMAND_NAME} -v"
+  menu_item 7 "备份恢复" "${COMMAND_NAME} -k"
+  menu_item 8 "系统工具" "${COMMAND_NAME} -b"
+  section "项目管理"
+  menu_item 9 "项目安装" "${COMMAND_NAME} -i"
   menu_item 10 "项目卸载" "${COMMAND_NAME} -u"
   menu_item 0 "退出脚本"
   ui_line
   read_choice "请选择："; choice="$REPLY"
   case "$choice" in
     1) show_nodes ;;
-    2) manage_services ;;
-    3) manage_config ;;
+    3) manage_services ;;
+    2) manage_config ;;
     4) traffic_statistics_menu ;;
     5) doctor ;;
-    6) install_menu ;;
-    7) sync_versions ;;
-    8) backup_restore_menu ;;
-    9) manage_bbr ;;
+    9) install_menu ;;
+    6) sync_versions ;;
+    7) backup_restore_menu ;;
+    8) manage_bbr ;;
     10) uninstall_project ;;
     0) exit 0 ;;
     *) die "无效选项：${choice:-空}（请输入 0 到 10）" ;;
@@ -3628,6 +3798,14 @@ menu() {
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  # 定时流量采集不计入管理脚本启动；安装更新后的 exec 续接只读取总数。
+  if [[ "${1:-}" != "--traffic-collect" ]]; then
+    if [[ "${1:-}" == "-i" && "${2:-}" == "--github-refreshed" ]]; then
+      record_script_run get
+    else
+      record_script_run
+    fi
+  fi
   case "${1:-}" in
     -n) show_nodes ;;
     -a) manage_services ;;

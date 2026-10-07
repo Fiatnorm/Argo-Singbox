@@ -1,4 +1,4 @@
-# Argo-Singbox v2026.08.12 · 终端 UI 合同
+# Argo-Singbox v2026.10.07 · 终端 UI 合同
 
 ## 视觉规则
 
@@ -8,7 +8,7 @@
 - 状态语义统一：绿色表示“已启用 / 运行中 / 已配置”，黄色表示“未启用 / 已停止 / 未安装”，红色仅表示错误或异常。
 - 状态需要解释时统一追加 `· 原因：...`；错误日志使用鲜红标题、固定宽度字段和整齐缩进。
 - 图标语义固定为 `◆ / ▸ / ✓ / ! / ✗ / • / ›`。
-- 所有含默认值的可取消输入统一显示 `Enter · 默认 | 0 · 取消`；只读页不显示取消提示。
+- 所有页面统一显示 `Enter · 默认 | 0 · 取消`，包含只读页；菜单 Enter 取消，确认默认 No，参数保留明确默认值，0 直接退出脚本。
 - 脚本启动不执行 `clear`，保留命令上下文并避免重复整屏输出。
 
 ## 品牌与系统信息
@@ -16,11 +16,15 @@
 标题和系统环境使用相同标签宽度，内容列严格对齐：
 
 ```text
-Argo-Singbox  v2026.08.12 · Argo Tunnel · Sing-box Core · WSS Proxy
+Argo-Singbox   v2026.10.07
+Argo Tunnel · Sing-box Core · WSS Proxy
 系统环境      Debian GNU/Linux 13 (trixie) · amd64 · Kernel 6.12.101
+脚本统计      全局累计 1234 次
 ```
 
-完整品牌使用 `Argo-Singbox`，ASCII 字标表达 `ArgoSingbox`；项目和紧凑 UI 简称使用 `AGS`，命令仅使用 `ags` 或 `AGS`，文件、路径及服务使用 `argo-singbox`。
+完整品牌使用 `Argo-Singbox`，ASCII 字标使用七行直立大写 `ARGO SINGBOX`，逐字留间距，全部限制在 64 列；长横笔画分为 `_ _`，避免连续长下划线。项目和紧凑 UI 简称使用 `AGS`，命令仅使用 `ags` 或 `AGS`，文件、路径及服务使用 `argo-singbox`。
+
+脚本统计沿用键名亮青、数值亮白与 13 列标签宽度；首页放在系统环境下一行，CLI 子页面放在首次标题下，每次启动仅展示一次。显示的是全部实例共用的累计启动次数；接口不可用显示 `暂不可用`，不显示虚假的 0 或旧缓存值。大数沿用 `key_value` 的 64 列截断规则，不增加今日统计。
 
 ## 运行状态
 
@@ -28,39 +32,43 @@ Argo-Singbox  v2026.08.12 · Argo Tunnel · Sing-box Core · WSS Proxy
 
 ```text
 Argo Tunnel
-代理核心 · Sing-box
+Sing-box Core
 WARP 分流
-多路复用 · h2mux
-TCP Brutal · 模块状态与带宽
-VPS IPv4 · 英文国家代码 · ASN · 运营商
-流量统计 · Total Upload · Total Download
-运行内存
-节点概览 · Vless n · Vmess n · Trojan n
+h2mux
+TCP Brutal
+节点概览 · VLESS n · VMess n · Trojan n
 Argo 域名
 优选入口
 Argo 回源
-组件版本
+VPS IPv4 · 国家代码 · ASN · 去除 AS 前缀的组织名
+VPS IPv6 · 公网地址 / 没有
+全局流量 · ↑ 上传 · ↓ 下载
+运行内存 · 管理脚本与组件 RSS 合计
+项目版本 · AGS 2026.10.07
+组件版本 · Sing-box / cloudflared
 ```
 
-流量数值按 `B / KiB / MiB / GiB / TiB / PiB / EiB` 自适应换算，大数不得挤破 64 列。IP 与归属信息合并为一行，上传与下载合并为一行；运行内存读取当前管理脚本进程的常驻内存。系统环境仅显示内核基础版本，隐藏 `+deb13-amd64` 等构建后缀。
+流量数值按 `B / KiB / MiB / GiB / TiB / PiB / EiB` 自适应换算，大数不得挤破 64 列。IP 与归属信息合并为一行，上传与下载合并为一行；运行内存为管理脚本与项目运行组件的进程 RSS 合计。系统环境仅显示内核基础版本，隐藏 `+deb13-amd64` 等构建后缀。
 
 ## 操作分组
 
 ```text
-运行管理
+常用操作
 1  节点订阅       ags -n
-2  服务启停       ags -a
-3  参数配置       ags -c
+2  配置中心       ags -c
+3  服务管理       ags -a
 
-状态观测
+运行观测
 4  流量统计       ags -t
 5  运行诊断       ags -x
 
 系统维护
-6  项目安装       ags -i
-7  组件更新       ags -v
-8  备份恢复       ags -k
-9  BBR / DD       ags -b
+6  组件更新       ags -v
+7  备份恢复       ags -k
+8  系统工具       ags -b
+
+项目管理
+9  项目安装       ags -i
 10 项目卸载       ags -u
 0  退出脚本
 ```
@@ -70,10 +78,10 @@ Argo 回源
 ## 页面合同
 
 - 节点订阅顺序：订阅面板、自适应、原始、Base64、Clash/Mihomo、Sing-box；不提供完整模板及刷新入口，只显示一张自适应 QR。
-- 节点表宽度：`13/6/14/5/18`，协议显示 `Vless/Vmess/Trojan`，过长字段以 `~` 截断；`Vless+WS+TLS` 等类型标题使用绿色。
+- 节点表宽度：`13/6/14/5/18`，协议显示 `VLESS/VMess/Trojan`，过长字段以 `~` 截断；`VLESS+WS+TLS` 等类型标题使用绿色。
 - 节点标签允许主流客户端常见的中英文、数字、空格和常用符号，拒绝控制字符与 `|`；添加节点页先显示当前节点列表；任一节点输入无效时立即退出，不重复询问，也不改动现有配置。
-- 服务启停：Argo Tunnel、Sing-box Core、重启服务；重启先执行 `daemon-reload`。
-- 参数配置按 Argo、节点、路由与传输、配置维护分组；传输页按“状态与带宽 → 安装/更新 → Brutal 启停 → h2mux 启停 → 设置带宽”排列。
+- 服务管理显示 Argo Tunnel、Sing-box Core、流量采集、Nginx；提供隧道/核心启停和重启核心服务，重启先执行 `daemon-reload`。
+- 配置中心按 Argo Tunnel、节点、路由分流、传输优化、配置维护分组；传输页按“状态与带宽 → Brutal 安装/启停/带宽 → h2mux 启停”排列。
 - 停用 h2mux 同时停用 TCP Brutal；启用 h2mux 只启用多路复用；TCP Brutal 可在 h2mux 已启用时单独开关。
 - WARP 主页面将“域名管理”和“geosite 分类”并列为子页面，两者均按“当前内容 → 添加 → 删除”组织。
 - TCP Brutal 安装先显示内核、APT、DKMS、当前运行内核精确匹配头文件和兼容性结论；Debian 精确头文件不可安装时，先说明影响，再分别确认内核元包安装和立即重启，默认均不执行。
@@ -81,6 +89,7 @@ Argo 回源
 - 诊断明确显示“已通过 / 无效 / 未运行”；WARP 为可选功能，未启用不计警告；只有重要配置、服务、端口、订阅或运行参数异常才计警告或错误。
 - 组件更新分别比较、确认、校验和替换 cloudflared 与 Sing-box，并支持失败回滚。
 - 备份恢复只处理 `nodes.conf`，拒绝路径穿越、链接和特殊文件。
+- 直连节点添加/修改显示已验证的 IPv4/IPv6；双栈可选择优先出口，默认 IPv4，单栈自动选择。出口选择前取消不会修改节点。第五字段的 `direct:ipv4` / `direct:ipv6` 保留备份兼容性；节点表中的 IPv6 另起完整地址行，避免 18 列截断隐藏地址。
 
 ## 验收
 
@@ -89,3 +98,13 @@ Argo 回源
 - 标题、系统环境、IP 归属、总流量、运行内存及错误日志符合本合同。
 - 首页、帮助、参数解析与所有菜单只执行一个动作后退出。
 - 脚本不调用 `clear`，不包含循环回到菜单的 `while true`。
+
+## 全局交互与组件内存
+
+用户最新要求优先于参考设计文档：所有页面包含控制中心及只读页显示 `Enter · 默认 | 0 · 取消`，Enter 和 0 亮黄；菜单 Enter 为 0，确认 Enter 为 No，明确参数默认值继续保留；0 取消后直接退出整个脚本，不返回父菜单。必填参数没有默认值时 Enter 取消，EOF 也安全结束。项目卸载输入 REMOVE，其余系统组件默认保留。
+
+控制中心分组：常用操作（节点订阅、配置中心、服务管理）、运行观测（流量统计、运行诊断）、系统维护（组件更新、备份恢复、系统工具）、项目管理（安装、卸载）。菜单编号与 case 必须一致。
+
+传输优化编号为 1 安装/更新 Brutal、2 启用 Brutal、3 停用 Brutal、4 带宽、5 启用 h2mux、6 停用 h2mux。WARP 分为开关（1 启用、2 停用）与规则（3 域名、4 geosite）。服务管理显示 Argo Tunnel、Sing-box Core、流量采集及 Nginx。备份菜单为创建备份、恢复配置。
+
+运行内存为管理脚本、Nginx worker/主进程、Sing-box、cloudflared、活动流量采集器和启用时 WARP 的 RSS 合计。cgroup v1/v2 和 MainPID 子进程回退按 PID 去重；读不到的部分标注。整个共享服务都纳入统计，跨进程共享页仍可能重复计入 RSS。stdout/stderr 分别根据 TTY 与 NO_COLOR 决定颜色，文本 QR 在无色模式不输出 ANSI。

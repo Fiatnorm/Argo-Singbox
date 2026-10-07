@@ -1,4 +1,4 @@
-# Argo-Singbox v2026.08.12
+# Argo-Singbox v2026.10.07
 
 Argo-Singbox 是单内核项目，`AGS` 是管理命令和终端紧凑显示使用的简称。脚本版本按 `YYYY.MM.DD` 日期迭代。运行时只安装和管理官方 Sing-box，保留节点、订阅、WARP、长期全局流量统计、诊断、备份恢复和安装更新能力。
 
@@ -79,8 +79,8 @@ bash argo-singbox.sh -i -f /root/argo-singbox.env
 ```text
 ags        控制中心（选择一个动作后退出）
 ags -n     节点订阅
-ags -a     服务启停
-ags -c     参数配置
+ags -a     服务管理
+ags -c     配置中心
 ags -t     流量统计
 ags -x     运行诊断
 ags -i     项目安装
@@ -101,6 +101,10 @@ ags -u     项目卸载
 
 协议固定为 `vless`、`vmess`、`trojan`。新安装默认各生成一个节点；升级不会向已有节点文件静默插入新节点，其他协议会在配置校验阶段中止。
 
+版本 `2026.10.07` 保留五字段格式。第五字段为空时自动选择直连出口；`direct:ipv4` / `direct:ipv6` 表示直连的地址族偏好，其余值仍是原有 SOCKS5 格式。添加或修改直连节点时，双栈 VPS 可选择 IPv4 或 IPv6，默认 IPv4；仅检测到一种公网出口时自动使用该地址族。选择会随 `nodes.conf` 备份、恢复和事务回滚保留。
+
+与只读 SBA 参考实现一致，自动模式双栈使用 `prefer_ipv4`，IPv4 单栈使用 `ipv4_only`，IPv6 单栈使用 `ipv6_only`。逐节点选择在双栈上使用 `prefer_ipv4` / `prefer_ipv6`：目标域名不支持首选地址族时允许回退，IP 字面量仍使用目标本身的地址族。WARP 匹配优先于节点 SOCKS5 或直连偏好；通过 WARP/SOCKS5 的流量使用代理的出口。本功能不把 VPS 出口 IP 替换成客户端连接的 Argo 域名或优选入口。
+
 `ags -n` 显示订阅面板、自适应、原始、Base64、Clash/Mihomo 与 Sing-box 链接；只为自适应订阅显示一张 QR。
 
 自适应入口按 User-Agent 匹配常见 Clash/Mihomo、Sing-box 和 URI/Base64 客户端，直接返回本地原子生成的对应订阅；原 `/clash` 与 `/sing-box` 输出格式不变。
@@ -115,9 +119,17 @@ WS early-data 与 SBA/ArgoX 一致为 `2560`。节点输出不再强制 XUDP 或
 
 ## 命令与终端行为
 
-脚本遵循标准单动作 Unix CLI：每次执行只选择或指定一个动作，完成后直接退出，不回到当前或上级菜单。所有可取消输入统一提示 `Enter · 默认 | 0 · 取消`。脚本启动时不执行 `clear`，因此不会抹去命令上下文，也不会额外制造整屏重绘。
+脚本遵循标准单动作 Unix CLI：每次执行只选择或指定一个动作，完成后直接退出，不回到当前或上级菜单。所有页面（包含控制中心与只读页）统一显示 `Enter · 默认 | 0 · 取消`，Enter 和 0 使用亮黄强调。菜单 Enter 默认取消并退出，所有确认默认 No（`[y/N]`），有明确当前值的配置输入 Enter 保持默认值；没有默认值的必填输入 Enter 取消。所有输入 0 均直接结束脚本，不能返回上级菜单。项目卸载须输入 `REMOVE`，系统组件的额外卸载分别确认，默认均保留。脚本启动时不执行 `clear`，因此不会抹去命令上下文，也不会额外制造整屏重绘。
 
-首页以 64 列显示系统环境、服务状态、VPS IPv4 与英文国家代码/ASN/运营商、全局上传/下载累计量以及当前管理脚本的运行内存。IP 归属合并为一行，上传与下载合并为一行；内核版本隐藏 Debian 构建后缀。状态统一为绿色“已启用”、黄色“未启用”，异常为鲜红色并使用 `原因：...` 说明。WARP 是可选能力，未启用不会计入诊断警告。
+首页使用七行、64 列的大字标，横向笔画以多段 `_` 展示。系统环境、服务状态、VPS IPv4 与英文国家代码/ASN/组织名、VPS IPv6、全局上传/下载累计量以及项目运行组件的内存合计依次显示。GeoJS 查询按 IPv4/IPv6 分别进行，绑定默认路由源地址并绕过环境代理，保留 TLS 校验、超时与一次重试，同一次执行复用检测结果。字段使用 `country_code`、数字 `asn`（显示时加 `AS`）及 `organization_name`，例如 `107.173.211.29 · US · AS36352 · HostPapa`。未检测到 IPv6 出口时显示“没有”；API/网络查询失败不证明 VPS 完全不支持该地址族，两个出口均未验证时拒绝新的出口选择，不阻止已有配置生成。IP 归属合并为一行，上传与下载合并为一行；内核版本隐藏 Debian 构建后缀。状态统一为绿色“已启用”、黄色“未启用”，异常为鲜红色并使用 `原因：...` 说明。WARP 是可选能力，未启用不会计入诊断警告。
+
+字段含义见 [GeoJS 官方文档](https://www.geojs.io/docs/v1/endpoints/geo/)。
+
+## 脚本运行次数
+
+管理页面标题区显示 `脚本统计  全局累计 n 次`，表示所有安装实例共用的启动总数，不是本机次数、今日次数或成功执行次数。每次直接启动管理脚本只请求一次 `https://abacus.jasoncameron.dev/hit/ags/fiatnorm`；菜单切换不重复计数，安装更新后的进程续接只用 `/get` 读取，`source` 和内部 `--traffic-collect` 不计数。请求最多等待 3 秒、不重试；缺少 curl、网络失败或响应无效时显示 `暂不可用`，继续原操作。网络失败可能漏计，也可能服务端已计数但响应丢失，因此这是尽力统计。
+
+计数器以 namespace `ags` 与 key `fiatnorm` 唯一确定，不能省略 key。[Abacus 文档](https://v2.jasoncameron.dev/abacus/)说明 `/create` 仅在首次创建时返回 `admin_key`，`/set`、`/update`、`/reset`、`/delete` 均需通过 `Authorization: Bearer <admin_key>` 管理。此键通过 `/create/ags/fiatnorm` 创建，初始值为 0；管理密钥保存在仓库外的本地受限文件中，脚本仅使用公开的累加/读取接口，不保存或分发管理密钥。公开接口允许其他人累加，不能作为防篡改审计数据；长时间不访问时计数器可能过期。
 
 ## WARP geosite
 
@@ -160,8 +172,20 @@ bash tests/generation-smoke.sh
 bash tests/traffic-global-smoke.sh
 bash tests/installer-migration-smoke.sh
 bash tests/ui-smoke.sh
+bash tests/script-stats-smoke.sh
+bash tests/script-stats-ui-smoke.sh
 sha256sum -c argo-singbox.sh.sha256
 grep -n $'\r' argo-singbox.sh && exit 1 || true
 ```
 
 本地检查不能替代 VPS 上的 `nginx -t`、Sing-box 配置检查、systemd、Clash API 实时计数、Cloudflare Tunnel 及公网 WS 实测。
+
+## 2026.10.07 UI 与运行内存
+
+参考用户提供的 `Argo-Singbox_Terminal_UI_Design.md` 统一术语、状态颜色、导航分组和菜单编号；以用户最新要求覆盖文档中的返回上级、只读页不显示提示及默认确认示例。控制中心按常用操作、运行观测、系统维护、项目管理分组；传输优化为 1 安装/更新 Brutal、2 启用、3 停用、4 设置带宽、5 启用 h2mux、6 停用；WARP 为 1 启用、2 停用、3 域名规则、4 geosite 规则。
+
+运行状态依次为 Argo Tunnel、Sing-box Core、WARP 分流、h2mux、TCP Brutal、节点概览、Argo 域名、优选入口、Argo 回源、VPS IPv4、VPS IPv6、全局流量、运行内存、项目版本、组件版本。组织名去除重复 AS 前缀；全局流量显示 `↑ 上传 · ↓ 下载`。
+
+“运行内存”统计当前管理脚本及其子进程、Nginx 主进程及 worker、Sing-box、cloudflared、正在运行的流量采集器，以及 WARP 开启时的 warp-svc。优先通过 systemd cgroup 获取进程，兼容 cgroup v1/v2 并包含嵌套组；同时通过 MainPID 与父子进程关系覆盖 worker，按 PID 去重后累加 `/proc/<pid>/status` 的 VmRSS，单位为 MiB 等。它不是文件大小，也不是 VPS 总内存。若 Nginx/WARP 被其他应用共用，显示的是该整个服务的进程内存；RSS 合计中的跨进程共享页可能重复计入，不能视为去重后的物理内存或 cgroup MemoryCurrent。进程退出跳过；权限不足等未读到的部分明确标注，全部无法读取时显示未知。
+
+确认行为、菜单映射、状态顺序和内存统计分别由 `tests/ui-interaction-smoke.sh`、`tests/ui-smoke.sh`、`tests/runtime-memory-smoke.sh` 验证。

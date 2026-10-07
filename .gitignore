@@ -1,2 +1,5 @@
 # Read-only upstream comparison checkout; managed by its own nested Git repository.
 reference/sba/
+
+# Local Abacus administrator key backup; never commit credentials.
+/abacus-ags-fiatnorm.json

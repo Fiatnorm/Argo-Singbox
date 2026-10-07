@@ -4,6 +4,9 @@ set -Eeuo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=../argo-singbox.sh
 source "${ROOT_DIR}/argo-singbox.sh"
+PUBLIC_IPS_DETECTED=1
+PUBLIC_IPV4=192.0.2.1
+PUBLIC_IPV6=2001:db8::1
 
 TEST_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEST_DIR"' EXIT
@@ -267,6 +270,56 @@ assert [item["name"] for item in config["proxies"]] == ["香港 01 🚀", 'US "P
 PY
 fi
 
+# Mixed per-node egress preserves WARP priority, SOCKS and all five fields.
+cat >"$NODES_CONFIG" <<'EOF'
+IPv4|vless|/v4|3011|direct:ipv4
+IPv6|vmess|/v6|3012|direct:ipv6
+Proxy|trojan|/proxy|3013|proxy.example.com:1080:user:pass
+EOF
+WARP_ENABLED=1
+WARP_DOMAINS=example.org
+WARP_GEOSITES=""
+write_sing_box_config
+generate_nodes
+if command -v node >/dev/null 2>&1; then
+node - "$SING_BOX_CONFIG" <<'NODE'
+const c=JSON.parse(require('fs').readFileSync(process.argv[2],'utf8'));
+const out=Object.fromEntries(c.outbounds.map(o=>[o.tag,o]));
+if(out.direct.domain_resolver.strategy!=='prefer_ipv4') throw Error('dual stack default');
+if(out['direct-IPv4'].domain_resolver.strategy!=='prefer_ipv4') throw Error('IPv4 choice');
+if(out['direct-IPv6'].domain_resolver.strategy!=='prefer_ipv6') throw Error('IPv6 choice');
+if(out['socks-Proxy'].type!=='socks') throw Error('SOCKS lost');
+const routes=c.route.rules.filter(r=>r.action==='route');
+if(routes.map(r=>r.outbound).join(',')!=='warp,direct-IPv4,direct-IPv6,socks-Proxy') throw Error('priority');
+if(c.inbounds.map(i=>i.type).join(',')!=='vless,vmess,trojan') throw Error('protocols');
+NODE
+else
+  jq -e '.outbounds | any(.tag == "direct-IPv4" and .domain_resolver.strategy == "prefer_ipv4")' "$SING_BOX_CONFIG" >/dev/null
+  jq -e '.outbounds | any(.tag == "direct-IPv6" and .domain_resolver.strategy == "prefer_ipv6")' "$SING_BOX_CONFIG" >/dev/null
+  jq -e '[.route.rules[] | select(.action == "route") | .outbound] == ["warp","direct-IPv4","direct-IPv6","socks-Proxy"]' "$SING_BOX_CONFIG" >/dev/null
+fi
+[[ "$(awk -F'|' 'NF!=5 {bad=1} END {print bad+0}' "$NODES_CONFIG")" == 0 ]]
+if [[ -n "${AGS_TEST_CORE:-}" ]]; then
+  "$AGS_TEST_CORE" check -c "$SING_BOX_CONFIG"
+fi
+if [[ -n "${AGS_TEST_CONFIG_DIR:-}" ]]; then
+  mkdir -p "$AGS_TEST_CONFIG_DIR"
+  cp "$SING_BOX_CONFIG" "$AGS_TEST_CONFIG_DIR/server.json"
+  cp "$SUB_SING_BOX_FILE" "$AGS_TEST_CONFIG_DIR/client.json"
+fi
+PUBLIC_IPV4=""
+[[ "$(direct_strategy)" == ipv6_only ]]
+write_sing_box_config
+grep -Fq '"tag":"direct","domain_resolver":{"server":"local","strategy":"ipv6_only"}' "$SING_BOX_CONFIG"
+if [[ -n "${AGS_TEST_CORE:-}" ]]; then "$AGS_TEST_CORE" check -c "$SING_BOX_CONFIG"; fi
+PUBLIC_IPV4=192.0.2.1
+PUBLIC_IPV6=""
+[[ "$(direct_strategy)" == ipv4_only ]]
+write_sing_box_config
+grep -Fq '"tag":"direct","domain_resolver":{"server":"local","strategy":"ipv4_only"}' "$SING_BOX_CONFIG"
+if [[ -n "${AGS_TEST_CORE:-}" ]]; then "$AGS_TEST_CORE" check -c "$SING_BOX_CONFIG"; fi
+printf 'bad|vless|/bad|3014|direct:ipv7\n' >"$NODES_CONFIG"
+if (validate_nodes_config >/dev/null 2>&1); then exit 1; fi
 printf 'unsupported|unsupported|/unsupported|3014|\n' >"$NODES_CONFIG"
 if unsupported_error="$(validate_nodes_config 2>&1)"; then
   printf 'unsupported protocol unexpectedly accepted\n' >&2
