@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2026.08.12"
+VERSION="2026.10.07"
 PROJECT_NAME="Argo-Singbox"
 PROJECT_CODE="AGS"
 SCRIPT_NAME="argo-singbox.sh"
@@ -72,7 +72,15 @@ IS_BRUTAL=false
 MULTIPLEX_ENABLED=1
 TCP_BRUTAL_ENABLED=1
 WARP_GEOSITES=""
+OUTBOUND_IP_FAMILY="auto"
 
+UI_LANGUAGE="${UI_LANGUAGE:-en}"
+SCRIPT_STATS_URL="https://abacus.jasoncameron.dev"
+SCRIPT_STATS_NAMESPACE="ags"
+SCRIPT_STATS_KEY="fiatnorm"
+SCRIPT_RUNS_TOTAL=""
+SCRIPT_RUNS_REQUESTED=0
+SCRIPT_RUNS_SHOWN=0
 UI_WIDTH=64
 if [[ -t 1 && -z "${NO_COLOR:-}" && "${TERM:-dumb}" != "dumb" ]]; then
   C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'; C_DIM=$'\033[2m'; C_UNDERLINE=$'\033[4m'
@@ -87,20 +95,810 @@ else
   C_BRIGHT_YELLOW=""; C_BRIGHT_BLUE=""; C_BRIGHT_MAGENTA=""; C_BRIGHT_CYAN=""
   C_BRIGHT_WHITE=""
 fi
+if [[ -t 2 && -z "${NO_COLOR:-}" && "${TERM:-dumb}" != "dumb" ]]; then
+  C_ERR_RESET=$'\033[0m'
+  C_ERR_RED=$'\033[91m'
+else
+  C_ERR_RESET=""
+  C_ERR_RED=""
+fi
+# Embedded UI translations: no translation service is used at runtime.
+declare -A UI_EN=(
+  ['上传']=Upload
+  ['上传带宽']='Upload bandwidth'
+  ['上传带宽无效。']='Invalid upload bandwidth.'
+  ['上传带宽无效，请输入']='Invalid upload bandwidth, please enter'
+  ['下载']=Download
+  ['下载失败（已尝试直连和']='Download failed (tried direct and '
+  ['下载带宽']='Download bandwidth'
+  ['下载带宽无效。']='Invalid download bandwidth.'
+  ['下载带宽无效，请输入']='Invalid download bandwidth, please enter'
+  ['不可用']=Unavailable
+  ['不可用 · 缺少 brutal 内核模块']='Unavailable · Missing brutal kernel module'
+  ['不可达']='Not reachable'
+  ['不存在']='does not exist'
+  ['不支持的节点协议：']='Unsupported node protocols:'
+  ['不能使用其他版本头文件替代。']='Other version header files cannot be used instead.'
+  ['不能删除最后一个']='Cannot delete the last one'
+  ['与']=with
+  ['与域名']='with domain name'
+  ['与旧目录']='with old directory'
+  ['与根分区空间充足。']='There is plenty of space with the root partition.'
+  ['且不属于本项目。为避免服务冲突，安装已停止。']='and does not belong to this project. To avoid service conflicts, the installation has been stopped.'
+  ['两个旧安装目录，请先人工核对。']='Two old installation directories, please check manually first.'
+  ['个提醒']=warnings
+  ['个未监听']='not monitored'
+  ['个错误']=errors
+  ['中没有可安装的']='There is nothing to install in'
+  ['为']=for
+  ['主机']=Host
+  ['也会同时停用。']='will also be deactivated at the same time.'
+  ['人机挑战（']='Human-machine challenge ('
+  ['仅打开节点备份与恢复菜单，不接受文件路径参数。']='Only opens the node backup and recovery menu and does not accept file path parameters.'
+  ['仅支持']='Only supports'
+  ['仅支持通过']='Only supports passing'
+  ['仅检测到']='Only detected'
+  ['代理']=agent
+  ['代理端口不能与']='The proxy port cannot be used with'
+  ['代理端口不能与流量统计']='Proxy port cannot be used with traffic statistics'
+  ['代理端口不能与节点监听端口相同：']='The proxy port cannot be the same as the node listening port:'
+  ['代理端口不能占用']='The proxy port cannot be occupied'
+  ['代理端口不能占用流量统计']='The proxy port cannot occupy traffic statistics'
+  ['代理端口不能占用节点监听端口']='The proxy port cannot occupy the node listening port'
+  ['代理端口冲突：']='Proxy port conflict:'
+  ['代理端口无效。']='The proxy port is invalid.'
+  ['以']=to
+  ['优选入口']='Preferred entry'
+  ['优选入口无效']='The preferred entrance is invalid'
+  ['优选入口格式不正确。']='The preferred entry format is incorrect.'
+  ['优选入口端口无效']='The preferred entry port is invalid'
+  ['优选入口端口无效。']='The preferred ingress port is invalid.'
+  ['传输优化']=Transport
+  ['传输优化选项无效']='Transport optimization option is invalid'
+  ['传输检查']='transmission check'
+  ['传输路径']='Transport path'
+  ['传输路径格式错误：']='The transmission path format is incorrect:'
+  ['但缺少项目所有权标记，拒绝自动迁移。']='But the project ownership tag is missing, rejecting automatic migration.'
+  ['低于']='lower than'
+  ['低于官方最低要求']='Below official minimum requirements'
+  ['使用']=Use
+  ['使用最新备份：']='Use the latest backup:'
+  ['保持当前；']='remain current;'
+  ['保留非本项目旧服务：']='Retain old services other than this project:'
+  ['修改节点']='Edit node'
+  ['修改配置']='Modify configuration'
+  ['停用']=Disable
+  ['全局']='overall situation'
+  ['全局流量']='Traffic total'
+  ['全局流量统计已通过。']='Global traffic statistics passed.'
+  ['全局流量统计无效。']='Global traffic statistics are invalid.'
+  ['全局统计']='Total traffic'
+  ['全部服务']='All services'
+  ['公网']='Public network'
+  ['公网传输探测失败（']='Public network transmission detection failed ('
+  ['公网传输探测超时，未视为安装失败；请用客户端实测。']='The public network transmission detection timeout is not considered an installation failure; please use the client to test.'
+  ['公网出口']='Public egress'
+  ['公网出口检测']='Public egress detection'
+  ['公网出口，未生成']='Public network exit, not generated'
+  ['共四类订阅']='A total of four types of subscriptions'
+  ['内核、网络参数或系统磁盘']='Kernel, network parameters or system disk'
+  ['内核低于']='The kernel is lower than'
+  ['内核升级引导']='Kernel upgrade boot'
+  ['内核头文件']='Kernel header files'
+  ['内核安装需要额外磁盘空间，请确保']='Kernel installation requires additional disk space, please make sure'
+  ['内核模块']='kernel module'
+  ['内核管理脚本。']='Kernel management script.'
+  ['内核软件包']='Kernel package'
+  ['内核配置']='Kernel configuration'
+  ['内核预检']='Kernel preflight'
+  ['写入']=write
+  ['出口']=export
+  ['出口不可用']='Exit not available'
+  ['出口只能选择']='Export can only be selected'
+  ['出站']=Outbound
+  ['出站地址族']='outbound address family'
+  ['出站已切换为']='Outbound has been switched to'
+  ['出站配置']='Outbound configuration'
+  ['分流']=Routing
+  ['分流。']=Diversion.
+  ['分流已停用']='Diversion is disabled'
+  ['分流规则']='Routing rules'
+  ['分流？']='Diversion?'
+  ['分类。']=classification.
+  ['分类不能为空。']='Category cannot be empty.'
+  ['分类无效：']='Invalid classification:'
+  ['分类：']=Category:
+  ['创建备份']='Create backup'
+  ['删除分类']='Delete category'
+  ['删除域名']='Delete domain name'
+  ['删除操作']='Delete operation'
+  ['删除节点']='Delete node'
+  ['到']=Arrive
+  ['刷新后当前内核仍不满足']='The current kernel is still not satisfied after refreshing'
+  ['刷新统计']='Refresh traffic'
+  ['功能特性']=Features
+  ['协议']=Protocol
+  ['占用']=occupy
+  ['原因']=Reason
+  ['原因：定时器已停止']='Reason: The timer has stopped'
+  ['原始节点']='Raw nodes'
+  ['原始节点订阅']='Raw subscription'
+  ['原始订阅']='Raw subscription'
+  ['反代）：']='Anti-generation):'
+  ['发布包结构无效。']='The release package structure is invalid.'
+  ['发布包缺少']='Release package missing'
+  ['发行版代号，不能安全配置']='Release codename, cannot be safely configured'
+  ['发行版新内核及其匹配头文件。']='Release the new kernel and its matching header files.'
+  ['取消']=Cancel
+  ['可取消本次安装。']='This installation can be canceled.'
+  ['可安装']=Installable
+  ['可用落地']='Available egress'
+  ['可用逗号分隔']='Can be separated by commas'
+  ['可能修改']='may be modified'
+  ['可能被其他网站使用']='May be used by other websites'
+  ['可输入域名']='Domain name can be entered'
+  ['可选功能']=Optional
+  ['合计']=Total
+  ['同意安装']='Agree to install'
+  ['同时存在，请先人工核对，拒绝自动覆盖。']='If they exist at the same time, please check manually first and refuse automatic overwriting.'
+  ['同时抢占节点端口。']='Seize node ports at the same time.'
+  ['后重试。']='Try again later.'
+  ['启停']='Start and stop'
+  ['启停配置无效。']='The start and stop configuration is invalid.'
+  ['启动标识']='Startup ID'
+  ['启动第三方系统脚本']='Start third-party system scripts'
+  ['启用']=Enable
+  ['和']=and
+  ['和当前业务连接，请先保存其他任务。']='To connect to the current business, please save other tasks first.'
+  ['回源']=Origin
+  ['回源占用']='Back to source occupation'
+  ['回源地址']='Return to source address'
+  ['回源已更新：']='The source has been updated:'
+  ['回源端口']='Return-to-origin port'
+  ['回源端口会占用']='The return-to-origin port will be occupied'
+  ['回源端口冲突']='Back-to-origin port conflict'
+  ['回源端口冲突：']='Return-to-origin port conflict:'
+  ['回源端口无效']='The return-to-origin port is invalid'
+  ['回源端口无效。']='The return-to-origin port is invalid.'
+  ['回源端口相同。']='The return-to-origin port is the same.'
+  ['固定隧道']='fixed tunnel'
+  ['在线安装']='Online installation'
+  ['在线安装会先校验并替换本地脚本。']='Online installation will first verify and replace local scripts.'
+  ['域名']=Domain
+  ['域名。']='domain name.'
+  ['域名无效']='Invalid domain name'
+  ['域名格式不正确。']='The domain name format is incorrect.'
+  ['域名规则']='Domain rules'
+  ['域名：']='Domain name:'
+  ['基础服务']='Basic services'
+  ['备份不能直接保存到项目根目录。']='Backups cannot be saved directly to the project root directory.'
+  ['备份位置']='Backup location'
+  ['备份归档']='Backup archive'
+  ['备份归档不包含可恢复的节点配置']='Backup archive does not contain recoverable node configuration'
+  ['备份归档为空。']='The backup archive is empty.'
+  ['备份归档创建失败。']='Backup archive creation failed.'
+  ['备份归档包含符号链接或其他特殊文件，拒绝恢复。']='The backup archive contains symbolic links or other special files, which refuses to be restored.'
+  ['备份归档包含越界路径，拒绝恢复。']='The backup archive contains an out-of-bounds path and is refused recovery.'
+  ['备份恢复']='Backup / Restore'
+  ['备份操作']='Backup operation'
+  ['备份文件不存在：']='The backup file does not exist:'
+  ['备份文件夹必须使用绝对路径。']='The backup folder must use an absolute path.'
+  ['备份文件必须以']='The backup file must end with'
+  ['备份来源']='Backup source'
+  ['备份目录中没有可恢复的归档：']='There are no recoverable archives in the backup directory:'
+  ['备份结构中缺少']='missing from backup structure'
+  ['备份节点配置']='Backup node configuration'
+  ['备份路径必须使用绝对路径。']='The backup path must use an absolute path.'
+  ['备份配置']='Backup configuration'
+  ['失败']=Failed
+  ['如']='Such as'
+  ['字段或节点无效']='Field or node is invalid'
+  ['安装']=Install
+  ['安装。']=Installation.
+  ['安装依赖准备失败。']='Installation dependency preparation failed.'
+  ['安装准备']='Installation preparation'
+  ['安装后还需按官方说明为公网接口启用']='After installation, you need to enable the public network interface according to the official instructions.'
+  ['安装器']=installer
+  ['安装器。']=installer.
+  ['安装失败；当前发行版可能不受']='Installation failed; current distribution may not be supported'
+  ['安装完成，服务检查通过。']='The installation is complete and the service check passed.'
+  ['安装已停止，未覆盖现有服务。']='Installation stopped and existing services were not overwritten.'
+  ['安装已完成，但服务检查未全部通过；请修复后再使用节点。']='The installation is complete, but all service checks did not pass; please repair before using the node.'
+  ['安装方式']='Installation method'
+  ['安装条件。']='Installation conditions.'
+  ['安装目录迁移为']='The installation directory is moved to'
+  ['安装脚本与校验值暂不一致，正在重新获取（']='The installation script and the verification value are temporarily inconsistent and are being obtained again ('
+  ['安装说明']='Installation instructions'
+  ['安装配置']='Installation configuration'
+  ['完整']=complete
+  ['完整健康检查通过前，保留旧服务与目录兼容链接以便回退。']='Until the full health check passes, the old service and directory compatibility links are retained for rollback.'
+  ['官方']=official
+  ['官方依赖。']='Official reliance.'
+  ['官方安装器']='Official installer'
+  ['官方安装器执行失败。']='The official installer failed to execute.'
+  ['官方安装器语法检查失败。']='The official installer syntax check failed.'
+  ['官方核心已更新，但全局流量账本未能初始化。']='The official core has been updated, but the global traffic ledger failed to initialize.'
+  ['定时器已停止']='The timer has stopped'
+  ['定时采集']='Regular collection'
+  ['实际域名为']='The actual domain name is'
+  ['客户端、注册与软件源？']='Client, registration and software source?'
+  ['客户端。']=client.
+  ['客户端切换到本地代理模式。']='The client switches to local proxy mode.'
+  ['客户端安装完成。']='Client installation is complete.'
+  ['客户端注册失败。']='Client registration failed.'
+  ['客户端重新注册失败。']='Client re-registration failed.'
+  ['客户端？']='Client?'
+  ['密码']=Password
+  ['将删除']='will be deleted'
+  ['将安装']='will install'
+  ['将检查更新']='Will check for updates'
+  ['将迁移为项目专属服务名。']='Will be migrated to project-specific service name.'
+  ['尚未安装。']='Not installed yet.'
+  ['尚未采集']='Not collected yet'
+  ['工具']=Tools
+  ['已保留当前内核运行；请稍后手动重启。']='The current kernel has been left running; please restart manually later.'
+  ['已停止']=Stopped
+  ['已停止占用节点端口的旧项目服务：']='The old project service occupying the node port has been stopped:'
+  ['已停止遗留项目核心进程']='Legacy project core process stopped'
+  ['已停用。']=Disabled.
+  ['已停用；内核模块仍保留。']='Deprecated; kernel modules remain.'
+  ['已先停用新服务再恢复旧服务，避免新旧']='New services have been deactivated first and then old services restored to avoid new and old services.'
+  ['已关闭']=Closed
+  ['已加载']=Loaded
+  ['已卸载']=Uninstalled
+  ['已取消']=Canceled
+  ['已取消修改']='Changes cancelled'
+  ['已取消停用']=Deactivated
+  ['已取消内核升级']='Kernel upgrade canceled'
+  ['已取消删除']=Undelete
+  ['已取消卸载']='Uninstall canceled'
+  ['已取消启动']='Startup canceled'
+  ['已取消安装']='Installation canceled'
+  ['已取消安装，未写入配置。']='The installation has been canceled and the configuration has not been written.'
+  ['已取消重置']='Reset canceled'
+  ['已同步启用。']='Sync enabled.'
+  ['已启动']=Started
+  ['已启用']=Enabled
+  ['已启用。']=Enabled.
+  ['已启用；']='Enabled;'
+  ['已安装']=Installed
+  ['已安装但']='Installed but'
+  ['已安装并加载，服务端与订阅配置已同步。']='Installed and loaded, server and subscription configurations have been synchronized.'
+  ['已安装，但找不到']='Installed but not found'
+  ['已将']=Already
+  ['已将现有配置、节点和订阅文件迁入分类目录。']='Existing configuration, node, and subscription files have been moved into the category directory.'
+  ['已恢复修改前配置']='Configuration before modification has been restored'
+  ['已恢复到执行恢复操作前的状态。']='Restored to the state before the restore operation was performed.'
+  ['已恢复旧服务并保留旧目录兼容链接。']='The old service has been restored and old catalog compatibility links retained.'
+  ['已改用']='Already used'
+  ['已是目标版本。']='Already the target version.'
+  ['已更新：']=Updated:
+  ['已替换输入域名']='The input domain name has been replaced'
+  ['已被其他节点使用']='Already used by other nodes'
+  ['已被占用']='Already occupied'
+  ['已读取配置文件：']='Configuration file read:'
+  ['已通过']=Passed
+  ['已配置']=Configured
+  ['带宽']=Bandwidth
+  ['常用操作']='Common actions'
+  ['并复核当前内核的官方安装条件']='And review the official installation conditions of the current kernel'
+  ['并跳过全部代理路径的']='and skip all proxy paths'
+  ['应用配置并重启服务']='Apply configuration and restart service'
+  ['开关']=Switch
+  ['开头']=Beginning
+  ['异常']=Error
+  ['异常：本地']='Exception: local'
+  ['异常：进程未运行']='Exception: Process is not running'
+  ['当前']=current
+  ['当前为']=Currently
+  ['当前入口']='Current entrance'
+  ['当前内核']='Current kernel'
+  ['当前内核不会立即切换，现有服务会继续运行。']='The current core will not switch immediately and existing services will continue to run.'
+  ['当前内核不支持加载']='The current kernel does not support loading'
+  ['当前内核头文件并配置开机加载。']='The current kernel header file and configuration are loaded at boot.'
+  ['当前内核支持安装']='The current kernel supports installation'
+  ['当前内核未启用可加载模块（']='Loadable modules are not enabled in the current kernel ('
+  ['当前内核缺少']='The current kernel is missing'
+  ['当前显示']='Currently showing'
+  ['当前核心的统计计数读取失败，未重置历史数据。']='Failed to read the statistics count of the current core and the historical data was not reset.'
+  ['当前没有']='No current '
+  ['当前版本']='Current version'
+  ['当前状态']='Current status'
+  ['当前环境无法安全安装']='The current environment cannot be installed safely'
+  ['当前环境是容器，不能安全安装宿主机内核模块。']='The current environment is a container and the host kernel module cannot be safely installed.'
+  ['当前系统不支持']='The current system does not support'
+  ['当前脚本已是最新版本。']='The current script is the latest version.'
+  ['当前落地']='Current egress'
+  ['当前规则']='Current rules'
+  ['当前运行内核']='Running kernel'
+  ['当前运行内核的匹配头文件安装后仍不可用：']='The matching header files for the currently running kernel are still unavailable after installation:'
+  ['当前运行内核的精确头文件安装失败：']='Installation of the exact header files for the currently running kernel failed:'
+  ['当前运行进程不是']='The currently running process is not'
+  ['当前配置']='Current configuration'
+  ['待删除域名不能为空。']='The domain name to be deleted cannot be empty.'
+  ['必填']=required
+  ['必须以']='Must be'
+  ['必须重启进入新内核，再运行']='You must reboot into the new kernel and then run'
+  ['恢复来源']='restore source'
+  ['恢复节点配置']='Restore node configuration'
+  ['恢复配置']='Restore config'
+  ['或']=or
+  ['或控制字符。']='or control characters.'
+  ['或留空使用']='Or leave it blank to use'
+  ['或输入']='or enter'
+  ['打开自适应订阅']='Turn on adaptive subscription'
+  ['执行']=Executed
+  ['拒绝安装。']='Installation refused.'
+  ['拒绝导入。']='Import refused.'
+  ['拒绝自动迁移。']='Reject automatic migration.'
+  ['拒绝覆盖。']='Deny coverage.'
+  ['指令。']=instructions.
+  ['指向']='point to'
+  ['指定格式']='Specify format'
+  ['探测未成功，配置未变更。']='The detection was unsuccessful and the configuration has not been changed.'
+  ['控制中心']='Control center'
+  ['推荐使用。扫码或打开链接，自动匹配客户端格式。']='Recommended. Scan the QR code or open the link to automatically match the client format.'
+  ['提醒']=Warning
+  ['握手正常']='Handshake normal'
+  ['支持。']=Support.
+  ['文件或目录；']='file or directory;'
+  ['新值格式：']='Format: '
+  ['新值格式：http']='Format: http'
+  ['新内核与匹配头文件']='New kernel with matching header files'
+  ['新内核与匹配头文件已安装。']='The new kernel with matching header files is installed.'
+  ['新内核与匹配头文件？']='New kernel with matching headers?'
+  ['新内核尚未启用；请稍后重启，再安装']='The new kernel has not been enabled yet; please reboot later and install again.'
+  ['新内核或匹配头文件安装失败。']='Installation of new kernel or matching header files failed.'
+  ['新增分类']='Add new category'
+  ['新增域名']='Add domain name'
+  ['新增域名不能为空。']='The new domain name cannot be empty.'
+  ['新旧目录中的项目文件内容不同，拒绝覆盖：']='The contents of the project files in the old and new directories are different and overwriting is refused:'
+  ['新服务尚未全部启动，已保留旧服务文件以便排查。']='The new services have not all been started yet, and the old service files have been retained for troubleshooting.'
+  ['新的节点参数']='New node parameters'
+  ['新目录中的项目文件类型异常，拒绝迁移：']='The project file type in the new directory is abnormal and migration is refused:'
+  ['无']=None
+  ['无响应，请检查当前核心配置与监听端口。']='No response, please check the current core configuration and listening port.'
+  ['无效']=Invalid
+  ['无效。']=Invalid.
+  ['无效选项']='Invalid choice'
+  ['无效选项（请输入']='Invalid option (please enter'
+  ['无效选项：']='Invalid choice: '
+  ['无法使用']='Not available'
+  ['无法初始化']='Unable to initialize'
+  ['无法初始化流量数据库。']='Unable to initialize traffic database.'
+  ['无法启动']='Unable to start'
+  ['无法安装当前内核的精确头文件，未继续安装']='Unable to install the exact header files for the current kernel, installation did not continue'
+  ['无法把']='Can'"'"'t put it'
+  ['无法构建']='Unable to build'
+  ['无法确定']='Unable to determine'
+  ['无法确认']='Unable to confirm'
+  ['无法自动安装：当前系统没有']='Unable to install automatically: The current system does not have'
+  ['无法获取']='Unable to obtain'
+  ['无法识别']=Unrecognized
+  ['无法识别系统，仅支持']='Unable to recognize the system, only supports'
+  ['无法读取']='Unable to read'
+  ['无法读取备份归档目录。']='Unable to read backup archive directory.'
+  ['无法通过']='Unable to pass'
+  ['无法重置流量统计。']='Unable to reset traffic statistics.'
+  ['旧']=old
+  ['旧目录中的项目文件类型异常，拒绝迁移：']='The project file type in the old directory is abnormal and migration is refused:'
+  ['旧项目']='old project'
+  ['旧项目路径类型异常，拒绝自动迁移：']='The old project path type is abnormal and automatic migration is refused:'
+  ['时仅支持']='only supports'
+  ['是']=yes
+  ['暂不可用']=Unavailable
+  ['暂不可读']='Not readable yet'
+  ['更新']=update
+  ['更新后验证失败，正在自动回滚。']='Verification failed after update and is being automatically rolled back.'
+  ['最新备份']='latest backup'
+  ['最新安装脚本']='Latest installation script'
+  ['最新版本']='Latest version'
+  ['最近采集']='Recently collected'
+  ['服务']=service
+  ['服务与功能状态']='Services / Features'
+  ['服务器尚未加载']='The server has not loaded yet'
+  ['服务器重启请求失败，请手动执行']='Server restart request failed, please perform it manually'
+  ['服务或端口异常']='Service or port exception'
+  ['服务操作']='Service actions'
+  ['服务文件一致']='Service files are consistent'
+  ['服务文件不存在']='Service file does not exist'
+  ['服务文件未同步']='Service files are not synchronized'
+  ['服务状态']='Service status'
+  ['服务管理']=Services
+  ['未加载']='not loaded'
+  ['未变更']=unchanged
+  ['未启用']=Disabled
+  ['未安装']='Not installed'
+  ['未安装或未加载']='Not installed or not loaded'
+  ['未安装新内核']='No new kernel installed'
+  ['未执行任何变更。']='No changes were performed.'
+  ['未找到']='not found'
+  ['未找到节点：']='Node not found:'
+  ['未提供']='Not provided'
+  ['未清理旧']='Not cleaning old'
+  ['未监听。']='Not listening.'
+  ['未知']=Unknown
+  ['未知参数。可用参数：']='Unknown parameters. Available parameters:'
+  ['未知安装参数：']='Unknown installation parameters:'
+  ['未知安装模式：']='Unknown installation mode:'
+  ['未知页面提示模式：']='Unknown page prompt mode:'
+  ['未确认']=Unconfirmed
+  ['未确认出口']='Unconfirmed export'
+  ['未能验证公网出口，请检查网络或']='Unable to verify public network exit, please check the network or'
+  ['未运行']='Not running'
+  ['未运行。']='Not running.'
+  ['未运行或无法读取进程信息']='Not running or cannot read process information'
+  ['未选择需要更新的组件。']='No components selected for update.'
+  ['未通过']=failed
+  ['未配置']='Not configured'
+  ['本地']=local
+  ['本地代理端口无效。']='The local proxy port is invalid.'
+  ['本地安装']='Local installation'
+  ['本地端口']='Local port'
+  ['本地端口冲突']='local port conflict'
+  ['本地端口无效']='Invalid local port'
+  ['本次不会继续安装']='The installation will not continue this time'
+  ['权限']=Permissions
+  ['来源：']=Source:
+  ['构建标签。']='Build tags.'
+  ['架构。']=architecture.
+  ['架构没有受支持的内核元包升级引导。']='The architecture does not have a supported kernel metapackage upgrade boot.'
+  ['查询失败']='Query failed'
+  ['标签']=Label
+  ['校验失败。']='Verification failed.'
+  ['核心']=core
+  ['核心不存在。']='The core doesn'"'"'t exist.'
+  ['核心服务已重启']='Core services have been restarted'
+  ['核心服务重启']='Core service restart'
+  ['核心类型无效。']='The core type is invalid.'
+  ['格式不正确。']='The format is incorrect.'
+  ['格式检查未通过']='Format check failed'
+  ['检测到']=detected
+  ['检测到两份内容不同的旧配置，拒绝自动合并。']='Two old configurations with different contents were detected and automatic merging was refused.'
+  ['检测到旧版完整备份，仅恢复其中的节点配置，不替换脚本或核心。']='An old full backup is detected and only the node configuration from it is restored without replacing scripts or core.'
+  ['检测到旧组合项目完整备份，仅恢复其中的节点配置。']='A full backup of an old portfolio project is detected and only the node configuration within it is restored.'
+  ['检测到旧项目完整备份，仅恢复其中的节点配置。']='A full backup of an old project is detected and only the node configuration within it is restored.'
+  ['检测到旧项目节点备份，仅恢复其中的节点配置。']='An old project node backup is detected and only the node configuration within it is restored.'
+  ['检测到未知命令链接']='Unknown command link detected'
+  ['检测到未知旧目录符号链接']='Unknown old directory symlink detected'
+  ['检测到本项目旧版']='An old version of this project was detected'
+  ['检测到现有']='Existing detected'
+  ['检测到非本项目服务']='Non-project services detected'
+  ['检测到非项目命令']='Non-project command detected'
+  ['模块']=module
+  ['模块。']=module.
+  ['模块包']='module package'
+  ['模块包结构无效。']='Invalid module package structure.'
+  ['模块将保留。']='Modules will be retained.'
+  ['模块已加载']='module loaded'
+  ['模块未能加载。']='Module failed to load.'
+  ['模块状态']='module status'
+  ['模块，请先执行“安装']='module, please first execute "Install'
+  ['次']=times
+  ['正在停止']=Stopping
+  ['正在创建节点配置备份']='Creating node configuration backup'
+  ['正在刷新']=Refreshing
+  ['正在启动']=Starting
+  ['正在安装']=Installing
+  ['正在安装已固定并校验的']='Installing fixed and verified'
+  ['正在恢复修改前配置']='Restoring configuration before modification'
+  ['正在恢复节点配置']='Restoring node configuration'
+  ['正在校验备份归档']='Verifying backup archive'
+  ['正在获取最新安装脚本']='Getting the latest installation script'
+  ['正在配置']=Configuring
+  ['正在重启服务器，']='Restarting server,'
+  ['正在重启核心服务']='Restarting core services'
+  ['正常']=Healthy
+  ['每分钟']='per minute'
+  ['每次只能删除一个分类。']='Only one category can be deleted at a time.'
+  ['每次只能删除一个域名。']='Only one domain name can be deleted at a time.'
+  ['没有']=None
+  ['没有可用的后续节点端口。']='No subsequent node ports are available.'
+  ['注册删除失败。']='Registration deletion failed.'
+  ['注册，已取消启用。']='Registration, deactivated.'
+  ['注册？']='Register?'
+  ['流量数据库正忙，请稍后重试。']='The traffic database is busy, please try again later.'
+  ['流量统计']=Traffic
+  ['流量统计定时器']='Traffic timer'
+  ['流量统计定时器未运行。']='The traffic statistics timer is not running.'
+  ['流量统计定时器运行正常。']='The traffic statistics timer is running normally.'
+  ['流量统计已刷新。']='Traffic statistics have been refreshed.'
+  ['流量统计已重置']='Traffic statistics have been reset'
+  ['流量统计采集']='Traffic statistics collection'
+  ['流量账本。']='Traffic ledger.'
+  ['流量账本失败。']='Traffic ledger failed.'
+  ['流量账本正忙。']='The traffic ledger is busy.'
+  ['流量采集']='Traffic collector'
+  ['添加分类']='Add category'
+  ['添加域名']='Add domain name'
+  ['添加节点']='Add node'
+  ['版本。']=version.
+  ['版本校验失败。']='Version verification failed.'
+  ['状态']=Status
+  ['状态报告']='Status report'
+  ['用户名']=Username
+  ['用户运行此脚本。']='User runs this script.'
+  ['用法：']=Usage:
+  ['留空为']='Leave blank for'
+  ['的']=of
+  ['的整数。']=integer.
+  ['监听端口']='listening port'
+  ['目录或']='directory or'
+  ['目标']=target
+  ['目标。']=target.
+  ['目标版本']='Target version'
+  ['目标网址无效：']='Invalid destination URL:'
+  ['直连']='direct connection'
+  ['直连出口']='Directly connected to the outlet'
+  ['直连出站']='Direct egress'
+  ['省略端口时使用']='Used when port is omitted'
+  ['确认']=Confirm
+  ['确认停用']='Confirm deactivation'
+  ['确认删除并重新注册旧']='Confirm deletion and re-register the old'
+  ['确认删除节点']='Confirm node deletion'
+  ['确认卸载：']='Confirm uninstall:'
+  ['确认同时卸载']='Confirm to uninstall at the same time'
+  ['确认启动第三方系统脚本？']='Are you sure you want to start the third-party system script?'
+  ['确认安装']='Confirm installation'
+  ['确认安装或更新']='Confirm installation or update'
+  ['确认更新']='Confirm update'
+  ['确认重置全部历史流量？']='Are you sure to reset all historical traffic?'
+  ['空']=empty
+  ['立即重启服务器？']='Restart the server now?'
+  ['端口']=Port
+  ['端口不能与']='Port cannot be used with'
+  ['端口冲突：']='Port conflict:'
+  ['端口无效。']='The port is invalid.'
+  ['端口相同。']='The ports are the same.'
+  ['端口范围必须为']='Port range must be '
+  ['端口过大，无法为全部节点顺延监听端口。']='The port is too large and the listening port cannot be postponed for all nodes.'
+  ['第三方']='third party'
+  ['第三方工具']='Third party tools'
+  ['第三方脚本不属于']='Third party scripts are not'
+  ['等通用工具？可能被其他程序使用']='Waiting for a general tool? May be used by other programs'
+  ['简体中文']='简体中文'
+  ['管理命令']=Commands
+  ['系统']=system
+  ['系统内存']='system memory'
+  ['系统工具']='System tools'
+  ['系统未变更']='The system has not changed'
+  ['系统环境']=System
+  ['系统维护']=Maintenance
+  ['系统缺少']='System is missing'
+  ['累计值']='Cumulative value'
+  ['组件已回滚到更新前版本，请查看']='The component has been rolled back to the pre-update version, please check'
+  ['组件更新']='Update components'
+  ['组件版本']=Components
+  ['结尾。']='The end.'
+  ['统计']=statistics
+  ['统计操作']='Traffic actions'
+  ['统计数据未变更']='Statistics unchanged'
+  ['统计状态']='Statistical status'
+  ['统计起点']='statistical starting point'
+  ['缺少']=Missing
+  ['缺少 brutal 内核模块']='Missing brutal kernel module'
+  ['缺少匹配头文件，且']='A matching header file is missing, and'
+  ['缺少配置事务快照。']='Configuration transaction snapshot is missing.'
+  ['缺少项目所有权标记，拒绝备份。']='Missing project ownership tag, backup rejected.'
+  ['缺少项目所有权标记，拒绝恢复节点配置。']='Missing project ownership tag, refusing to restore node configuration.'
+  ['缺少项目所有权标记，拒绝自动卸载；请人工核对']='Project ownership tag is missing, automatic uninstallation is refused; please check manually'
+  ['网络出站']=Egress
+  ['脚本已更新，正在使用新版继续安装。']='The script has been updated and the installation is continuing with the new version.'
+  ['脚本统计']='Script runs'
+  ['自动使用']='automatically used'
+  ['自动适配']=Adaptive
+  ['自适应']=Adaptive
+  ['自适应订阅']='adaptive subscription'
+  ['至少必须保留一个节点。']='At least one node must be retained.'
+  ['至少需要一个域名或']='Requires at least one domain name or'
+  ['节点']=node
+  ['节点代理']='Node proxy'
+  ['节点代理无效']='Node agent is invalid'
+  ['节点代理格式无效']='Node agent format is invalid'
+  ['节点列表']='Node list'
+  ['节点协议']=Protocol
+  ['节点协议无效']='Node protocol is invalid'
+  ['节点参数']='Node parameters'
+  ['节点已修改：']='Node has been modified:'
+  ['节点已删除：']='Node deleted:'
+  ['节点已添加：']='Node added:'
+  ['节点文件']='Node file'
+  ['节点文件不存在，请先安装。']='The node file does not exist, please install it first.'
+  ['节点标签']=Label
+  ['节点标签、路径或端口重复。']='Duplicate node label, path, or port.'
+  ['节点标签已存在：']='Node label already exists:'
+  ['节点标签无效：']='Invalid node label:'
+  ['节点标签无效：不能为空、首尾不能留空，且不能包含']='The node label is invalid: it cannot be empty, the beginning and the end cannot be left blank, and it cannot contain'
+  ['节点标签：']='Node label:'
+  ['节点概览']=Nodes
+  ['节点端口与']='Node port and'
+  ['节点端口与流量统计']='Node port and traffic statistics'
+  ['节点端口仍被未知进程占用。为避免终止第三方服务，安装已停止。']='The node port is still occupied by an unknown process. To avoid terminating third-party services, installation has been stopped.'
+  ['节点端口错误：']='Node port error:'
+  ['节点管理']=Nodes
+  ['节点落地']=Egress
+  ['节点落地 IP']='Node egress IP'
+  ['节点订阅']=Subscriptions
+  ['节点配置']='Node config'
+  ['节点配置不存在：']='Node configuration does not exist:'
+  ['节点配置为空：']='Node configuration is empty:'
+  ['节点配置备份完成：']='Node configuration backup completed:'
+  ['节点配置字段数量错误。']='The number of node configuration fields is wrong.'
+  ['节点配置恢复失败，已回滚到恢复前状态。']='The node configuration failed to be restored and has been rolled back to the state before restoration.'
+  ['节点配置恢复失败，正在回滚。']='Node configuration recovery failed and is being rolled back.'
+  ['节点配置恢复完成：']='Node configuration restoration is completed:'
+  ['范围']=Scope
+  ['菜单']=Menu
+  ['行包含未知字段：']='Row contains unknown fields:'
+  ['行格式无效，仅支持']='Invalid row format, only supported'
+  ['行的单引号值无效。']='The row'"'"'s single quote value is invalid.'
+  ['行的双引号值无效。']='The line'"'"'s double-quoted value is invalid.'
+  ['行的未引用值不能包含空格或']='The unquoted value of a row cannot contain spaces or'
+  ['被']=Be
+  ['要删除的分类：']='Categories to be deleted:'
+  ['要删除的域名：']='Domain name to be deleted:'
+  ['规则']=Rules
+  ['规则操作']='Rule operation'
+  ['规则集，旧配置未改动。']='Rule set, old configuration unchanged.'
+  ['订阅']=Subscription
+  ['订阅中心']='Subscription Center'
+  ['订阅中心页面过长，拒绝写入可能导致']='The subscription center page is too long, and refusal to write may result in'
+  ['订阅链接']='Subscription link'
+  ['订阅面板']='Subscription panel'
+  ['设为']='set to'
+  ['设置']=Set
+  ['诊断完成']='Diagnostics complete'
+  ['诊断结果']='Diagnostic result'
+  ['语法检查失败。']='Syntax check failed.'
+  ['语言设置']=Language
+  ['语言设置已保存']='Language preference saved'
+  ['请使用']='Please use'
+  ['请先启用']='Please enable first'
+  ['请先执行安装']='Please install first'
+  ['请同步确认']='Please confirm simultaneously'
+  ['请执行项目安装更新依赖。']='Please execute the project to install and update dependencies.'
+  ['请确认']='Please confirm'
+  ['请输入']='Please enter'
+  ['请输入有效域名']='Please enter a valid domain name'
+  ['请输入标准']='Please enter criteria'
+  ['请选择节点落地']='Please select the node landing'
+  ['请选择：']='Select: '
+  ['路径']=Path
+  ['路径冲突']='path conflict'
+  ['路径无效']='Invalid path'
+  ['路由分流']=Routing
+  ['软件包卸载失败，请手工检查。']='Uninstallation of the software package failed, please check manually.'
+  ['软件包索引']='Package index'
+  ['软件包索引更新失败，无法复核']='Package index update failed and cannot be reviewed'
+  ['软件包索引更新失败，未安装新内核。']='Package index update failed, new kernel not installed.'
+  ['软件源。']='Software source.'
+  ['软件源不可用；请检查系统版本和网络后重试。']='The software source is unavailable; please check the system version and network and try again.'
+  ['软件源并安装']='Software source and installation'
+  ['软件源签名密钥下载失败。']='Software source signing key download failed.'
+  ['软件源签名密钥指纹校验失败。']='Software source signature key fingerprint verification failed.'
+  ['轻量版仅支持使用']='The lightweight version only supports the use of'
+  ['输入']=input
+  ['运行中']=Running
+  ['运行内存']=Memory
+  ['运行日志']='Runtime logs'
+  ['运行检查']='run check'
+  ['运行正常。']='It works fine.'
+  ['运行状态']='Runtime status'
+  ['运行观测']=Monitoring
+  ['运行诊断']=Diagnostics
+  ['近期错误日志']='Recent errors'
+  ['返回']=Back
+  ['返回了无法解析的全局计数。']='An unresolved global count was returned.'
+  ['进程内存不可读']='Process memory is not readable'
+  ['连接即将断开']='The connection is about to be lost'
+  ['连接恢复后，请重新运行']='Once the connection is restored, run again'
+  ['退出']=Exit
+  ['退出脚本']=Exit
+  ['选择']=Choose
+  ['选择域名连接的优先出口；目标不支持时使用另一地址族。']='Select the preferred exit for domain name connections; use another address family if the target does not support it.'
+  ['选择节点']='Select node'
+  ['选择适合客户端的订阅方式。']='Choose a subscription method that suits your client.'
+  ['选项无效']='Invalid choice'
+  ['逗号分隔；']='comma separated;'
+  ['部分进程不可读']='Some processes are unreadable'
+  ['部分通用工具卸载失败，请手工检查。']='Uninstallation of some common tools failed, please check manually.'
+  ['配置']=Config
+  ['配置。']=configuration.
+  ['配置中心']=Configuration
+  ['配置关闭']='Configuration off'
+  ['配置失败的']='Configuration failed'
+  ['配置导入']='Import config'
+  ['配置导入已完成']='Configuration import completed'
+  ['配置已生效']='Configuration has taken effect'
+  ['配置文件不能同时使用']='Configuration files cannot be used at the same time'
+  ['配置文件中的']='in the configuration file'
+  ['配置文件必须是可读的普通文件，且不能是符号链接：']='The configuration file must be a readable ordinary file and cannot be a symbolic link:'
+  ['配置文件第']='Configuration file no.'
+  ['配置文件绝对路径：']='Configuration file absolute path:'
+  ['配置文件超过']='Profile exceeds'
+  ['配置文件路径不能为空。']='The configuration file path cannot be empty.'
+  ['配置无效。']='Invalid configuration.'
+  ['配置未变更']='Configuration unchanged'
+  ['配置未生效']='Configuration does not take effect'
+  ['配置检查']='Configuration check'
+  ['配置维护']=Configuration
+  ['配置输入']='Configuration input'
+  ['配置验证失败']='Configuration verification failed'
+  ['重启会立即中断']='Restart will interrupt immediately'
+  ['重启后未运行。']='Not running after restarting.'
+  ['重启后系统才会使用新内核。']='The system will use the new kernel only after restarting.'
+  ['重启服务']='Restart service'
+  ['重启核心服务']='Restart core services'
+  ['重启确认']='Restart confirmation'
+  ['重启范围']='Restart scope'
+  ['重新注册。']='Register again.'
+  ['重置统计']='Reset traffic'
+  ['错误']=Error
+  ['需注意']='Need to pay attention'
+  ['项异常']='Item exception'
+  ['项探测超时']='Item detection timeout'
+  ['项目卸载']='Uninstall project'
+  ['项目安装']='Install project'
+  ['项目文件']='project files'
+  ['项目服务']='Project services'
+  ['项目未变更']='The project has not changed'
+  ['项目版本']='Project version'
+  ['项目目录内仅允许使用默认备份目录']='Only the default backup directory is allowed in the project directory'
+  ['项目目录解析结果异常，拒绝递归删除：']='The project directory parsing result is abnormal and recursive deletion is refused:'
+  ['项目管理']=Project
+  ['项目配置']='Project configuration'
+  ['项目配置与统计数据']='Project configuration and statistics'
+  ['顺延后的节点端口会占用']='The node port after postponement will occupy'
+  ['顺延后的节点端口会占用流量统计']='The postponed node port will occupy traffic statistics'
+  ['风险提示']='Risk warning'
+  ['默认']=Default
+  ['默认保留']='Keep by default'
+  ['默认目录']='default directory'
+  ['默认）']='default)'
+)
+ui_text() {
+  local rest="$*" output="" prefix part translated
+  if [[ "${UI_LANGUAGE:-en}" == zh ]]; then builtin printf '%s' "$rest"; return; fi
+  # Translate fixed Chinese UI fragments; leave dynamic ASCII values untouched.
+  while [[ "$rest" =~ ^([^一-龥]*)([一-龥][一-龥，。；：、（）“”？]*)(.*)$ ]]; do
+    prefix="${BASH_REMATCH[1]}"; part="${BASH_REMATCH[2]}"; rest="${BASH_REMATCH[3]}"
+    translated="${UI_EN[$part]:-$part}"
+    [[ -z "$prefix" || "$prefix" != *[A-Za-z0-9] ]] || prefix+=" "
+    [[ -z "$rest" || "$rest" != [A-Za-z0-9]* ]] || translated+=" "
+    output+="${prefix}${translated}"
+  done
+  output="${output}${rest}"
+  output="${output//：/: }"; output="${output//（/(}"; output="${output//）/)}"
+  output="${output//；/; }"; output="${output//，/, }"; output="${output//。/.}"
+  builtin printf '%s' "$output"
+}
+ui_printf() {
+  local format
+  format="$(ui_text "$1")"; shift
+  builtin printf "$format" "$@"
+}
+
 ui_line() {
   local char="${1:--}"
   UI_LAST_WAS_LINE=1
   printf '%s%*s%s\n' "$C_BRIGHT_BLUE" "$UI_WIDTH" '' "$C_RESET" | tr ' ' "$char"
 }
-green() { printf '%s✓ %s%s\n' "$C_BRIGHT_GREEN" "$*" "$C_RESET"; }
-yellow() { printf '%s! %s%s\n' "$C_BRIGHT_YELLOW" "$*" "$C_RESET"; }
-red() { printf '%s✗ %s%s\n' "$C_BRIGHT_RED" "$*" "$C_RESET" >&2; }
-info() { printf '%s• %s%s\n' "$C_BRIGHT_CYAN" "$*" "$C_RESET"; }
+ui_ok() { printf '%s✓ %s%s\n' "$C_BRIGHT_GREEN" "$(ui_text "$*")" "$C_RESET"; }
+ui_warn() { printf '%s! %s%s\n' "$C_BRIGHT_YELLOW" "$(ui_text "$*")" "$C_RESET"; }
+ui_err() { printf '%s✗ %s%s\n' "$C_ERR_RED" "$(ui_text "$*")" "$C_ERR_RESET" >&2; }
+ui_info() { printf '%s• %s%s\n' "$C_BRIGHT_CYAN" "$(ui_text "$*")" "$C_RESET"; }
+green() { ui_ok "$@"; }
+yellow() { ui_warn "$@"; }
+red() { ui_err "$@"; }
+info() { ui_info "$@"; }
 display_width() {
-  local text="$1" bytes chars
-  bytes="$(printf '%s' "$text" | wc -c)"
-  chars="$(printf '%s' "$text" | LC_ALL=C.UTF-8 wc -m)"
-  printf '%s' "$((chars + (bytes - chars) / 2))"
+  local text="$1" character width=0
+  while [[ -n "$text" ]]; do
+    character="${text:0:1}"; text="${text:1}"
+    if [[ "$character" =~ [一-龥㐀-䶿，。；：、（）？！🌀-🫿] ]]; then width=$((width + 2))
+    else width=$((width + 1)); fi
+  done
+  printf '%s' "$width"
 }
 pad_right() {
   local text="$1" target="$2" width pad
@@ -134,37 +932,37 @@ fit_text() {
   pad_right "$text" "$target"
 }
 ui_page() {
-  local title="$1" mode="${2:-none}" hint="" hint_text="" title_width hint_width padding
+  local title="$(ui_text "$1")" mode="${2:-none}" hint="" hint_text="" title_width hint_width padding default_text exit_text
   case "$mode" in
     main) hint_text="退出" ;;
     back) hint_text="返回" ;;
     cancel) hint_text="取消" ;;
-    default) hint="Enter · 默认 | 0 · 取消" ;;
+    default) hint="Enter · 默认 | 0 · 退出" ;;
     none) ;;
     *) die "未知页面提示模式：${mode}" ;;
   esac
+  hint_text="$(ui_text "$hint_text")"; hint="$(ui_text "$hint")"
+  default_text="$(ui_text 默认)"; exit_text="$(ui_text 退出)"
   [[ -z "$hint_text" ]] || hint="0 · ${hint_text}"
   printf '\n%s%s◆ %s%s' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$title" "$C_RESET"
   if [[ -n "$hint" ]]; then
     title_width="$(display_width "$title")"
     hint_width="$(display_width "$hint")"
-    padding=$((UI_WIDTH - 2 - title_width - hint_width))
+    padding=$((UI_WIDTH - 4 - title_width - hint_width))
     if ((padding >= 2)); then
       if [[ "$mode" == "default" ]]; then
-        printf '%*s%sEnter%s · %s%s%s %s|%s %s0%s · %s取消%s\n' "$padding" '' \
-          "$C_BRIGHT_YELLOW" "$C_BRIGHT_WHITE" \
-          "默认" "$C_RESET" \
-          "$C_BRIGHT_WHITE" "$C_RESET" "$C_BRIGHT_YELLOW" "$C_BRIGHT_WHITE" "$C_RESET"
+        printf '%*s%sEnter%s · %s%s%s | %s0%s · %s%s%s\n' "$padding" '' \
+          "$C_BRIGHT_YELLOW" "$C_RESET" "$C_BRIGHT_WHITE" "$default_text" "$C_RESET" \
+          "$C_BRIGHT_YELLOW" "$C_RESET" "$C_BRIGHT_WHITE" "$exit_text" "$C_RESET"
       else
         printf '%*s%s0%s · %s%s\n' "$padding" '' "$C_BRIGHT_YELLOW" "$C_BRIGHT_WHITE" \
           "$hint_text" "$C_RESET"
       fi
     else
       if [[ "$mode" == "default" ]]; then
-        printf '\n  %sEnter%s · %s%s%s %s|%s %s0%s · %s取消%s\n' \
-          "$C_BRIGHT_YELLOW" "$C_BRIGHT_WHITE" \
-          "默认" "$C_RESET" \
-          "$C_BRIGHT_WHITE" "$C_RESET" "$C_BRIGHT_YELLOW" "$C_BRIGHT_WHITE" "$C_RESET"
+        printf '\n  %sEnter%s · %s%s%s | %s0%s · %s%s%s\n' \
+          "$C_BRIGHT_YELLOW" "$C_RESET" "$C_BRIGHT_WHITE" "$default_text" "$C_RESET" \
+          "$C_BRIGHT_YELLOW" "$C_RESET" "$C_BRIGHT_WHITE" "$exit_text" "$C_RESET"
       else
         printf '\n  %s0%s · %s%s\n' "$C_BRIGHT_YELLOW" "$C_BRIGHT_WHITE" "$hint_text" "$C_RESET"
       fi
@@ -174,7 +972,12 @@ ui_page() {
   fi
   ui_line
 }
-brand() { ui_page "$1" "${2:-none}"; }
+brand() {
+  local mode="${2:-none}"
+  case "$mode" in main|back|cancel) mode=default ;; esac
+  ui_page "$1" "$mode"
+  show_script_runs
+}
 system_summary() {
   local os="Linux" arch kernel
   if [[ -r /etc/os-release ]]; then
@@ -190,53 +993,169 @@ system_summary() {
     *) arch="$(uname -m)" ;;
   esac
   kernel="$(uname -r)"
-  printf '%s · %s · Kernel %s' "$os" "$arch" "${kernel%%+*}"
+  printf '%s · %s · Kernel %s' "$os" "$arch" "$kernel"
 }
-public_ipv4() {
-  curl -4fsS --connect-timeout 2 --max-time 3 https://api.ipify.org 2>/dev/null ||
-    hostname -I 2>/dev/null | awk '{print $1}' || true
+geojs_field() {
+  if command -v jq >/dev/null 2>&1; then
+    jq -r --arg key "$2" '.[$key] // empty' <<<"$1" 2>/dev/null || true
+  else
+    # 首次安装尚无 jq；GeoJS 是平面 JSON，兼容紧凑与多行响应。
+    tr '\n' ' ' <<<"$1" | sed -n "s/.*\"$2\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -n 1
+  fi
 }
-public_ipv4_details() {
-  local json ip country asn isp
-  json="$(curl -4fsS --connect-timeout 2 --max-time 4 https://ip.cloudflare.now.cc 2>/dev/null || true)"
-  if [[ -n "$json" ]] && command -v jq >/dev/null 2>&1; then
+geojs_query() {
+  local family="$1" source destination
+  local -a bind=()
+  destination=1.1.1.1
+  [[ "$family" == 6 ]] && destination=2606:4700:4700::1111
+  # 与 SBA 一样按地址族检测并绑定默认公网路由，排除环境代理。
+  source="$(ip -"$family" route get "$destination" 2>/dev/null | awk '{for(i=1;i<NF;i++) if($i=="src") {print $(i+1); exit}}' || true)"
+  [[ -z "$source" ]] || bind=(--interface "$source")
+  curl -"$family"fsS --noproxy '*' "${bind[@]}" --connect-timeout 2 --max-time 4 \
+    --retry 1 --retry-delay 0 --retry-all-errors https://get.geojs.io/v1/ip/geo.json 2>/dev/null || true
+}
+detect_public_ips() {
+  [[ "${PUBLIC_IPS_DETECTED:-0}" == 1 ]] && return 0
+  PUBLIC_IPV4_JSON="$(geojs_query 4)"
+  PUBLIC_IPV6_JSON="$(geojs_query 6)"
+  PUBLIC_IPV4="$(geojs_field "$PUBLIC_IPV4_JSON" ip)"
+  PUBLIC_IPV6="$(geojs_field "$PUBLIC_IPV6_JSON" ip)"
+  [[ "$PUBLIC_IPV4" =~ ^[0-9]+(\.[0-9]+){3}$ ]] && valid_ipv4 "$PUBLIC_IPV4" || PUBLIC_IPV4=""
+  [[ "$PUBLIC_IPV6" == *:* && "$PUBLIC_IPV6" != :: && "$PUBLIC_IPV6" != ::1 ]] &&
+    valid_endpoint_host "$PUBLIC_IPV6" || PUBLIC_IPV6=""
+  PUBLIC_IPS_DETECTED=1
+}
+direct_strategy() {
+  if [[ -n "$PUBLIC_IPV4" && -z "$PUBLIC_IPV6" ]]; then printf ipv4_only; return
+  elif [[ -z "$PUBLIC_IPV4" && -n "$PUBLIC_IPV6" ]]; then printf ipv6_only; return; fi
+  case "${1:-}" in
+    direct:ipv4) printf prefer_ipv4 ;;
+    direct:ipv6) printf prefer_ipv6 ;;
+    *) printf prefer_ipv4 ;;
+  esac
+}
+select_node_egress() {
+  local current="$1" choice default=4
+  detect_public_ips
+  [[ "$current" == direct:ipv6 || ( -z "$PUBLIC_IPV4" && -n "$PUBLIC_IPV6" ) ]] && default=6
+  [[ -n "$PUBLIC_IPV4" || -n "$PUBLIC_IPV6" ]] || die "未能验证公网出口，请检查网络或 GeoJS 后重试。"
+  key_value "IPv4 出口" "${PUBLIC_IPV4:-没有}"
+  key_value "IPv6 出口" "${PUBLIC_IPV6:-没有}"
+  if [[ -n "$PUBLIC_IPV4" && -n "$PUBLIC_IPV6" ]]; then
+    info "选择域名连接的优先出口；目标不支持时使用另一地址族。"
+    read_input "直连出口 [4 IPv4 / 6 IPv6；${default}]：" choice
+    is_exit_input "$choice" && return 1
+    choice="${choice:-$default}"
+    [[ "$choice" == 4 || "$choice" == 6 ]] || die "出口只能选择 4 或 6。"
+  elif [[ -n "$PUBLIC_IPV4" ]]; then choice=4
+  else choice=6; fi
+  NODE_EGRESS="direct:ipv${choice}"
+}
+service_process_ids() {
+  local unit="$1" group main base
+  main="$(systemctl show "$unit" -p MainPID --value 2>/dev/null || true)"
+  [[ "$main" =~ ^[1-9][0-9]*$ ]] && printf '%s\n' "$main"
+  group="$(systemctl show "$unit" -p ControlGroup --value 2>/dev/null || true)"
+  # 不读取根 cgroup，避免将整台 VPS 或其他服务统计为项目进程。
+  [[ "$group" == /* && "$group" != / && "$group" != *..* ]] || return 0
+  for base in "${CGROUP_ROOT:-/sys/fs/cgroup}" "${CGROUP_ROOT:-/sys/fs/cgroup}/systemd"; do
+    [[ -d "$base$group" ]] || continue
+    find "$base$group" -type f -name cgroup.procs -exec cat {} + 2>/dev/null || true
+  done
+}
+traffic_timer_status() {
+  if systemctl is-active --quiet "${TRAFFIC_TIMER}.timer" 2>/dev/null; then
+    ui_printf '已启用 · 每分钟'
+  else ui_printf '未启用 · 定时器已停止'; fi
+}
+is_direct_outbound() { [[ -z "$1" || "$1" == direct:ipv4 || "$1" == direct:ipv6 ]]; }
+GEOJS_GEO_URL="https://get.geojs.io/v1/ip/geo.json"
+public_ip_details() {
+  local family="$1" json ip country asn organization
+  [[ "$family" == "4" || "$family" == "6" ]] || return 2
+  if [[ "${PUBLIC_IPS_DETECTED:-0}" == 1 ]]; then
+    if [[ "$family" == 4 ]]; then json="${PUBLIC_IPV4_JSON:-}"; else json="${PUBLIC_IPV6_JSON:-}"; fi
+  else
+    json="$(geojs_query "$family")"
+  fi
+  json="$(tr '\n' ' ' <<<"$json")"
+  [[ -n "$json" ]] || return 1
+  if command -v jq >/dev/null 2>&1; then
     ip="$(jq -r '.ip // empty' <<<"$json" 2>/dev/null || true)"
-    country="$(jq -r '.country // empty' <<<"$json" 2>/dev/null || true)"
+    country="$(jq -r '.country_code // empty' <<<"$json" 2>/dev/null || true)"
     asn="$(jq -r '.asn // empty' <<<"$json" 2>/dev/null || true)"
-    isp="$(jq -r '.isp // empty' <<<"$json" 2>/dev/null || true)"
+    organization="$(jq -r '.organization_name // .organization // empty' <<<"$json" 2>/dev/null || true)"
   else
     ip="$(sed -n 's/.*"ip"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$json" | head -n 1)"
-    country="$(sed -n 's/.*"country"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$json" | head -n 1)"
-    asn="$(sed -n 's/.*"asn"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$json" | head -n 1)"
-    isp="$(sed -n 's/.*"isp"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$json" | head -n 1)"
+    country="$(sed -n 's/.*"country_code"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$json" | head -n 1)"
+    asn="$(sed -n 's/.*"asn"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' <<<"$json" | head -n 1)"
+    organization="$(sed -n 's/.*"organization_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$json" | head -n 1)"
+    [[ -n "$organization" ]] || organization="$(sed -n 's/.*"organization"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$json" | head -n 1)"
   fi
-  [[ -n "$ip" ]] || ip="$(public_ipv4)"
-  printf '%s|%s|%s|%s' "${ip:-未知}" "${country:-未知}" "${asn:-未知}" "${isp:-未知}"
+  if [[ "$family" == "4" ]]; then
+    valid_ipv4 "$ip" || return 1
+  else
+    [[ "$ip" != :: && "$ip" != ::1 && "$ip" == *:* ]] && valid_endpoint_host "$ip" || return 1
+  fi
+  organization="$(sed -E 's/^AS[0-9]+[[:space:]]+//' <<<"$organization")"
+  [[ "$asn" =~ ^[0-9]+$ ]] && asn="AS${asn}"
+  printf '%s|%s|%s|%s' "$ip" "${country:-未知}" "${asn:-未知}" "${organization:-未知}"
+}
+public_ipv4_details() { public_ip_details 4; }
+public_ipv6_details() { public_ip_details 6; }
+public_node_egress_ip() {
+  local family="${OUTBOUND_IP_FAMILY:-auto}" details=""
+  case "$family" in
+    ipv4) details="$(public_ipv4_details 2>/dev/null || true)" ;;
+    ipv6) details="$(public_ipv6_details 2>/dev/null || true)" ;;
+    auto)
+      details="$(public_ipv4_details 2>/dev/null || true)"
+      [[ -n "$details" ]] || details="$(public_ipv6_details 2>/dev/null || true)"
+      ;;
+    *) ;;
+  esac
+  if [[ -n "$details" ]]; then printf '%s' "${details%%|*}"
+  else ui_printf '未知'
+  fi
+}
+effective_outbound_ip_family() {
+  case "${OUTBOUND_IP_FAMILY:-auto}" in
+    ipv4) printf 'ipv4' ;;
+    ipv6) printf 'ipv6' ;;
+    auto)
+      if public_ipv4_details >/dev/null 2>&1; then printf 'ipv4'
+      elif public_ipv6_details >/dev/null 2>&1; then printf 'ipv6'
+      else return 1
+      fi
+      ;;
+    *) return 2 ;;
+  esac
 }
 node_overview() {
-  [[ -s "$NODES_CONFIG" ]] || { printf 'Vless 0 · Vmess 0 · Trojan 0'; return; }
+  [[ -s "$NODES_CONFIG" ]] || { printf 'VLESS 0 · VMess 0 · Trojan 0'; return; }
   awk -F'|' '
     {protocols[$2]++}
     END {
-      printf "Vless %d · Vmess %d · Trojan %d", protocols["vless"], protocols["vmess"], protocols["trojan"]
+      printf "VLESS %d · VMess %d · Trojan %d", protocols["vless"], protocols["vmess"], protocols["trojan"]
     }
   ' "$NODES_CONFIG"
 }
 control_panel() {
   printf '\n%s%s' "$C_BOLD" "$C_BRIGHT_CYAN"
-  printf '%s\n' '    ___                  _____ _             __'
-  printf '%s\n' '   /   |  _________ ____/ ___/(_)___  ____ _/ /_  ____  _  __'
-  printf '%s\n' '  / /| | / ___/ __ `/ __\__ \/ / __ \/ __ `/ __ \/ __ \| |/_/'
-  printf '%s\n' ' / ___ |/ /  / /_/ / /_/__/ / / / / / /_/ / /_/ / /_/ />  <'
-  printf '%s\n' '/_/  |_/_/   \__, /\__/____/_/_/ /_/\__, /_.___/\____/_/|_|'
-  printf '%s\n' '            /____/                  /____/'
-  printf '\n%s%s' "$C_BOLD" "$C_BRIGHT_MAGENTA"
-  pad_right "$PROJECT_NAME" 14
-  printf '%s%s%s%s%s · Argo Tunnel · Sing-box Core · WSS Proxy%s\n' \
-    "$C_RESET" "$C_BRIGHT_YELLOW" "v${VERSION}" "$C_RESET" "$C_DIM" "$C_RESET"
-  printf '%s' "$C_BRIGHT_CYAN"
-  pad_right "系统环境" 14
-  printf '%s%s%s%s\n' "$C_RESET" "$C_BRIGHT_WHITE" "$(system_summary)" "$C_RESET"
+  cat <<'EOF'
+    ___                     _____ _             __
+   /   |  _________ _____  / ___/(_)___  ____ _/ /_  ____  _  __
+  / /| | / ___/ __ `/ __ \ \__ \/ / __ \/ __ `/ __ \/ __ \| |/_/
+ / ___ |/ /  / /_/ / /_/ /___/ / / / / / /_/ / /_/ / /_/ />  <
+/_/  |_/_/   \__, /\____//____/_/_/ /_/\__, /_.___/\____/_/|_|
+            /____/                    /____/
+EOF
+  printf '%s\n' "$C_RESET"
+  printf '%s%s%s  %sv%s%s Argo Tunnel · Sing-box Core · WSS Proxy\n' \
+    "$C_BOLD" "$C_BRIGHT_MAGENTA" "$PROJECT_NAME" "$C_BRIGHT_YELLOW" "$VERSION" "$C_RESET"
+  key_value "功能特性" "WS/TLS · WARP · h2mux · TCP Brutal"
+  key_value "系统环境" "$(system_summary)"
+  show_script_runs
   ui_line
   UI_TIGHT_SECTION=1
 }
@@ -244,11 +1163,13 @@ service_status() {
   local service="$1"
   if ! systemctl list-unit-files "${service}.service" --no-legend 2>/dev/null |
     grep -q "^${service}.service"; then
-    printf '未启用 · 原因：未安装'
+    ui_printf '未安装'
   elif systemctl is-active --quiet "$service"; then
-    printf '已启用 · 运行中'
+    ui_printf '已启用 · 运行中'
+  elif systemctl is-enabled --quiet "$service" 2>/dev/null; then
+    ui_printf '已启用 · 异常：进程未运行'
   else
-    printf '未启用 · 已停止'
+    ui_printf '未启用 · 已停止'
   fi
 }
 service_label() {
@@ -261,18 +1182,23 @@ service_label() {
 }
 warp_status() {
   if [[ "${WARP_ENABLED:-0}" != "1" ]]; then
-    printf '未启用'
+    ui_printf '未启用 · 可选功能'
   elif systemctl is-active --quiet warp-svc 2>/dev/null &&
     ss -lntH "sport = :${WARP_PROXY_PORT}" 2>/dev/null | grep -q .; then
-    printf '已启用 · 运行中 · 127.0.0.1:%s' "$WARP_PROXY_PORT"
+    ui_printf '已启用 · 运行中 · 127.0.0.1:%s' "$WARP_PROXY_PORT"
   else
-    printf '已启用 · 异常：本地代理不可用'
+    ui_printf '已启用 · 异常：本地 SOCKS5 不可用'
   fi
 }
 component_versions() {
-  printf '%s %s · %s %s · CF %s' "$PROJECT_CODE" "$VERSION" "$(core_label)" \
-    "$(local_core_version 2>/dev/null || printf '未安装')" \
-    "$(local_cloudflared_version 2>/dev/null || printf '未安装')"
+  printf '%s %s · cloudflared %s' "$(core_label)" \
+    "$(local_core_version 2>/dev/null || ui_printf '未安装')" \
+    "$(local_cloudflared_version 2>/dev/null || ui_printf '未安装')"
+}
+version_bar() {
+  ui_line
+  printf '%s%s%s %s%s%s · %s%s%s\n' "$C_BOLD" "$C_BRIGHT_CYAN" "$PROJECT_CODE" \
+    "$C_BRIGHT_YELLOW" "$VERSION" "$C_RESET" "$C_BRIGHT_YELLOW" "$(component_versions)" "$C_RESET"
 }
 section() {
   if [[ "${UI_TIGHT_SECTION:-0}" == "1" || "${UI_LAST_WAS_LINE:-0}" == "1" ]]; then
@@ -281,64 +1207,99 @@ section() {
     printf '\n'
   fi
   UI_LAST_WAS_LINE=0
-  printf '%s%s▸ %s%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$*" "$C_RESET"
+  printf '%s%s▸ %s%s\n' "$C_BOLD" "$C_BRIGHT_BLUE" "$(ui_text "$*")" "$C_RESET"
 }
 subsection() { section "$*"; }
+field_text() {
+  local value="$1" color="$2" word line="" width=0 word_width
+  local -a words
+  read -r -a words <<<"$value"
+  printf '%s' "$color"
+  for word in "${words[@]}"; do
+    word_width="$(display_width "$word")"
+    if [[ -n "$line" ]] && ((width + 1 + word_width > UI_WIDTH - 15)); then
+      printf '%s%s\n%15s%s' "$line" "$C_RESET" '' "$color"
+      line=""; width=0
+    fi
+    line+="${line:+ }${word}"
+        if ((word_width > UI_WIDTH - 15)); then
+      while ((${#line} > UI_WIDTH - 15)); do
+        printf '%s%s\n%15s%s' "${line:0:UI_WIDTH-15}" "$C_RESET" '' "$color"
+        line="${line:UI_WIDTH-15}"
+      done
+      width="$(display_width "$line")"
+    else
+      width=$((width + word_width + 1))
+    fi
+  done
+  printf '%s%s\n' "$line" "$C_RESET"
+}
 key_value() {
-  local value
-  value="$(clip_text "$2" "$((UI_WIDTH - 15))")"
+  local value value_color="$C_BRIGHT_WHITE"
+  if [[ "$2" == /* ]]; then value="$2"; else value="$(ui_text "$2")"; fi
+  case "$1" in
+    项目版本|组件版本) value_color="$C_BRIGHT_YELLOW" ;;
+  esac
   printf '%s' "$C_BRIGHT_CYAN"
-  pad_right "$1" 13
-  printf '%s  %s%s%s\n' "$C_RESET" "$C_BRIGHT_WHITE" "$value" "$C_RESET"
+  pad_right "$(ui_text "$1")" 13
+  printf '%s  ' "$C_RESET"; field_text "$value" "$value_color"
 }
 ip_value() {
   local value
-  value="$(clip_text "$2" "$((UI_WIDTH - 15))")"
+  value="$(ui_text "$2")"
   printf '%s' "$C_BRIGHT_CYAN"
-  pad_right "$1" 13
-  printf '%s  %s%s%s\n' "$C_RESET" "$C_BRIGHT_MAGENTA" "$value" "$C_RESET"
+  pad_right "$(ui_text "$1")" 13
+  printf '%s  ' "$C_RESET"; field_text "$value" "$C_BRIGHT_MAGENTA"
 }
 endpoint_value() {
   local label="$1" host="$2" port="$3" color="$C_BRIGHT_WHITE" display_host="$2"
   [[ "$host" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ || "$host" =~ ^[0-9A-Fa-f:]+$ ]] && color="$C_BRIGHT_MAGENTA"
   [[ "$host" == *:* && "$host" != \[*\] ]] && display_host="[${host}]"
   printf '%s' "$C_BRIGHT_CYAN"
-  pad_right "$label" 13
+  pad_right "$(ui_text "$label")" 13
   printf '%s  %s%s:%s%s\n' "$C_RESET" "$color" "$display_host" "$port" "$C_RESET"
 }
 state_value() {
   local color="$C_BRIGHT_YELLOW" value="$2"
   case "$2" in
-    *异常*|*错误*|*无效*) color="$C_BRIGHT_RED" ;;
-    已启用*|运行中*|*'· 运行中'|已配置) color="$C_BRIGHT_GREEN" ;;
-    未配置*|未启用*|已停止*|未安装*) color="$C_BRIGHT_YELLOW" ;;
+    *异常*|*错误*|*无效*|不可用*|未运行*|失败*|*Error*|*Invalid*|*Unavailable*|*Failed*|*Not\ running*) color="$C_BRIGHT_RED" ;;
+    已启用*|运行中*|已通过*|已配置|Enabled*|Running*|Passed*|Configured) color="$C_BRIGHT_GREEN" ;;
+    未配置*|未启用*|已停止*|未安装*|需注意*) color="$C_BRIGHT_YELLOW" ;;
   esac
-  value="$(clip_text "$value" "$((UI_WIDTH - 15))")"
+  if [[ "$1" == "节点概览" ]]; then
+    color="$C_BRIGHT_MAGENTA"
+  fi
+  value="$(ui_text "$value")"
   printf '%s' "$C_BRIGHT_CYAN"
-  pad_right "$1" 13
-  printf '%s  %s%s%s\n' "$C_RESET" "$color" "$value" "$C_RESET"
+  pad_right "$(ui_text "$1")" 13
+  printf '%s  ' "$C_RESET"; field_text "$value" "$color"
 }
 link_value() {
   printf '%s' "$C_BRIGHT_CYAN"
-  pad_right "$1" 18
+  pad_right "$(ui_text "$1")" 18
   printf '%s  %s%s%s%s\n' "$C_RESET" "$C_BRIGHT_WHITE" "$C_UNDERLINE" "$2" "$C_RESET"
 }
-prompt() { printf '%s%s› %s%s' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$*" "$C_RESET"; }
-read_choice() { prompt "$1"; IFS= read -r REPLY; REPLY="${REPLY%$'\r'}"; }
-read_input() { prompt "$1"; IFS= read -r "$2"; printf -v "$2" '%s' "${!2%$'\r'}"; }
+prompt() { printf '%s%s› %s%s' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$(ui_text "$*")" "$C_RESET"; }
+read_choice() {
+  prompt "$1"
+  IFS= read -r REPLY
+  REPLY="${REPLY%$'\r'}"
+  [[ -n "$REPLY" ]] || REPLY=0
+}
+read_input() { prompt "$1"; IFS= read -r "$2"; printf -v "$2" '%s' "${!2%$'\r'}"; [[ "${!2}" != 0 ]] || exit 0; }
 is_exit_input() {
   case "${1:-}" in
-    0) return 0 ;;
+    0) exit 0 ;;
     *) return 1 ;;
   esac
 }
-is_confirmed() { [[ -z "${1:-}" || "${1:-}" =~ ^[Yy]$ ]]; }
+is_confirmed() { [[ "${1:-}" =~ ^[Yy]$ ]]; }
 return_notice() { :; }
 
 cancel_config_change() {
   [[ -n "${CONFIG_SNAPSHOT:-}" && -d "$CONFIG_SNAPSHOT" ]] && rm -rf "$CONFIG_SNAPSHOT"
   unset CONFIG_SNAPSHOT
-  yellow "已取消修改，配置未变更。"
+  yellow "已取消修改 · 配置未变更"
 }
 cleanup_config_snapshot() {
   local snapshot="${CONFIG_SNAPSHOT:-}"
@@ -347,17 +1308,18 @@ cleanup_config_snapshot() {
 }
 trap cleanup_config_snapshot EXIT
 menu_item() {
-  printf '  %s%2s%s  %s' "$C_BRIGHT_YELLOW" "$1" "$C_RESET" "$C_BRIGHT_WHITE"
-  pad_right "$2" 28
+  local number_color="$C_BRIGHT_YELLOW"
+  printf '  %s%2s%s  %s' "$number_color" "$1" "$C_RESET" "$C_BRIGHT_WHITE"
+  pad_right "$(ui_text "$2")" 28
   printf '%s%s%s%s\n' "$C_RESET" "$C_BRIGHT_CYAN" "${3:+[$3]}" "$C_RESET"
 }
 menu_hint() {
-  printf '  %s•%s %s%s%s\n' "$C_BRIGHT_CYAN" "$C_RESET" "$C_DIM" "$*" "$C_RESET"
+  printf '  %s•%s %s%s%s\n' "$C_BRIGHT_CYAN" "$C_RESET" "$C_DIM" "$(ui_text "$*")" "$C_RESET"
 }
 protocol_label() {
   case "$1" in
-    vless) printf 'Vless' ;;
-    vmess) printf 'Vmess' ;;
+    vless) printf 'VLESS' ;;
+    vmess) printf 'VMess' ;;
     trojan) printf 'Trojan' ;;
     *) printf '%s' "$1" ;;
   esac
@@ -365,8 +1327,8 @@ protocol_label() {
 
 node_type_label() {
   case "$1" in
-    vless) printf 'Vless+WS+TLS' ;;
-    vmess) printf 'Vmess+WS+TLS' ;;
+    vless) printf 'VLESS+WS+TLS' ;;
+    vmess) printf 'VMess+WS+TLS' ;;
     trojan) printf 'Trojan+WS+TLS' ;;
     *) printf '%s' "$1" ;;
   esac
@@ -432,6 +1394,7 @@ load_env() {
   BRUTAL_DOWN_MBPS="${BRUTAL_DOWN_MBPS:-$DEFAULT_BRUTAL_DOWN_MBPS}"
   MULTIPLEX_ENABLED="${MULTIPLEX_ENABLED:-1}"
   TCP_BRUTAL_ENABLED="${TCP_BRUTAL_ENABLED:-1}"
+  OUTBOUND_IP_FAMILY="${OUTBOUND_IP_FAMILY:-auto}"
 }
 
 ensure_project_layout() {
@@ -527,6 +1490,7 @@ save_env() {
     printf 'BRUTAL_DOWN_MBPS=%q\n' "$BRUTAL_DOWN_MBPS"
     printf 'MULTIPLEX_ENABLED=%q\n' "$MULTIPLEX_ENABLED"
     printf 'TCP_BRUTAL_ENABLED=%q\n' "$TCP_BRUTAL_ENABLED"
+    printf 'OUTBOUND_IP_FAMILY=%q\n' "$OUTBOUND_IP_FAMILY"
   } >"$temp"
   chmod 600 "$temp"
   mv -f "$temp" "$ENV_FILE"
@@ -561,7 +1525,7 @@ valid_endpoint_host() {
 }
 config_import_key_allowed() {
   case "$1" in
-    UUID|ARGO_DOMAIN|SERVER|SERVER_PORT|ARGO_TOKEN|ORIGIN_PORT|WARP_ENABLED|WARP_PROXY_PORT|WARP_DOMAINS|WARP_GEOSITES|STATS_API_PORT|BRUTAL_UP_MBPS|BRUTAL_DOWN_MBPS|MULTIPLEX_ENABLED|TCP_BRUTAL_ENABLED) return 0 ;;
+    UUID|ARGO_DOMAIN|SERVER|SERVER_PORT|ARGO_TOKEN|ORIGIN_PORT|WARP_ENABLED|WARP_PROXY_PORT|WARP_DOMAINS|WARP_GEOSITES|STATS_API_PORT|BRUTAL_UP_MBPS|BRUTAL_DOWN_MBPS|MULTIPLEX_ENABLED|TCP_BRUTAL_ENABLED|OUTBOUND_IP_FAMILY) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -767,8 +1731,8 @@ guide_tcp_brutal_debian_kernel() {
   menu_hint "必须重启进入新内核，再运行 ${COMMAND_NAME} -c。"
   menu_hint "内核安装需要额外磁盘空间，请确保 /boot 与根分区空间充足。"
   read_input "同意安装 Debian 新内核与匹配头文件？[y/N]：" answer
-  is_exit_input "$answer" && { yellow "已取消内核升级。"; return 0; }
-  [[ "$answer" =~ ^[Yy]$ ]] || { yellow "未执行内核升级。"; return 0; }
+  is_exit_input "$answer" && { yellow "已取消内核升级 · 未安装新内核"; return 0; }
+  [[ "$answer" =~ ^[Yy]$ ]] || { yellow "已取消内核升级 · 未安装新内核"; return 0; }
 
   if [[ "$apt_refreshed" != "1" ]]; then
     info "正在刷新 APT 软件包索引..."
@@ -809,21 +1773,21 @@ detect_tcp_brutal() {
 tcp_brutal_status() {
   detect_tcp_brutal
   if [[ "$TCP_BRUTAL_ENABLED" != "1" ]]; then
-    printf '未启用 · 模块%s' "$([[ "$IS_BRUTAL" == "true" ]] && printf '已加载' || printf '未加载')"
+    ui_printf '未启用 · 模块%s' "$([[ "$IS_BRUTAL" == "true" ]] && ui_printf '已加载' || ui_printf '未加载')"
   elif [[ "$MULTIPLEX_ENABLED" != "1" ]]; then
-    printf '未启用 · 原因：h2mux 未启用'
+    ui_printf '未启用 · h2mux 未启用'
   elif [[ "$IS_BRUTAL" == "true" ]]; then
-    printf '已启用 · %s/%s Mbps' "$BRUTAL_UP_MBPS" "$BRUTAL_DOWN_MBPS"
+    ui_printf '已启用 · %s/%s Mbps' "$BRUTAL_UP_MBPS" "$BRUTAL_DOWN_MBPS"
   else
-    printf '未启用 · 原因：缺少 brutal 内核模块'
+    ui_printf '不可用 · 缺少 brutal 内核模块'
   fi
 }
 
 multiplex_status() {
   if [[ "$MULTIPLEX_ENABLED" == "1" ]]; then
-    printf '已启用 · h2mux · %s streams · padding' "$MULTIPLEX_MAX_STREAMS"
+    ui_printf '已启用 · %s streams · padding' "$MULTIPLEX_MAX_STREAMS"
   else
-    printf '未启用 · h2mux'
+    ui_printf '未启用'
   fi
 }
 
@@ -848,10 +1812,16 @@ validate_environment() {
   valid_bandwidth_mbps "$BRUTAL_DOWN_MBPS" || die "TCP Brutal 下载带宽无效。"
   [[ "$MULTIPLEX_ENABLED" =~ ^[01]$ ]] || die "Multiplex 启停配置无效。"
   [[ "$TCP_BRUTAL_ENABLED" =~ ^[01]$ ]] || die "TCP Brutal 启停配置无效。"
+  [[ "$OUTBOUND_IP_FAMILY" =~ ^(auto|ipv4|ipv6)$ ]] || die "节点落地 IP 配置无效。"
   ((10#$STATS_API_PORT != 10#$ORIGIN_PORT)) || die "流量统计 API 端口不能与 Argo 回源端口相同。"
   if [[ "$WARP_ENABLED" == "1" ]]; then
     valid_port "$WARP_PROXY_PORT" || die "WARP 本地代理端口无效。"
     ((10#$WARP_PROXY_PORT != 10#$STATS_API_PORT)) || die "WARP 代理端口不能与流量统计 API 端口相同。"
+    ((10#$WARP_PROXY_PORT != 10#$ORIGIN_PORT)) || die "WARP 代理端口不能与 Argo 回源端口相同。"
+    if [[ -s "$NODES_CONFIG" ]] &&
+      awk -F'|' -v port="$WARP_PROXY_PORT" '$4 == port {found=1} END {exit !found}' "$NODES_CONFIG"; then
+      die "WARP 代理端口不能与节点监听端口相同：${WARP_PROXY_PORT}"
+    fi
     WARP_DOMAINS="$(normalize_warp_domains "$WARP_DOMAINS")"
     WARP_GEOSITES="$(normalize_warp_geosites "$WARP_GEOSITES")"
     [[ -n "$WARP_DOMAINS$WARP_GEOSITES" ]] || die "WARP 至少需要一个域名或 geosite 分类。"
@@ -919,35 +1889,50 @@ warp_geosite_tags_json() {
   IFS="$old_ifs"
 }
 
+# Fifth field accepts URLs; legacy host:port:user:pass remains readable.
+parse_node_proxy() {
+  local value="$1" type=socks host port username password extra authority credentials
+  if [[ "$value" == *://* ]]; then
+    case "$value" in
+      socks5://*) type=socks; authority="${value#socks5://}" ;;
+      http://*) type=http; authority="${value#http://}" ;;
+      *) return 1 ;;
+    esac
+    [[ "$authority" == *@* && "$authority" != *[/$'\n'$'\r''|']* ]] || return 1
+    credentials="${authority%@*}"; authority="${authority##*@}"
+    [[ "$credentials" == *:* ]] || return 1
+    username="${credentials%%:*}"; password="${credentials#*:}"
+    if [[ "$authority" == \[* ]]; then
+      [[ "$authority" =~ ^\[([0-9A-Fa-f:]+)\]:([0-9]+)$ ]] || return 1
+      host="${BASH_REMATCH[1]}"; port="${BASH_REMATCH[2]}"
+    else
+      [[ "$authority" == *:* ]] || return 1
+      host="${authority%:*}"; port="${authority##*:}"
+    fi
+  else
+    IFS=':' read -r host port username password extra <<<"$value"
+    [[ -z "${extra:-}" ]] || return 1
+  fi
+  valid_endpoint_host "$host" && valid_port "$port" || return 1
+  [[ "$username" =~ ^[A-Za-z0-9._~-]+$ && "$password" =~ ^[A-Za-z0-9._~-]+$ ]] || return 1
+  printf '%s|%s|%s|%s|%s\n' "$type" "$host" "$((10#$port))" "$username" "$password"
+}
 parse_socks5() {
-  local value="$1" host port username password extra
-  IFS=':' read -r host port username password extra <<<"$value"
-  [[ -n "$host" && -n "$username" && -n "$password" && -z "${extra:-}" ]] ||
-    die "SOCKS5 格式必须为 主机:端口:用户名:密码。"
-  [[ "$host" =~ ^[A-Za-z0-9.-]+$ ]] || die "SOCKS5 主机格式不正确。"
-  valid_port "$port" || die "SOCKS5 端口不正确。"
-  [[ "$username" =~ ^[A-Za-z0-9._~-]+$ && "$password" =~ ^[A-Za-z0-9._~-]+$ ]] ||
-    die "SOCKS5 用户名和密码仅支持字母、数字及 ._~-。"
+  local values type host port username password
+  values="$(parse_node_proxy "$1")" || die "节点代理格式无效 · 使用 http://user:pass@host:port 或 socks5://user:pass@host:port"
+  IFS='|' read -r type host port username password <<<"$values"
   printf '%s|%s|%s|%s\n' "$host" "$port" "$username" "$password"
 }
-
-valid_socks5() {
-  local value="$1" host port username password extra
-  IFS=':' read -r host port username password extra <<<"$value"
-  [[ -n "$host" && -n "$username" && -n "$password" && -z "${extra:-}" ]] || return 1
-  [[ "$host" =~ ^[A-Za-z0-9.-]+$ ]] || return 1
-  valid_port "$port" || return 1
-  [[ "$username" =~ ^[A-Za-z0-9._~-]+$ && "$password" =~ ^[A-Za-z0-9._~-]+$ ]]
-}
-
+valid_socks5() { parse_node_proxy "$1" >/dev/null; }
 node_outbound_value() {
-  local socks="$1" host port _
-  [[ -n "$socks" ]] || {
-    printf 'direct'
-    return 0
-  }
-  IFS=':' read -r host port _ <<<"$socks"
-  printf '%s:%s' "$host" "$port"
+  local values type host port username password
+  case "$1" in direct:ipv4) printf 'IPv4 · direct'; return ;; direct:ipv6) printf 'IPv6 · direct'; return ;; esac
+  [[ -n "$1" ]] || { printf 'direct'; return; }
+  values="$(parse_node_proxy "$1")" || return 1
+  IFS='|' read -r type host port username password <<<"$values"
+  [[ "$type" == socks ]] && type=SOCKS5 || type=HTTP
+  [[ "$host" != *:* ]] || host="[$host]"
+  printf '%s · %s:%s' "$type" "$host" "$port"
 }
 
 ensure_nodes_config() {
@@ -961,12 +1946,20 @@ EOF
 }
 
 next_node_port() {
-  local highest="$ORIGIN_PORT" port
+  local highest="$ORIGIN_PORT" port candidate
   while IFS='|' read -r _ _ _ port _; do
     valid_port "$port" && ((10#$port > 10#$highest)) && highest="$port"
   done <"$NODES_CONFIG"
-  ((10#$highest < 65535)) || die "没有可用的后续节点端口。"
-  printf '%s\n' "$((10#$highest + 1))"
+  candidate="$((10#$highest + 1))"
+  while ((candidate <= 65535)); do
+    if ((candidate != 10#$STATS_API_PORT && candidate != 10#$ORIGIN_PORT)) &&
+      [[ "$WARP_ENABLED" != "1" || candidate -ne 10#$WARP_PROXY_PORT ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+    ((candidate+=1))
+  done
+  die "没有可用的后续节点端口。"
 }
 
 validate_nodes_config() {
@@ -981,11 +1974,14 @@ validate_nodes_config() {
     esac
     valid_path "$path" || die "传输路径格式错误：${path}"
     valid_port "$port" || die "节点端口错误：${port}"
+    ((10#$port != 10#$ORIGIN_PORT)) || die "节点端口与 Argo 回源端口冲突：${port}"
     ((10#$port != 10#$STATS_API_PORT)) || die "节点端口与流量统计 API 端口冲突：${port}"
+    [[ "$WARP_ENABLED" != "1" || 10#$port -ne 10#$WARP_PROXY_PORT ]] ||
+      die "节点端口与 WARP 代理端口冲突：${port}"
     [[ "$seen_tags" != *"|${tag}|"* && "$seen_paths" != *"|${path}|"* &&
       "$seen_ports" != *"|${port}|"* ]] || die "节点标签、路径或端口重复。"
     seen_tags+="${tag}|"; seen_paths+="${path}|"; seen_ports+="${port}|"
-    [[ -z "$socks" ]] || parse_socks5 "$socks" >/dev/null
+    is_direct_outbound "$socks" || parse_socks5 "$socks" >/dev/null
   done <"$NODES_CONFIG"
 }
 
@@ -1073,7 +2069,7 @@ install_cloudflare_warp() {
   local mode="${1:-prompt}" answer codename key_file fingerprint
   command -v warp-cli >/dev/null 2>&1 && return
   if [[ "$mode" != "auto" ]]; then
-    read_input "确认安装 Cloudflare WARP 客户端？[Y/n]：" answer
+    read_input "确认安装 Cloudflare WARP 客户端？[y/N]：" answer
     is_exit_input "$answer" && die "已取消安装 Cloudflare WARP 客户端。"
     is_confirmed "$answer" || die "已取消安装 Cloudflare WARP 客户端。"
   fi
@@ -1139,7 +2135,7 @@ ensure_warp_registration() {
   if grep -qi "Old registration is still around" "$output"; then
     cat "$output" >&2
     rm -f "$output"
-    read_input "确认删除并重新注册旧 WARP 注册？[Y/n]：" answer
+    read_input "确认删除并重新注册旧 WARP 注册？[y/N]：" answer
     is_exit_input "$answer" && die "已取消 WARP 重新注册。"
     is_confirmed "$answer" ||
       die "未清理旧 WARP 注册，已取消启用。"
@@ -1244,7 +2240,7 @@ local_cloudflared_version() {
 
 write_sing_box_config() (
   local config_target="${1:-$SING_BOX_CONFIG}" check_binary="${2:-${BIN_DIR}/sing-box}"
-  local tag protocol path port socks first=1 values host proxy_port username password brutal_value multiplex_json category
+  local tag protocol path port socks first=1 values host proxy_port username password brutal_value multiplex_json category outbound_family direct_fields proxy_type
   SING_BOX_CONFIG="$config_target"
   ensure_project_layout
   ensure_nodes_config
@@ -1252,13 +2248,20 @@ write_sing_box_config() (
   validate_nodes_config
   ensure_warp_geosite_files
   detect_tcp_brutal
+  outbound_family="$(effective_outbound_ip_family)" ||
+    die "无法通过 GeoJS 确认 IPv4 或 IPv6 公网出口，未生成 Sing-box 配置。"
+  case "$outbound_family" in
+    ipv4) direct_fields=',"inet4_bind_address":"0.0.0.0","domain_resolver":{"server":"local","strategy":"ipv4_only"}' ;;
+    ipv6) direct_fields=',"inet6_bind_address":"::","domain_resolver":{"server":"local","strategy":"ipv6_only"}' ;;
+    *) die "节点落地 IP 配置无效。" ;;
+  esac
   brutal_value="$(tcp_brutal_config_value)"
   if [[ "$MULTIPLEX_ENABLED" == "1" ]]; then
     multiplex_json="\"multiplex\":{\"enabled\":true,\"padding\":true,\"brutal\":{\"enabled\":${brutal_value},\"up_mbps\":${BRUTAL_UP_MBPS},\"down_mbps\":${BRUTAL_DOWN_MBPS}}}"
   else
     multiplex_json='"multiplex":{"enabled":false}'
   fi
-  printf '{"log":{"level":"info","timestamp":true},"inbounds":[\n' >"$SING_BOX_CONFIG"
+  printf '{"log":{"level":"info","timestamp":true},"dns":{"servers":[{"type":"local","tag":"local"}]},"inbounds":[\n' >"$SING_BOX_CONFIG"
   while IFS='|' read -r tag protocol path port socks; do
     ((first)) || printf ',\n' >>"$SING_BOX_CONFIG"; first=0
     printf '{"type":"%s","tag":"%s","listen":"127.0.0.1","listen_port":%s,' "$protocol" "$tag" "$port" >>"$SING_BOX_CONFIG"
@@ -1270,7 +2273,7 @@ write_sing_box_config() (
     printf '"transport":{"type":"ws","path":"%s","max_early_data":2560,"early_data_header_name":"Sec-WebSocket-Protocol"},' "$path" >>"$SING_BOX_CONFIG"
     printf '%s}' "$multiplex_json" >>"$SING_BOX_CONFIG"
   done <"$NODES_CONFIG"
-  printf '\n],"outbounds":[{"type":"direct","tag":"direct"}' >>"$SING_BOX_CONFIG"
+  printf '\n],"outbounds":[{"type":"direct","tag":"direct"%s}' "$direct_fields" >>"$SING_BOX_CONFIG"
   if [[ "$WARP_ENABLED" == "1" ]]; then
     valid_port "$WARP_PROXY_PORT" || die "WARP 本地代理端口无效。"
     WARP_DOMAINS="$(normalize_warp_domains "$WARP_DOMAINS")"
@@ -1280,11 +2283,18 @@ write_sing_box_config() (
   fi
   while IFS='|' read -r tag protocol path port socks; do
     [[ -n "$socks" ]] || continue
-    values="$(parse_socks5 "$socks")"; IFS='|' read -r host proxy_port username password <<<"$values"
-    printf ',{"type":"socks","tag":"socks-%s","server":"%s","server_port":%s,"version":"5","username":"%s","password":"%s"}' \
-      "$tag" "$host" "$proxy_port" "$username" "$password" >>"$SING_BOX_CONFIG"
+    if is_direct_outbound "$socks"; then
+      case "$socks" in direct:ipv4) proxy_type=prefer_ipv4 ;; direct:ipv6) proxy_type=prefer_ipv6 ;; esac
+      printf ',{"type":"direct","tag":"direct-%s","domain_resolver":{"server":"local","strategy":"%s"}}' "$tag" "$proxy_type" >>"$SING_BOX_CONFIG"
+      continue
+    fi
+    values="$(parse_node_proxy "$socks")"; IFS='|' read -r proxy_type host proxy_port username password <<<"$values"
+    printf ',{"type":"%s","tag":"socks-%s","server":"%s","server_port":%s,"username":"%s","password":"%s"' \
+      "$proxy_type" "$tag" "$host" "$proxy_port" "$username" "$password" >>"$SING_BOX_CONFIG"
+    [[ "$proxy_type" != socks ]] || printf ',"version":"5"' >>"$SING_BOX_CONFIG"
+    printf '}' >>"$SING_BOX_CONFIG"
   done <"$NODES_CONFIG"
-  printf '],"experimental":{"clash_api":{"external_controller":"127.0.0.1:%s"}},"route":{"rules":[' \
+  printf '],"experimental":{"clash_api":{"external_controller":"127.0.0.1:%s"}},"route":{"default_domain_resolver":"local","rules":[' \
     "$STATS_API_PORT" >>"$SING_BOX_CONFIG"; first=1
   if [[ "$WARP_ENABLED" == "1" ]]; then
     printf '{"action":"sniff"}' >>"$SING_BOX_CONFIG"
@@ -1303,7 +2313,8 @@ write_sing_box_config() (
   while IFS='|' read -r tag protocol path port socks; do
     [[ -n "$socks" ]] || continue
     ((first)) || printf ',' >>"$SING_BOX_CONFIG"; first=0
-    printf '{"inbound":["%s"],"action":"route","outbound":"socks-%s"}' "$tag" "$tag" >>"$SING_BOX_CONFIG"
+    if is_direct_outbound "$socks"; then proxy_type=direct; else proxy_type=socks; fi
+    printf '{"inbound":["%s"],"action":"route","outbound":"%s-%s"}' "$tag" "$proxy_type" "$tag" >>"$SING_BOX_CONFIG"
   done <"$NODES_CONFIG"
   printf ']' >>"$SING_BOX_CONFIG"
   if [[ -n "$WARP_GEOSITES" ]]; then
@@ -1547,12 +2558,12 @@ traffic_collect() (
 
   pid="$(systemctl show "$CORE_SERVICE" -p MainPID --value 2>/dev/null || true)"
   [[ "$pid" =~ ^[1-9][0-9]*$ && -r "/proc/${pid}/stat" ]] ||
-    traffic_collect_fail "代理核心未运行或无法读取进程信息。"
+    traffic_collect_fail "Sing-box Core 未运行或无法读取进程信息"
   actual_binary="$(readlink -f "/proc/${pid}/exe" 2>/dev/null || true)"
   actual_binary="${actual_binary% (deleted)}"
   [[ "${actual_binary##*/}" == "sing-box" ]] || traffic_collect_fail "当前运行进程不是 Sing-box。"
   start_time="$(awk '{print $22}' "/proc/${pid}/stat" 2>/dev/null || true)"
-  [[ "$start_time" =~ ^[0-9]+$ ]] || traffic_collect_fail "无法读取代理核心启动标识。"
+  [[ "$start_time" =~ ^[0-9]+$ ]] || traffic_collect_fail "无法读取 Sing-box Core 启动标识"
   process_token="${pid}:${start_time}"
 
   api_address="$(jq -r '.experimental.clash_api.external_controller // empty' "$SING_BOX_CONFIG" 2>/dev/null || true)"
@@ -1659,42 +2670,91 @@ read_traffic_totals() {
 }
 
 runtime_memory_usage() {
-  local rss_kib
-  rss_kib="$(awk '/^VmRSS:/{print $2; exit}' "/proc/$$/status" 2>/dev/null || true)"
-  [[ "$rss_kib" =~ ^[0-9]+$ ]] || { printf '未知'; return; }
-  format_traffic_bytes "$((10#$rss_kib * 1024))"
+  local unit roots pids pid rss total=0 readable=0 incomplete=0 proc="${PROC_ROOT:-/proc}"
+  roots="$({
+    printf '%s\n' "$$"
+    for unit in nginx "$CORE_SERVICE" "$ARGO_SERVICE" "$TRAFFIC_SERVICE" warp-svc; do
+      service_process_ids "$unit"
+    done
+  } | awk '/^[1-9][0-9]*$/ && !seen[$0]++')"
+  # MainPID 回退也覆盖 Nginx worker、采集器及管理脚本的子进程。
+  pids="$(ps -eo pid=,ppid= 2>/dev/null | awk -v roots="$roots" '
+    BEGIN {n=split(roots,a,"\n"); for(i=1;i<=n;i++) seen[a[i]]=1}
+    {parent[$1]=$2}
+    END {
+      changed=1
+      while(changed) {changed=0; for(p in parent) if(!seen[p] && seen[parent[p]]) {seen[p]=1; changed=1}}
+      for(p in seen) if(seen[p] && p ~ /^[1-9][0-9]*$/) print p
+    }' | sort -nu)"
+  while IFS= read -r pid; do
+    [[ -n "$pid" && -d "$proc/$pid" ]] || continue
+    rss="$(awk '/^VmRSS:/{print $2; exit}' "$proc/$pid/status" 2>/dev/null || true)"
+    if [[ "$rss" =~ ^[0-9]+$ ]]; then
+      total=$((total + 10#$rss)); readable=$((readable + 1))
+    else incomplete=1; fi
+  done <<<"$pids"
+  ((readable)) || { ui_printf '未知 · 进程内存不可读'; return; }
+  format_traffic_bytes "$((total * 1024))"
+  ((incomplete == 0)) || ui_printf ' · 部分进程不可读'
 }
 
 runtime_overview() {
-  local totals upload download ip_details ip country asn isp
+  local totals upload download ipv4_details ipv6_details ip country asn isp
+  local ipv6_ip ipv6_country outbound_family
   totals="$(read_traffic_totals)"
   IFS='|' read -r upload download <<<"$totals"
   subsection "运行状态"
   state_value "Argo Tunnel" "$(service_status "$ARGO_SERVICE")"
-  state_value "代理核心" "$(service_status "$CORE_SERVICE") · $(core_label)"
+  state_value "Sing-box Core" "$(service_status "$CORE_SERVICE")"
+  state_value "流量采集" "$(traffic_timer_status)"
   state_value "WARP 分流" "$(warp_status)"
-  state_value "多路复用" "$(multiplex_status)"
+  state_value "h2mux" "$(multiplex_status)"
   state_value "TCP Brutal" "$(tcp_brutal_status)"
-  ip_details="$(public_ipv4_details)"
-  IFS='|' read -r ip country asn isp <<<"$ip_details"
-  ip_value "VPS IPv4" "$ip · $country · $asn · $isp"
-  key_value "流量统计" "Total Upload $(format_traffic_bytes "$upload") · Total Download $(format_traffic_bytes "$download")"
-  key_value "运行内存" "$(runtime_memory_usage)"
-  key_value "节点概览" "$(node_overview)"
+  state_value "节点概览" "$(node_overview)"
   if [[ -n "${ARGO_DOMAIN:-}" ]]; then
     key_value "Argo 域名" "$ARGO_DOMAIN"
     endpoint_value "优选入口" "$SERVER" "$SERVER_PORT"
     key_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
   fi
-  key_value "组件版本" "$(component_versions)"
+  ipv4_details="$(public_ipv4_details 2>/dev/null || true)"
+  if [[ -n "$ipv4_details" ]]; then
+    IFS='|' read -r ip country asn isp <<<"$ipv4_details"
+    ip_value "VPS IPv4" "$ip · $country · $asn · $isp"
+  else
+    ip_value "VPS IPv4" "GeoJS 查询失败 · 未确认出口"
+  fi
+  ipv6_details="$(public_ipv6_details 2>/dev/null || true)"
+  if [[ -n "$ipv6_details" ]]; then
+    IFS='|' read -r ipv6_ip ipv6_country _ _ <<<"$ipv6_details"
+    ip_value "VPS IPv6" "$ipv6_ip · $ipv6_country"
+  else
+    ip_value "VPS IPv6" "None"
+  fi
+  if [[ "${OUTBOUND_IP_FAMILY:-auto}" == "auto" ]]; then
+    if [[ -n "$ipv4_details" ]]; then outbound_family="IPv4"
+    elif [[ -n "$ipv6_details" ]]; then outbound_family="IPv6"
+    else outbound_family="未确认"
+    fi
+  else
+    outbound_family="${OUTBOUND_IP_FAMILY^^}"
+  fi
+  case "$outbound_family" in
+    IPv4) ip="${ipv4_details%%|*}" ;;
+    IPv6) ip="${ipv6_details%%|*}" ;;
+    *) ip=None ;;
+  esac
+  ip_value "节点落地 IP" "${ip:-None} · $outbound_family · direct"
+  key_value "全局流量" "↑ $(format_traffic_bytes "$upload") · ↓ $(format_traffic_bytes "$download")"
+  key_value "运行内存" "$(runtime_memory_usage)"
+  version_bar
 }
 
 traffic_table_header() {
   printf '  %s' "$C_BRIGHT_CYAN"
-  pad_right "范围" 12
-  printf '  '; pad_left "上传" 12
-  printf '  '; pad_left "下载" 12
-  printf '  '; pad_left "合计" 12
+  pad_right "$(ui_text '范围')" 12
+  printf '  '; pad_left "$(ui_text '上传')" 12
+  printf '  '; pad_left "$(ui_text '下载')" 12
+  printf '  '; pad_left "$(ui_text '合计')" 12
   printf '%s\n' "$C_RESET"
 }
 
@@ -1734,32 +2794,32 @@ traffic_statistics_menu() {
   [[ -n "$reset_at" ]] || reset_at="$(sqlite3 "$TRAFFIC_DB" "SELECT value FROM meta WHERE key='started_at';")"
   brand "${PROJECT_NAME} · 流量统计" back
   subsection "统计状态"
-  state_value "定时采集" "$({ systemctl is-active --quiet "${TRAFFIC_TIMER}.timer" && printf '已启用 · 每分钟'; } || printf '未启用 · 原因：定时器已停止')"
+  state_value "定时采集" "$({ systemctl is-active --quiet "${TRAFFIC_TIMER}.timer" && ui_printf '已启用 · 每分钟'; } || ui_printf '未启用 · 原因：定时器已停止')"
   key_value "统计起点" "${reset_at:-未知}"
   key_value "最近采集" "${last_collect:-尚未采集}"
-  ((collected)) || yellow "实时计数不可读，当前显示持久化数据。"
+  ((collected)) || yellow "Clash API 暂不可读 · 当前显示 SQLite 累计值"
   if ((!collected)) && [[ -s "$TRAFFIC_ERROR_FILE" ]]; then
     collect_error="$(head -n 1 "$TRAFFIC_ERROR_FILE")"
-    key_value "失败原因" "$collect_error"
+    key_value "原因" "$collect_error"
   fi
   subsection "全局统计"
   show_traffic_tables
   section "统计操作"
   menu_item 1 "刷新统计"
   menu_item 2 "重置统计"
-  menu_item 0 "返回上级"
+  menu_item 0 "退出脚本"
   ui_line
   read_choice "请选择："; choice="$REPLY"
   case "$choice" in
     1) traffic_collect && green "流量统计已刷新。" ;;
     2)
-      read_input "确认清空全部历史流量？[Y/n]：" answer
+      read_input "确认重置全部历史流量？[y/N]：" answer
       is_exit_input "$answer" && return 0
-      is_confirmed "$answer" || { yellow "已取消重置。"; return 0; }
+      is_confirmed "$answer" || { yellow "已取消重置 · 统计数据未变更"; return 0; }
       traffic_reset
-      green "流量统计已重置。"
+      green "流量统计已重置"
       ;;
-    0) return ;;
+    0) exit 0 ;;
     *) die "无效选项：${choice:-空}（请输入 0、1 或 2）" ;;
   esac
 }
@@ -1929,7 +2989,8 @@ report_runtime_config_failure() {
 }
 
 health_check() {
-  local failed=0 public_code public_headers curl_status port path tag protocol socks mode="${1:-full}"
+  local failed=0 local_failed=0 ws_failed=0 ws_unknown=0 public_code public_headers curl_status port path tag protocol socks mode="${1:-full}"
+  WS_HEALTH_WARNINGS=0
   ensure_nodes_config
   if [[ "$mode" == "ws" ]]; then
     section "传输检查"
@@ -1962,10 +3023,17 @@ health_check() {
 
   while read -r port; do
     if ! ss -lntH "sport = :${port}" 2>/dev/null | grep -q .; then
-      red "本地端口 ${port} 未监听。"
+      if [[ "$mode" == "ws" ]]; then
+        ((local_failed+=1))
+      else
+        red "本地端口 ${port} 未监听。"
+      fi
       failed=1
     fi
   done < <(printf '%s\n' "$ORIGIN_PORT" "$STATS_API_PORT"; cut -d'|' -f4 "$NODES_CONFIG")
+  if [[ "$mode" == "ws" ]]; then
+    if ((local_failed)); then state_value "本地端口" "未运行 · ${local_failed} 个未监听"; else state_value "本地端口" "已通过"; fi
+  fi
 
   while IFS='|' read -r tag protocol path port socks; do
     curl_status=0
@@ -1977,18 +3045,24 @@ health_check() {
       "https://${ARGO_DOMAIN}:${SERVER_PORT}${path}" 2>/dev/null)" || curl_status=$?
     public_code="$(awk '/^HTTP/{code=$2} END{print code}' <<<"$public_headers")"
     if grep -qi '^cf-mitigated: *challenge' <<<"$public_headers"; then
-      red "${path}：Cloudflare 人机挑战（HTTP ${public_code:-403}）"
+      if [[ "$mode" == "ws" ]]; then ((ws_failed+=1)); else red "${path}：Cloudflare 人机挑战（HTTP ${public_code:-403}）"; fi
       failed=1
     elif [[ "$public_code" == "101" ]]; then
-      green "${path}：公网 WS 握手正常"
+      [[ "$mode" != "ws" ]] && green "${path}：公网 WS 握手正常"
     elif [[ "$curl_status" -eq 28 ]]; then
-      yellow "${path}：公网传输探测超时，未视为安装失败；请用客户端实测。"
+      if [[ "$mode" == "ws" ]]; then ((ws_unknown+=1)); else yellow "${path}：公网传输探测超时，未视为安装失败；请用客户端实测。"; fi
     else
-      red "${path}：公网传输探测失败（HTTP ${public_code:-000}）"
+      if [[ "$mode" == "ws" ]]; then ((ws_failed+=1)); else red "${path}：公网传输探测失败（HTTP ${public_code:-000}）"; fi
       failed=1
     fi
   done <"$NODES_CONFIG"
-  [[ "$failed" -eq 0 ]] || yellow "请确认 Public Hostname 指向 http://localhost:${ORIGIN_PORT}，并跳过全部代理路径的 Challenge/WAF。"
+  if [[ "$mode" == "ws" ]]; then
+    if ((ws_failed)); then state_value "公网 WS" "失败 · ${ws_failed} 项异常"; fi
+    if ((ws_unknown)); then state_value "公网 WS" "需注意 · ${ws_unknown} 项探测超时"; WS_HEALTH_WARNINGS="$ws_unknown"; fi
+    if ((ws_failed == 0 && ws_unknown == 0)); then state_value "公网 WS" "已通过"; fi
+  elif [[ "$failed" -ne 0 ]]; then
+    yellow "请确认 Public Hostname 指向 http://localhost:${ORIGIN_PORT}，并跳过全部代理路径的 Challenge/WAF。"
+  fi
 
   return "$failed"
 }
@@ -2010,7 +3084,7 @@ prompt_install_values() {
   fi
   is_exit_input "$value" && return 1
   value="${value:-$ARGO_TOKEN}"
-  valid_argo_token "$value" || die "Argo Token 格式不正确。"
+  valid_argo_token "$value" || die "Argo Token 无效 · Token 格式检查未通过"
   ARGO_TOKEN="$value"
   if [[ -n "$ARGO_DOMAIN" ]]; then
     read_input "Argo 域名 [${ARGO_DOMAIN}]：" value
@@ -2019,18 +3093,18 @@ prompt_install_values() {
   fi
   is_exit_input "$value" && return 1
   ARGO_DOMAIN="${value:-$ARGO_DOMAIN}"
-  [[ -n "$ARGO_DOMAIN" ]] || die "Argo 域名不能为空。"
+  [[ -n "$ARGO_DOMAIN" ]] || die "Argo 域名无效 · 请输入有效域名"
   ensure_uuid
   read_input "UUID [${UUID}]：" value
   is_exit_input "$value" && return 1
   UUID="${value:-$UUID}"
   [[ "${UUID,,}" =~ ^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$ ]] ||
-    die "UUID 格式不正确。"
+    die "UUID 无效 · 请输入标准 8-4-4-4-12 UUID"
   read_input "优选入口 [${SERVER}:${SERVER_PORT}]：" endpoint
   is_exit_input "$endpoint" && return 1
   endpoint="${endpoint:-${SERVER}:${SERVER_PORT}}"
   parse_endpoint "$endpoint"
-  valid_domain "$ARGO_DOMAIN" || die "Argo 域名格式不正确。"
+  valid_domain "$ARGO_DOMAIN" || die "Argo 域名无效 · 请输入有效域名"
 }
 
 parse_endpoint() {
@@ -2043,10 +3117,10 @@ parse_endpoint() {
   elif [[ "$endpoint" != *:* || "$endpoint" =~ ^[0-9A-Fa-f:]+$ ]]; then
     host="$endpoint"; port="$DEFAULT_SERVER_PORT"
   else
-    die "优选入口格式无效；可输入域名/IP，省略端口时使用 443。"
+    die "优选入口无效 · 可输入域名/IP，省略端口时使用 443"
   fi
-  valid_endpoint_host "$host" || die "优选域名或 IP 格式不正确。"
-  valid_port "$port" || die "端口必须是 1 到 65535。"
+  valid_endpoint_host "$host" || die "优选入口无效 · 可输入域名/IP，省略端口时使用 443"
+  valid_port "$port" || die "优选入口端口无效 · 端口范围必须为 1–65535"
   SERVER="$host"
   SERVER_PORT="$((10#$port))"
 }
@@ -2383,13 +3457,13 @@ install_menu() {
   menu_item 1 "本地安装"
   menu_item 2 "在线安装"
   menu_hint "在线安装会先校验并替换本地脚本。"
-  menu_item 0 "返回上级"
+  menu_item 0 "退出脚本"
   ui_line
   read_choice "请选择："; choice="$REPLY"
   case "$choice" in
     1) install_project local ;;
     2) install_project github ;;
-    0) return ;;
+    0) exit 0 ;;
     *) die "无效选项：${choice:-空}（请输入 0、1 或 2）" ;;
   esac
 }
@@ -2406,17 +3480,18 @@ begin_config_change() {
 
 apply_runtime_config() {
   local snapshot="${CONFIG_SNAPSHOT:-}"
+  local success_message="${1:-配置已生效}"
   local services=(nginx "$CORE_SERVICE" "$ARGO_SERVICE")
   [[ -n "$snapshot" && -d "$snapshot" ]] || die "缺少配置事务快照。"
-  info "正在应用配置并重启服务..."
+  info "应用配置并重启服务"
   if save_env && write_available_core_configs && generate_nodes && write_nginx_config && write_services &&
     systemctl daemon-reload &&
     systemctl restart "${services[@]}" && wait_for_services "${services[@]}"; then
     rm -rf "$snapshot"
-    green "配置已生效。"
+    green "$success_message"
     return 0
   fi
-  red "配置验证失败，正在恢复。"
+  red "配置验证失败 · 正在恢复修改前配置"
   report_runtime_config_failure "${services[@]}"
   [[ -f "$snapshot/$(basename "$ENV_FILE")" ]] && install -m 600 "$snapshot/$(basename "$ENV_FILE")" "$ENV_FILE"
   [[ -f "$snapshot/nodes.conf" ]] && install -m 600 "$snapshot/nodes.conf" "$NODES_CONFIG"
@@ -2438,7 +3513,7 @@ apply_runtime_config() {
   load_env
   systemctl daemon-reload
   systemctl restart nginx "$CORE_SERVICE" "$ARGO_SERVICE" 2>/dev/null || true
-  die "配置未生效，已恢复原配置。"
+  die "配置未生效 · 已恢复修改前配置"
 }
 
 import_configuration() {
@@ -2452,25 +3527,25 @@ import_configuration() {
   ensure_warp_geosite_files
   configure_warp_proxy auto
   begin_config_change
-  apply_runtime_config
+  apply_runtime_config "配置导入已完成"
 }
 
 list_node_profiles() {
   local mode="${1:-compact}" tag protocol path port socks direct_ip
-  direct_ip="$(public_ipv4)"
+  direct_ip="$(public_node_egress_ip)"
   if [[ "$mode" == "spaced" ]]; then
     printf '\n'
     UI_TIGHT_SECTION=1
   fi
   subsection "节点列表"
   printf '%s%s' "$C_BOLD" "$C_BRIGHT_CYAN"
-  pad_right "标签" 13; printf '  '; pad_right "协议" 6; printf '  '; pad_right "传输路径" 14
-  printf '  '; pad_right "端口" 5; printf '  %s%s\n' "出站 IP" "$C_RESET"
+  pad_right "$(ui_text '标签')" 13; printf '  '; pad_right "$(ui_text '协议')" 6; printf '  '; pad_right "$(ui_text '传输路径')" 14
+  printf '  '; pad_right "$(ui_text '端口')" 5; printf '  %s%s\n' "$(ui_text 出站)" "$C_RESET"
   printf '%s%s%s\n' "$C_DIM" '-------------  ------  --------------  -----  ------------------' "$C_RESET"
   while IFS='|' read -r tag protocol path port socks; do
     printf '%s' "$C_BRIGHT_WHITE"; fit_text "$tag" 13; printf '%s  %s' "$C_RESET" "$C_BRIGHT_BLUE"
     fit_text "$(protocol_label "$protocol")" 6; printf '%s  %s' "$C_RESET" "$C_BRIGHT_WHITE"; fit_text "$path" 14
-    printf '%s  %s' "$C_RESET" "$C_BRIGHT_YELLOW"; fit_text "$port" 5; printf '%s  %s' "$C_RESET" "$C_BRIGHT_MAGENTA"
+    printf '%s  %s' "$C_RESET" "$C_BRIGHT_MAGENTA"; fit_text "$port" 5; printf '%s  %s' "$C_RESET" "$C_BRIGHT_MAGENTA"
     if [[ -n "$socks" ]]; then
       fit_text "$(node_outbound_value "$socks")" 18; printf '%s\n' "$C_RESET"
     else
@@ -2482,85 +3557,105 @@ list_node_profiles() {
 add_node_profile() {
   local tag protocol path port socks default_port
   brand "${PROJECT_NAME} · 添加节点" default
+  validate_environment
+  validate_nodes_config
   list_node_profiles
   default_port="$(next_node_port)"
   section "节点参数"
-  read_input "节点标签 [常用字符，禁用 |]：" tag
+  read_input "节点标签：" tag
   is_exit_input "$tag" && return 0
   valid_node_tag "$tag" || die "节点标签无效：不能为空、首尾不能留空，且不能包含 | 或控制字符。"
   ! awk -F'|' -v tag="$tag" '$1 == tag {found=1} END {exit !found}' "$NODES_CONFIG" || die "节点标签已存在：${tag}"
-  read_input "节点协议 [vless/vmess/trojan]：" protocol
+  read_input "节点协议 [VLESS/VMess/Trojan]：" protocol
   is_exit_input "$protocol" && return 0
   protocol="${protocol,,}"
-  [[ "$protocol" =~ ^(vless|vmess|trojan)$ ]] || die "节点协议无效，仅支持 vless、vmess、trojan。"
+  [[ "$protocol" =~ ^(vless|vmess|trojan)$ ]] || die "节点协议无效 · 仅支持 VLESS / VMess / Trojan"
   read_input "传输路径 [以 / 开头]：" path
   is_exit_input "$path" && return 0
-  valid_path "$path" || die "传输路径无效。"
-  ! awk -F'|' -v path="$path" '$3 == path {found=1} END {exit !found}' "$NODES_CONFIG" || die "传输路径已存在：${path}"
+  valid_path "$path" || die "WS 路径无效 · 必须以 / 开头"
+  ! awk -F'|' -v path="$path" '$3 == path {found=1} END {exit !found}' "$NODES_CONFIG" || die "WS 路径冲突 · ${path} 已被其他节点使用"
   read_input "监听端口 [${default_port}]：" port
   is_exit_input "$port" && return 0
   port="${port:-$default_port}"
-  valid_port "$port" || die "监听端口无效。"
-  ((10#$port != 10#$STATS_API_PORT)) || die "监听端口与流量统计 API 冲突：${port}"
-  ! awk -F'|' -v port="$port" '$4 == port {found=1} END {exit !found}' "$NODES_CONFIG" || die "监听端口已存在：${port}"
-  read_input "SOCKS5 出站 [主机:端口:用户名:密码，留空直连]：" socks
+  valid_port "$port" || die "本地端口无效 · 端口范围必须为 1–65535"
+  ((10#$port != 10#$ORIGIN_PORT)) || die "本地端口冲突 · ${port} 被 Argo 回源占用"
+  ((10#$port != 10#$STATS_API_PORT)) || die "本地端口冲突 · ${port} 被 Clash API 占用"
+  [[ "$WARP_ENABLED" != "1" || 10#$port -ne 10#$WARP_PROXY_PORT ]] ||
+    die "本地端口冲突 · ${port} 被 WARP SOCKS5 占用"
+  ! awk -F'|' -v port="$port" '$4 == port {found=1} END {exit !found}' "$NODES_CONFIG" || die "本地端口冲突 · ${port} 已被占用"
+  read_input "节点代理 [http:// 或 socks5://user:pass@host:port；留空为 direct]：" socks
   is_exit_input "$socks" && return 0
-  [[ -z "$socks" ]] || valid_socks5 "$socks" || die "SOCKS5 出站格式无效。"
+  is_direct_outbound "$socks" || valid_socks5 "$socks" || die "节点代理无效 · 使用 http://user:pass@host:port 或 socks5://user:pass@host:port，或留空使用 direct"
+  if is_direct_outbound "$socks"; then
+    select_node_egress "$socks" || return 0
+    socks="$NODE_EGRESS"
+  fi
   begin_config_change
   printf '%s|%s|%s|%s|%s\n' "$tag" "$protocol" "$path" "$port" "$socks" >>"$NODES_CONFIG"
   validate_nodes_config
-  apply_runtime_config
+  apply_runtime_config "节点已添加：${tag}"
 }
 
 change_origin_port() {
   local value temp next_port
-  brand "${PROJECT_NAME} · Argo Tunnel 回源端口" default
+  brand "${PROJECT_NAME} · Argo 回源" default
   subsection "当前配置"
-  key_value "回源端口" "$ORIGIN_PORT"
+  key_value "回源地址" "127.0.0.1:${ORIGIN_PORT}"
   section "修改配置"
   begin_config_change
   read_input "Argo Tunnel 回源端口 [${ORIGIN_PORT}]：" value
   is_exit_input "$value" && { cancel_config_change; return 0; }
   value="${value:-$ORIGIN_PORT}"
-  valid_port "$value" || die "端口格式错误。"
-  ((10#$value != 10#$STATS_API_PORT)) || die "Argo 回源端口不能占用流量统计 API 端口 ${STATS_API_PORT}。"
+  valid_port "$value" || die "Argo 回源端口无效 · 端口范围必须为 1–65535"
+  ((10#$value != 10#$STATS_API_PORT)) || die "Argo 回源端口冲突 · ${value} 被 Clash API 占用"
   next_port="$((10#$value + 1))"
   ((next_port + $(wc -l <"$NODES_CONFIG") - 1 <= 65535)) ||
     die "端口过大，无法为全部节点顺延监听端口。"
   ! ((10#$STATS_API_PORT >= next_port && 10#$STATS_API_PORT < next_port + $(wc -l <"$NODES_CONFIG"))) ||
     die "顺延后的节点端口会占用流量统计 API 端口 ${STATS_API_PORT}。"
+  if [[ "$WARP_ENABLED" == "1" ]]; then
+    ((10#$WARP_PROXY_PORT != 10#$value)) ||
+      die "Argo 回源端口会占用 WARP SOCKS5 端口 ${WARP_PROXY_PORT}。"
+    ! ((10#$WARP_PROXY_PORT >= next_port && 10#$WARP_PROXY_PORT < next_port + $(wc -l <"$NODES_CONFIG"))) ||
+      die "顺延后的节点端口会占用 WARP SOCKS5 端口 ${WARP_PROXY_PORT}。"
+  fi
   temp="$(mktemp)"
   awk -F'|' -v OFS='|' -v port="$next_port" '{$4=port++; print}' "$NODES_CONFIG" >"$temp"
   install -m 600 "$temp" "$NODES_CONFIG"
   rm -f "$temp"
   ORIGIN_PORT="$value"
   apply_runtime_config
-  info "Cloudflare Public Hostname 的 Service 请同步改为 http://localhost:${ORIGIN_PORT}。"
+  green "Argo 回源已更新：127.0.0.1:${ORIGIN_PORT}"
+  yellow "请同步确认 Cloudflare Public Hostname Service 为 http://localhost:${ORIGIN_PORT}"
 }
 
 delete_node_profile() {
   local tag temp answer
   brand "${PROJECT_NAME} · 删除节点" default
+  validate_environment
+  validate_nodes_config
   list_node_profiles
   section "删除操作"
   [[ "$(wc -l <"$NODES_CONFIG")" -gt 1 ]] || die "至少必须保留一个节点。"
   read_input "节点标签：" tag
   is_exit_input "$tag" && return 0
   awk -F'|' -v wanted="$tag" '$1 == wanted {found=1} END {exit !found}' "$NODES_CONFIG" || die "未找到节点：${tag}"
-  read_input "确认删除节点 ${tag}？[Y/n]：" answer
+  read_input "确认删除节点 ${tag}？[y/N]：" answer
   is_exit_input "$answer" && return 0
-  is_confirmed "$answer" || { yellow "已取消删除，配置未变更。"; return 0; }
+  is_confirmed "$answer" || { yellow "已取消删除 · 配置未变更"; return 0; }
   begin_config_change
   temp="$(mktemp)"
   awk -F'|' -v wanted="$tag" '$1 != wanted' "$NODES_CONFIG" >"$temp"
   install -m 600 "$temp" "$NODES_CONFIG"
   rm -f "$temp"
-  apply_runtime_config
+  apply_runtime_config "节点已删除：${tag}"
 }
 
 edit_node_profile() {
   local wanted tag protocol path port socks new_tag new_protocol new_path new_port new_socks temp
   brand "${PROJECT_NAME} · 修改节点" default
+  validate_environment
+  validate_nodes_config
   list_node_profiles
   section "选择节点"
   tag=""
@@ -2577,28 +3672,36 @@ edit_node_profile() {
   valid_node_tag "$new_tag" || die "节点标签无效：不能为空、首尾不能留空，且不能包含 | 或控制字符。"
   ! awk -F'|' -v wanted="$wanted" -v value="$new_tag" '$1 != wanted && $1 == value {found=1} END {exit !found}' "$NODES_CONFIG" || die "节点标签已存在：${new_tag}"
   tag="$new_tag"
-  read_input "节点协议 [${protocol}]：" new_protocol
+  read_input "节点协议 [$(protocol_label "$protocol")]：" new_protocol
   is_exit_input "$new_protocol" && return 0
   new_protocol="${new_protocol:-$protocol}"; new_protocol="${new_protocol,,}"
-  [[ "$new_protocol" =~ ^(vless|vmess|trojan)$ ]] || die "节点协议无效，仅支持 vless、vmess、trojan。"
+  [[ "$new_protocol" =~ ^(vless|vmess|trojan)$ ]] || die "节点协议无效 · 仅支持 VLESS / VMess / Trojan"
   protocol="$new_protocol"
   read_input "传输路径 [${path}]：" new_path
   is_exit_input "$new_path" && return 0
   new_path="${new_path:-$path}"
-  valid_path "$new_path" || die "传输路径无效。"
-  ! awk -F'|' -v wanted="$wanted" -v value="$new_path" '$1 != wanted && $3 == value {found=1} END {exit !found}' "$NODES_CONFIG" || die "传输路径已存在：${new_path}"
+  valid_path "$new_path" || die "WS 路径无效 · 必须以 / 开头"
+  ! awk -F'|' -v wanted="$wanted" -v value="$new_path" '$1 != wanted && $3 == value {found=1} END {exit !found}' "$NODES_CONFIG" || die "WS 路径冲突 · ${new_path} 已被其他节点使用"
   path="$new_path"
   read_input "监听端口 [${port}]：" new_port
   is_exit_input "$new_port" && return 0
   new_port="${new_port:-$port}"
-  valid_port "$new_port" || die "监听端口无效。"
-  ((10#$new_port != 10#$STATS_API_PORT)) || die "监听端口与流量统计 API 冲突：${new_port}"
-  ! awk -F'|' -v wanted="$wanted" -v value="$new_port" '$1 != wanted && $4 == value {found=1} END {exit !found}' "$NODES_CONFIG" || die "监听端口已存在：${new_port}"
+  valid_port "$new_port" || die "本地端口无效 · 端口范围必须为 1–65535"
+  ((10#$new_port != 10#$ORIGIN_PORT)) || die "本地端口冲突 · ${new_port} 被 Argo 回源占用"
+  ((10#$new_port != 10#$STATS_API_PORT)) || die "本地端口冲突 · ${new_port} 被 Clash API 占用"
+  [[ "$WARP_ENABLED" != "1" || 10#$new_port -ne 10#$WARP_PROXY_PORT ]] ||
+    die "本地端口冲突 · ${new_port} 被 WARP SOCKS5 占用"
+  ! awk -F'|' -v wanted="$wanted" -v value="$new_port" '$1 != wanted && $4 == value {found=1} END {exit !found}' "$NODES_CONFIG" || die "本地端口冲突 · ${new_port} 已被占用"
   port="$new_port"
-  read_input "SOCKS5 [$(node_outbound_value "$socks")；- 为 direct]：" new_socks
+  info "新值格式：http://user:pass@host:port 或 socks5://user:pass@host:port"
+  read_input "节点代理 [Enter 保持当前；- 设为 direct]：" new_socks
   is_exit_input "$new_socks" && return 0
   [[ "$new_socks" == "-" ]] && new_socks="" || new_socks="${new_socks:-$socks}"
-  [[ -z "$new_socks" ]] || valid_socks5 "$new_socks" || die "SOCKS5 出站格式无效。"
+  is_direct_outbound "$new_socks" || valid_socks5 "$new_socks" || die "节点代理无效 · 使用 http://user:pass@host:port 或 socks5://user:pass@host:port，或输入 - 使用 direct"
+  if is_direct_outbound "$new_socks"; then
+    select_node_egress "$new_socks" || return 0
+    new_socks="$NODE_EGRESS"
+  fi
   socks="$new_socks"
   begin_config_change
   temp="$(mktemp)"
@@ -2607,18 +3710,18 @@ edit_node_profile() {
     '$1 == wanted {$1=tag; $2=protocol; $3=path; $4=port; $5=socks} {print}' "$NODES_CONFIG" >"$temp"
   install -m 600 "$temp" "$NODES_CONFIG"; rm -f "$temp"
   validate_nodes_config
-  apply_runtime_config
+  apply_runtime_config "节点已修改：${tag}"
 }
 
 configure_warp_geosites() {
   local choice input category normalized output item old_ifs
   brand "${PROJECT_NAME} · WARP geosite" back
-  subsection "当前分类"
-  key_value "geosite" "${WARP_GEOSITES:-无}"
-  section "分类操作"
+  subsection "当前规则"
+  key_value "geosite 规则" "${WARP_GEOSITES:-无}"
+  section "规则操作"
   menu_item 1 "添加分类"
   menu_item 2 "删除分类"
-  menu_item 0 "返回上级"
+  menu_item 0 "退出脚本"
   ui_line
   read_choice "请选择："; choice="$REPLY"
   case "$choice" in
@@ -2650,7 +3753,7 @@ configure_warp_geosites() {
         WARP_GEOSITES="$output"
         apply_runtime_config
         ;;
-      0) return ;;
+      0) exit 0 ;;
       *) die "无效选项：${choice:-空}（请输入 0、1 或 2）" ;;
   esac
 }
@@ -2658,12 +3761,12 @@ configure_warp_geosites() {
 configure_warp_domains() {
   local choice input domain normalized output item old_ifs
   brand "${PROJECT_NAME} · WARP 域名" back
-  subsection "当前域名"
-  key_value "域名" "${WARP_DOMAINS:-无}"
-  section "域名操作"
+  subsection "当前规则"
+  key_value "域名规则" "${WARP_DOMAINS:-无}"
+  section "规则操作"
   menu_item 1 "添加域名"
   menu_item 2 "删除域名"
-  menu_item 0 "返回上级"
+  menu_item 0 "退出脚本"
   ui_line
   read_choice "请选择："; choice="$REPLY"
   case "$choice" in
@@ -2695,7 +3798,7 @@ configure_warp_domains() {
         WARP_DOMAINS="$output"
         apply_runtime_config
         ;;
-      0) return ;;
+      0) exit 0 ;;
       *) die "无效选项：${choice:-空}（请输入 0、1 或 2）" ;;
   esac
 }
@@ -2705,15 +3808,16 @@ configure_warp() {
   brand "${PROJECT_NAME} · WARP 分流" back
   subsection "当前状态"
   state_value "WARP" "$(warp_status)"
-  key_value "代理端口" "$WARP_PROXY_PORT"
-  key_value "目标域名" "${WARP_DOMAINS:-无}"
-  key_value "geosite" "${WARP_GEOSITES:-无}"
-  subsection "WARP 操作"
-  menu_item 1 "启用配置"
-  menu_item 2 "域名管理"
-  menu_item 3 "geosite 分类"
-  menu_item 4 "停用 WARP"
-  menu_item 0 "返回上级"
+  key_value "SOCKS5" "127.0.0.1:${WARP_PROXY_PORT}"
+  key_value "域名规则" "${WARP_DOMAINS:-无}"
+  key_value "geosite 规则" "${WARP_GEOSITES:-无}"
+  subsection "WARP 开关"
+  menu_item 1 "启用 WARP"
+  menu_item 2 "停用 WARP"
+  section "分流规则"
+  menu_item 3 "域名规则"
+  menu_item 4 "geosite 规则"
+  menu_item 0 "退出脚本"
   ui_line
   read_choice "请选择："; choice="$REPLY"
   case "$choice" in
@@ -2721,20 +3825,23 @@ configure_warp() {
         brand "${PROJECT_NAME} · WARP 配置" default
         subsection "当前配置"
         state_value "WARP" "$(warp_status)"
-        key_value "代理端口" "$WARP_PROXY_PORT"
-        key_value "目标域名" "${WARP_DOMAINS:-无}"
-        key_value "geosite" "${WARP_GEOSITES:-无}"
+        key_value "SOCKS5 端口" "$WARP_PROXY_PORT"
+        key_value "域名规则" "${WARP_DOMAINS:-无}"
+        key_value "geosite 规则" "${WARP_GEOSITES:-无}"
         section "修改配置"
         read_input "WARP 本地 SOCKS5 端口 [${WARP_PROXY_PORT}]：" port
         is_exit_input "$port" && return 0
         port="${port:-$WARP_PROXY_PORT}"
         valid_port "$port" || die "WARP 代理端口无效。"
+        ((10#$port != 10#$ORIGIN_PORT)) || die "WARP 代理端口不能占用 Argo 回源端口 ${ORIGIN_PORT}。"
         ((10#$port != 10#$STATS_API_PORT)) || die "WARP 代理端口不能占用流量统计 API 端口 ${STATS_API_PORT}。"
-        read_input "WARP 目标 [网址或域名，逗号分隔；${WARP_DOMAINS:-无}]：" targets
+        ! awk -F'|' -v port="$port" '$4 == port {found=1} END {exit !found}' "$NODES_CONFIG" ||
+          die "WARP 代理端口不能占用节点监听端口 ${port}。"
+        read_input "域名规则 [逗号分隔；${WARP_DOMAINS:-无}]：" targets
         is_exit_input "$targets" && return 0
         targets="${targets:-$WARP_DOMAINS}"
         targets="$(normalize_warp_domains "$targets")"
-        read_input "geosite 分类 [逗号分隔；${WARP_GEOSITES:-无}]：" geosites
+        read_input "geosite 规则 [逗号分隔；${WARP_GEOSITES:-无}]：" geosites
         is_exit_input "$geosites" && return 0
         geosites="$(normalize_warp_geosites "${geosites:-$WARP_GEOSITES}")"
         [[ -n "$targets$geosites" ]] || die "至少需要一个域名或 geosite 分类。"
@@ -2744,17 +3851,17 @@ configure_warp() {
         configure_warp_proxy
         apply_runtime_config
         ;;
-      2) configure_warp_domains ;;
-      3) configure_warp_geosites ;;
-      4)
-        read_input "确认停用 WARP 分流？[Y/n]：" answer
+      2)
+        read_input "确认停用 WARP 分流？[y/N]：" answer
         is_exit_input "$answer" && return 0
-        is_confirmed "$answer" || { yellow "已取消停用 WARP 分流。"; return 0; }
+        is_confirmed "$answer" || { yellow "已取消修改 · 配置未变更"; return 0; }
         begin_config_change
         WARP_ENABLED=0; WARP_DOMAINS=""; WARP_GEOSITES=""
-        apply_runtime_config
+        apply_runtime_config "WARP 分流已停用"
         ;;
-      0) return ;;
+      3) configure_warp_domains ;;
+      4) configure_warp_geosites ;;
+      0) exit 0 ;;
       *) die "无效选项：${choice:-空}（请输入 0 到 4）" ;;
   esac
 }
@@ -2787,7 +3894,7 @@ install_tcp_brutal_module() {
   section "安装说明"
   menu_hint "来源：apernet/tcp-brutal 官方 DKMS 安装器"
   menu_hint "将安装 DKMS、当前内核头文件并配置开机加载。"
-  read_input "确认安装或更新 TCP Brutal？[Y/n]：" answer
+  read_input "确认安装或更新 TCP Brutal？[y/N]：" answer
   is_exit_input "$answer" && { return_notice; return 0; }
   is_confirmed "$answer" || { yellow "已取消 TCP Brutal 安装。"; return 0; }
 
@@ -2855,18 +3962,19 @@ configure_transport_optimization() {
   local choice value new_up new_down answer
   brand "${PROJECT_NAME} · 传输优化" back
   subsection "当前状态"
-  state_value "多路复用" "$(multiplex_status)"
+  state_value "h2mux" "$(multiplex_status)"
   state_value "TCP Brutal" "$(tcp_brutal_status)"
   key_value "上传带宽" "${BRUTAL_UP_MBPS} Mbps"
   key_value "下载带宽" "${BRUTAL_DOWN_MBPS} Mbps"
-  section "传输操作"
+  section "TCP Brutal"
   menu_item 1 "安装 / 更新 TCP Brutal"
   menu_item 2 "启用 TCP Brutal"
   menu_item 3 "停用 TCP Brutal"
-  menu_item 4 "启用 h2mux"
-  menu_item 5 "停用 h2mux"
-  menu_item 6 "设置 Brutal 带宽"
-  menu_item 0 "返回上级"
+  menu_item 4 "设置 Brutal 带宽"
+  section "h2mux"
+  menu_item 5 "启用 h2mux"
+  menu_item 6 "停用 h2mux"
+  menu_item 0 "退出脚本"
   ui_line
   read_choice "请选择："; choice="$REPLY"
   case "$choice" in
@@ -2883,31 +3991,31 @@ configure_transport_optimization() {
         green "TCP Brutal 已启用；h2mux 与 padding 已同步启用。"
         ;;
       3)
-        read_input "确认停用 TCP Brutal？模块将保留。[Y/n]：" answer
+        read_input "确认停用 TCP Brutal？模块将保留。[y/N]：" answer
         is_exit_input "$answer" && return 0
-        is_confirmed "$answer" || { yellow "已取消停用 TCP Brutal。"; return 0; }
+        is_confirmed "$answer" || { yellow "已取消停用 · TCP Brutal 配置未变更"; return 0; }
         begin_config_change
         TCP_BRUTAL_ENABLED=0
         apply_runtime_config
         green "TCP Brutal 已停用；内核模块仍保留。"
         ;;
-      4)
+      5)
         begin_config_change
         MULTIPLEX_ENABLED=1
         apply_runtime_config
         green "h2mux 与 padding 已启用。"
         ;;
-      5)
-        read_input "确认停用 h2mux？TCP Brutal 也会同时停用。[Y/n]：" answer
+      6)
+        read_input "确认停用 h2mux？TCP Brutal 也会同时停用。[y/N]：" answer
         is_exit_input "$answer" && return 0
-        is_confirmed "$answer" || { yellow "已取消停用 h2mux。"; return 0; }
+        is_confirmed "$answer" || { yellow "已取消停用 · h2mux 与 TCP Brutal 配置未变更"; return 0; }
         begin_config_change
         MULTIPLEX_ENABLED=0
         TCP_BRUTAL_ENABLED=0
         apply_runtime_config
         green "h2mux、padding 与 TCP Brutal 已停用。"
         ;;
-      6)
+      4)
         read_input "上传带宽 Mbps [${BRUTAL_UP_MBPS}]：" value
         is_exit_input "$value" && return 0
         new_up="${value:-$BRUTAL_UP_MBPS}"
@@ -2921,9 +4029,64 @@ configure_transport_optimization() {
         BRUTAL_DOWN_MBPS="$new_down"
         apply_runtime_config
         ;;
-      0) return ;;
-      *) die "无效选项：${choice:-空}（请输入 0 到 6）" ;;
+      0) exit 0 ;;
+      *) die "传输优化选项无效 · 请输入 0 到 6" ;;
   esac
+}
+
+configure_node_egress() {
+  local ipv4_details ipv6_details ipv4_ip ipv6_ip choice selected_family
+  local old_family="${OUTBOUND_IP_FAMILY:-auto}"
+  ipv4_details="$(public_ipv4_details 2>/dev/null || true)"
+  ipv6_details="$(public_ipv6_details 2>/dev/null || true)"
+  [[ -n "$ipv4_details" ]] && IFS='|' read -r ipv4_ip _ _ _ <<<"$ipv4_details"
+  [[ -n "$ipv6_details" ]] && IFS='|' read -r ipv6_ip _ _ _ <<<"$ipv6_details"
+
+  brand "${PROJECT_NAME} · 节点落地 IP" back
+  subsection "公网出口检测"
+  ip_value "VPS IPv4" "${ipv4_ip:-未通过 GeoJS 确认}"
+  ip_value "VPS IPv6" "${ipv6_ip:-None}"
+  if [[ -n "$ipv4_details" && -n "$ipv6_details" ]]; then
+    section "选择 direct 出站地址族"
+    case "$old_family" in
+      auto) selected_family="IPv4（默认）" ;;
+      ipv4) selected_family="IPv4" ;;
+      ipv6) selected_family="IPv6" ;;
+    esac
+    state_value "当前落地 IP" "$selected_family"
+    menu_item 1 "IPv4 直连出站"
+    menu_item 2 "IPv6 直连出站"
+    menu_item 0 "退出脚本"
+    ui_line
+    read_choice "请选择节点落地 IP："; choice="$REPLY"
+    case "$choice" in
+      1) selected_family=ipv4 ;;
+      2) selected_family=ipv6 ;;
+      0) exit 0 ;;
+      *) die "无效选项（请输入 0、1 或 2）" ;;
+    esac
+    if [[ "$old_family" == "$selected_family" ]]; then
+      yellow "节点落地 IP 未变更 · 当前为 ${selected_family^^} 直连出站"
+      return 0
+    fi
+  elif [[ -n "$ipv4_details" ]]; then
+    selected_family=ipv4
+    state_value "可用落地 IP" "仅检测到 IPv4 · 自动使用 IPv4"
+    [[ "$old_family" == ipv6 ]] && yellow "IPv6 出口不可用 · 已改用 IPv4 直连"
+  elif [[ -n "$ipv6_details" ]]; then
+    selected_family=ipv6
+    state_value "可用落地 IP" "仅检测到 IPv6 · 自动使用 IPv6"
+    [[ "$old_family" == ipv4 ]] && yellow "IPv4 出口不可用 · 已改用 IPv6 直连"
+  else
+    state_value "公网出口" "GeoJS 查询失败 · 无法确认 IPv4/IPv6"
+    menu_hint "探测未成功，配置未变更。"
+    return 0
+  fi
+
+  [[ "$old_family" == "$selected_family" ]] && return 0
+  begin_config_change
+  OUTBOUND_IP_FAMILY="$selected_family"
+  apply_runtime_config "节点 direct 出站已切换为 ${selected_family^^}"
 }
 
 
@@ -2933,45 +4096,48 @@ manage_config() {
   load_env
   [[ -f "$ENV_FILE" ]] || die "${PROJECT_NAME} 尚未安装。"
   ensure_nodes_config
-  brand "${PROJECT_NAME} · 参数配置" back
-  subsection "Argo 配置"
+  brand "${PROJECT_NAME} · 配置中心" back
+  subsection "Argo Tunnel"
   menu_item 1 "Token 与域名"
   menu_item 2 "优选入口"
   menu_item 3 "回源端口"
   menu_item 4 "全局 UUID"
   section "节点管理"
-  menu_item 5 "查看节点"
+  menu_item 5 "节点列表"
   menu_item 6 "添加节点"
   menu_item 7 "修改节点"
   menu_item 8 "删除节点"
-  section "路由与传输"
+  section "路由分流"
   menu_item 9 "WARP 分流"
+  section "传输优化"
   menu_item 10 "h2mux / TCP Brutal"
   section "配置维护"
-  menu_item 11 "导入配置文件"
-  menu_item 0 "返回上级"
+  menu_item 11 "配置导入"
+  section "网络出站"
+  menu_item 12 "节点落地 IP"
+  menu_item 0 "退出脚本"
   ui_line
   read_choice "请选择："; choice="$REPLY"
   case "$choice" in
       1)
-        brand "${PROJECT_NAME} · Token / Argo 域名" default
+        brand "${PROJECT_NAME} · Token / 域名" default
         subsection "当前配置"
         key_value "Argo 域名" "$ARGO_DOMAIN"
-        state_value "Token 状态" "$([[ -n "$ARGO_TOKEN" ]] && printf '已配置' || printf '未配置')"
+        state_value "Token 状态" "$([[ -n "$ARGO_TOKEN" ]] && ui_printf '已配置' || ui_printf '未配置')"
         section "修改配置"
         begin_config_change
-        read_input "Argo Token [$([[ -n "$ARGO_TOKEN" ]] && printf '已配置' || printf '必填')]：" value
+        read_input "Argo Token [$([[ -n "$ARGO_TOKEN" ]] && ui_printf '已配置' || ui_printf '必填')]：" value
         is_exit_input "$value" && { cancel_config_change; return 0; }
         ARGO_TOKEN="${value:-$ARGO_TOKEN}"
         read_input "Argo 域名 [${ARGO_DOMAIN}]：" value
         is_exit_input "$value" && { cancel_config_change; return 0; }
         ARGO_DOMAIN="${value:-$ARGO_DOMAIN}"
-        valid_argo_token "$ARGO_TOKEN" && [[ "$ARGO_DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] ||
-          die "Token 或域名无效。"
+        valid_argo_token "$ARGO_TOKEN" || die "Argo Token 无效 · Token 格式检查未通过"
+        valid_domain "$ARGO_DOMAIN" || die "Argo 域名无效 · 请输入有效域名"
         apply_runtime_config
         ;;
       2)
-        brand "${PROJECT_NAME} · Cloudflare 优选入口" default
+        brand "${PROJECT_NAME} · 优选入口" default
         subsection "当前配置"
         endpoint_value "当前入口" "$SERVER" "$SERVER_PORT"
         section "修改配置"
@@ -2992,7 +4158,7 @@ manage_config() {
         read_input "全局 UUID [${UUID}]：" value
         is_exit_input "$value" && { cancel_config_change; return 0; }
         value="${value:-$UUID}"
-        valid_uuid "$value" || die "UUID 格式错误。"
+        valid_uuid "$value" || die "UUID 无效 · 请输入标准 8-4-4-4-12 UUID"
         UUID="$value"
         apply_runtime_config
         ;;
@@ -3008,8 +4174,9 @@ manage_config() {
         [[ -n "$file" ]] || die "配置文件路径不能为空。"
         import_configuration "$file"
         ;;
-      0) return ;;
-      *) die "无效选项：${choice:-空}（请输入 0 到 11）" ;;
+      12) configure_node_egress ;;
+      0) exit 0 ;;
+      *) die "无效选项：${choice:-空}（请输入 0 到 12）" ;;
   esac
 }
 
@@ -3161,19 +4328,19 @@ backup_restore_menu() {
   local choice
   require_root
   brand "${PROJECT_NAME} · 备份恢复" back
-  subsection "节点配置"
+  subsection "当前配置"
   key_value "节点配置" "$NODES_CONFIG"
   key_value "默认目录" "$BACKUP_DIR"
-  subsection "备份恢复"
-  menu_item 1 "节点备份"
-  menu_item 2 "节点恢复"
-  menu_item 0 "返回上级"
+  subsection "备份操作"
+  menu_item 1 "创建备份"
+  menu_item 2 "恢复配置"
+  menu_item 0 "退出脚本"
   ui_line
   read_choice "请选择："; choice="$REPLY"
   case "$choice" in
     1) backup_project ;;
     2) restore_project ;;
-    0) return ;;
+    0) exit 0 ;;
     *) die "无效选项：${choice:-空}（请输入 0、1 或 2）" ;;
   esac
 }
@@ -3199,95 +4366,106 @@ filter_journal_noise() {
 }
 
 doctor() {
-  local failed=0 token_in_unit=0 warp_target system_memory directory mode log_errors=0 warnings=0
-  local ip_details ip country asn isp
+  local failed=0 error_count=0 token_in_unit=0 warp_target system_memory directory mode log_errors=0 warnings=0
+  local ipv4_details ipv6_details ip country asn isp ipv6_ip ipv6_country
   require_root
   load_env
   ensure_nodes_config
   system_memory="$(free -m | awk '/^Mem:/{printf "%s/%s MiB (%.0f%%)",$3,$2,$3*100/$2}')"
-  ip_details="$(public_ipv4_details)"
-  IFS='|' read -r ip country asn isp <<<"$ip_details"
+  ipv4_details="$(public_ipv4_details 2>/dev/null || true)"
+  ipv6_details="$(public_ipv6_details 2>/dev/null || true)"
   brand "${PROJECT_NAME} · 运行诊断"
-  subsection "系统与组件状态"
-  ip_value "VPS IPv4" "$ip · $country · $asn · $isp"
-  key_value "脚本版本" "v${VERSION}"
-  key_value "组件版本" "$(component_versions)"
+  subsection "状态报告"
+  if [[ -n "$ipv4_details" ]]; then
+    IFS='|' read -r ip country asn isp <<<"$ipv4_details"
+    ip_value "VPS IPv4" "$ip · $country · $asn · $isp"
+  else
+    ip_value "VPS IPv4" "GeoJS 查询失败 · 未确认出口"
+  fi
+  if [[ -n "$ipv6_details" ]]; then
+    IFS='|' read -r ipv6_ip ipv6_country _ _ <<<"$ipv6_details"
+    ip_value "VPS IPv6" "$ipv6_ip · $ipv6_country"
+  else
+    ip_value "VPS IPv6" "None"
+  fi
+  version_bar
   key_value "系统内存" "${system_memory:-未知}"
   key_value "运行内存" "$(runtime_memory_usage)"
   endpoint_value "优选入口" "${SERVER:-未知}" "${SERVER_PORT:-未知}"
   key_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
-  state_value "多路复用" "$(multiplex_status)"
-  state_value "TCP Brutal" "$(tcp_brutal_status)"
   section "配置检查"
   if validate_nodes_config && valid_uuid "$UUID" && valid_argo_token "$ARGO_TOKEN" &&
     [[ -n "$ARGO_DOMAIN" ]]; then
-    green "AGS 配置已通过。"
+    state_value "AGS 配置" "已通过"
   else
-    red "AGS 配置无效。"
-    failed=1
+    state_value "AGS 配置" "失败 · 字段或节点无效"
+    failed=1; ((error_count+=1))
   fi
-  if core_check >/dev/null 2>&1; then green "$(core_label) 配置已通过。"; else red "$(core_label) 配置无效。"; failed=1; fi
-  if nginx -t >/dev/null 2>&1; then green "Nginx 配置已通过。"; else red "Nginx 配置无效。"; failed=1; fi
+  if core_check >/dev/null 2>&1; then state_value "$(core_label) 配置" "已通过"; else state_value "$(core_label) 配置" "失败"; failed=1; ((error_count+=1)); fi
+  if nginx -t >/dev/null 2>&1; then state_value "Nginx 配置" "已通过"; else state_value "Nginx 配置" "失败"; failed=1; ((error_count+=1)); fi
   detect_tcp_brutal
   if [[ "$TCP_BRUTAL_ENABLED" != "1" ]]; then
-    yellow "TCP Brutal 已由配置停用；内核模块不受影响。"
+    state_value "TCP Brutal" "未启用 · 配置关闭"
   elif [[ "$MULTIPLEX_ENABLED" != "1" ]]; then
-    yellow "TCP Brutal 已停用：h2mux 未启用。"
+    state_value "TCP Brutal" "未启用 · h2mux 已关闭"
   elif [[ "$IS_BRUTAL" == "true" ]]; then
-    green "TCP Brutal 内核模块已加载。"
+    state_value "TCP Brutal" "已通过 · 模块已加载"
   else
-    yellow "TCP Brutal 待启用：服务器缺少 brutal 内核模块。"
-    warnings=1
+    state_value "TCP Brutal" "不可用 · 缺少 brutal 内核模块"
+    ((warnings+=1))
   fi
+  state_value "h2mux" "$(multiplex_status)"
   for directory in "$CONFIG_DIR" "$DATA_DIR" "$SUBSCRIPTION_DIR"; do
     mode="$(stat -c '%a' "$directory" 2>/dev/null || true)"
     case "$directory:$mode" in
-      "$CONFIG_DIR:700") green "config 目录权限正确（700）。" ;;
-      "$DATA_DIR:700") green "data 目录权限正确（700）。" ;;
-      "$SUBSCRIPTION_DIR:755") green "subscriptions 目录权限正确（755）。" ;;
-      *) red "$(basename "$directory") 目录权限异常（当前 ${mode:-不存在}）。"; failed=1 ;;
+      "$CONFIG_DIR:700") state_value "config 权限" "已通过 · 700" ;;
+      "$DATA_DIR:700") state_value "data 权限" "已通过 · 700" ;;
+      "$SUBSCRIPTION_DIR:755") state_value "subscriptions 权限" "已通过 · 755" ;;
+      *) state_value "$(basename "$directory") 权限" "失败 · 当前 ${mode:-不存在}"; failed=1; ((error_count+=1)) ;;
     esac
   done
   [[ -f "/etc/systemd/system/${ARGO_SERVICE}.service" ]] &&
     grep -Fq -- "--token ${ARGO_TOKEN}" "/etc/systemd/system/${ARGO_SERVICE}.service" && token_in_unit=1
-  ((token_in_unit)) && green "Argo Token 已配置且服务文件一致。" || { red "Argo Token 缺失或服务文件未同步。"; failed=1; }
-  section "服务检查"
-  if systemctl is-active --quiet nginx; then green "Nginx 运行中。"; else red "Nginx 未运行。"; failed=1; fi
-  if systemctl is-active --quiet "$CORE_SERVICE"; then green "$(core_label) Core 运行中。"; else red "$(core_label) Core 未运行。"; failed=1; fi
-  if systemctl is-active --quiet "$ARGO_SERVICE"; then green "Argo Tunnel 运行中。"; else red "Argo Tunnel 未运行。"; failed=1; fi
+  if ((token_in_unit)); then state_value "Argo Token" "已通过 · 服务文件一致"; else state_value "Argo Token" "失败 · 服务文件未同步"; failed=1; ((error_count+=1)); fi
+  section "服务状态"
+  if systemctl is-active --quiet nginx; then state_value "Nginx" "已启用 · 运行中"; else state_value "Nginx" "未运行"; failed=1; ((error_count+=1)); fi
+  if systemctl is-active --quiet "$CORE_SERVICE"; then state_value "$(core_label) Core" "已启用 · 运行中"; else state_value "$(core_label) Core" "未运行"; failed=1; ((error_count+=1)); fi
+  if systemctl is-active --quiet "$ARGO_SERVICE"; then state_value "Argo Tunnel" "已启用 · 运行中"; else state_value "Argo Tunnel" "未运行"; failed=1; ((error_count+=1)); fi
   if [[ "$WARP_ENABLED" == "1" ]]; then
     if systemctl is-active --quiet warp-svc &&
       ss -lntH "sport = :${WARP_PROXY_PORT}" | grep -q .; then
-      printf '%s✓ WARP：本地代理运行于 %s127.0.0.1:%s%s\n' \
-        "$C_BRIGHT_GREEN" "$C_BRIGHT_WHITE" "$WARP_PROXY_PORT" "$C_RESET"
+      state_value "WARP 代理" "已通过 · 127.0.0.1:${WARP_PROXY_PORT}"
     else
-      red "WARP：服务或本地代理端口异常"
-      failed=1
+      state_value "WARP 代理" "失败 · 服务或端口异常"
+      failed=1; ((error_count+=1))
     fi
     warp_target="${WARP_DOMAINS%%,*}"
-    if curl -fsS --socks5-hostname "127.0.0.1:${WARP_PROXY_PORT}" --connect-timeout 5 \
+    if [[ -z "$warp_target" ]]; then
+      state_value "WARP 规则" "已配置 · geosite ${WARP_GEOSITES}"
+    elif curl -fsS --socks5-hostname "127.0.0.1:${WARP_PROXY_PORT}" --connect-timeout 5 \
       --max-time 10 -o /dev/null "https://${warp_target}"; then
-      green "WARP 目标可访问：https://${warp_target}"
+      state_value "WARP 目标" "已通过 · ${warp_target}"
     else
-      red "WARP 目标无法通过本地代理访问：https://${warp_target}"
-      failed=1
+      state_value "WARP 目标" "失败 · ${warp_target} 不可达"
+      failed=1; ((error_count+=1))
     fi
   else
     state_value "WARP" "未启用 · 可选功能"
   fi
-  health_check ws || failed=1
+  if ! health_check ws; then failed=1; ((error_count+=1)); fi
+  warnings=$((warnings + WS_HEALTH_WARNINGS))
   journalctl -u "$CORE_SERVICE" -u "$ARGO_SERVICE" -n 30 --no-pager -o short-iso 2>/dev/null |
     grep -qE ' ERROR | ERROR\[' && log_errors=1 || true
   section "诊断结果"
   if ((failed)); then
-    red "诊断异常 · 存在错误 · ${warnings} 警告"
+    red "诊断完成 · ${error_count} 个错误 · ${warnings} 个提醒"
   elif ((warnings)); then
-    yellow "诊断提示 · 0 错误 · ${warnings} 警告"
+    yellow "诊断完成 · 0 个错误 · ${warnings} 个提醒"
   else
-    green "诊断通过 · 0 错误 · 0 警告"
+    green "诊断完成 · 0 个错误 · 0 个提醒"
   fi
   if ((log_errors)); then
-    section "错误日志"
+    section "近期错误日志"
     journalctl -u "$CORE_SERVICE" -u "$ARGO_SERVICE" -n 30 --no-pager -o short-iso 2>/dev/null |
       filter_journal_noise |
       grep -E ' ERROR | ERROR\[' |
@@ -3307,12 +4485,12 @@ show_nodes() {
   subsection "订阅链接"
   link_value "订阅面板" "https://${ARGO_DOMAIN}/${UUID}/"
   link_value "自适应订阅" "$auto_url"
-  link_value "原始节点订阅" "https://${ARGO_DOMAIN}/${UUID}/raw"
+  link_value "原始订阅" "https://${ARGO_DOMAIN}/${UUID}/raw"
   link_value "Base64 订阅" "https://${ARGO_DOMAIN}/${UUID}/base64"
   link_value "Clash/Mihomo 订阅" "https://${ARGO_DOMAIN}/${UUID}/clash"
   link_value "Sing-box 订阅" "https://${ARGO_DOMAIN}/${UUID}/sing-box"
   if command -v qrencode >/dev/null 2>&1; then
-    section "自动适配 QR"
+    section "自适应 QR"
     qrencode -t ANSIUTF8 "$auto_url"
   fi
   section "原始节点"
@@ -3337,36 +4515,44 @@ toggle_service() {
   subsection "服务状态"
   state_value "$label" "$(service_status "$service")"
   if systemctl is-active --quiet "$service"; then
-    info "正在停止 ${label}..."
+    info "正在停止 ${label}"
     systemctl disable --now "$service"
-    yellow "${label} 已停止。"
+    green "${label} 已停止"
   else
-    info "正在启动 ${label}..."
+    info "正在启动 ${label}"
     systemctl enable --now "$service"
-    green "${label} 已启动。"
+    green "${label} 已启动"
   fi
 }
 
 manage_services() {
-  local choice
+  local choice traffic_status
   require_root
   load_env
-  brand "${PROJECT_NAME} · 服务启停" back
-  subsection "服务状态"
+  brand "${PROJECT_NAME} · 服务管理" back
+  subsection "项目服务"
   state_value "Argo Tunnel" "$(service_status "$ARGO_SERVICE")"
-  state_value "代理核心" "$(service_status "$CORE_SERVICE") · $(core_label)"
+  state_value "Sing-box Core" "$(service_status "$CORE_SERVICE")"
+  if systemctl list-unit-files "${TRAFFIC_TIMER}.timer" --no-legend 2>/dev/null | grep -q "^${TRAFFIC_TIMER}.timer"; then
+    if systemctl is-active --quiet "${TRAFFIC_TIMER}.timer"; then traffic_status="已启用 · 每分钟"; else traffic_status="未启用 · 定时器已停止"; fi
+  else
+    traffic_status="未安装"
+  fi
+  state_value "流量采集" "$traffic_status"
+  section "基础服务"
+  state_value "Nginx" "$(service_status nginx)"
   section "服务操作"
-  menu_item 1 "Argo 启停"
-  menu_item 2 "核心启停"
-  menu_item 3 "重启服务"
-  menu_item 0 "返回上级"
+  menu_item 1 "Argo Tunnel 启停"
+  menu_item 2 "Sing-box Core 启停"
+  menu_item 3 "重启核心服务"
+  menu_item 0 "退出脚本"
   ui_line
   read_choice "请选择："; choice="$REPLY"
   case "$choice" in
     1) toggle_service "$ARGO_SERVICE" "Argo Tunnel" ;;
     2) toggle_service "$CORE_SERVICE" "$(core_label) Core" ;;
     3) restart_services ;;
-    0) return ;;
+    0) exit 0 ;;
     *) die "无效选项：${choice:-空}（请输入 0、1、2 或 3）" ;;
   esac
 }
@@ -3381,7 +4567,7 @@ sync_versions() {
   ensure_nodes_config
   validate_nodes_config
   [[ -f "/etc/systemd/system/${ARGO_SERVICE}.service" && -f "/etc/systemd/system/${CORE_SERVICE}.service" ]] ||
-    die "Argo 或代理核心服务文件不存在，请先执行安装。"
+    die "Argo Tunnel 或 Sing-box Core 服务文件不存在 · 请先执行安装"
   brand "${PROJECT_NAME} · 组件更新" back
   detect_arch
   old_argo="$(local_cloudflared_version || true)"
@@ -3394,7 +4580,7 @@ sync_versions() {
   key_value "当前版本" "${old_argo:-未安装}"
   key_value "目标版本" "${new_argo:-未知}"
   if [[ "$old_argo" != "$new_argo" ]]; then
-    read_input "确认更新 cloudflared？[Y/n]：" answer
+    read_input "确认更新 cloudflared？[y/N]：" answer
     is_exit_input "$answer" && { return_notice; return 0; }
     is_confirmed "$answer" && update_argo=1
   else
@@ -3404,7 +4590,7 @@ sync_versions() {
   key_value "当前版本" "${old_core:-未安装}"
   key_value "目标版本" "${new_core:-未知}"
   if [[ "$old_core" != "$new_core" ]]; then
-    read_input "确认更新 $(core_label)？[Y/n]：" answer
+    read_input "确认更新 $(core_label)？[y/N]：" answer
     is_exit_input "$answer" && { return_notice; return 0; }
     is_confirmed "$answer" && update_core=1
   else
@@ -3475,14 +4661,16 @@ manage_bbr() {
   local answer
   require_root
   command -v curl >/dev/null 2>&1 || die "缺少 curl，无法启动 BBR/内核管理脚本。"
-  brand "${PROJECT_NAME} · BBR / DD" default
+  brand "${PROJECT_NAME} · 系统工具" default
+  section "第三方工具"
+  key_value "工具" "Linux-NetSpeed"
   section "风险提示"
-  yellow "第三方脚本：Linux-NetSpeed"
-  menu_hint "可能修改 Linux 内核、BBR 与系统磁盘。"
-  read_input "确认启动第三方脚本？[Y/n]：" answer
+  yellow "第三方脚本不属于 ${PROJECT_NAME}"
+  yellow "可能修改 Linux 内核、网络参数或系统磁盘"
+  read_input "确认启动第三方系统脚本？[y/N]：" answer
   is_exit_input "$answer" && { return_notice; return 0; }
-  is_confirmed "$answer" || { yellow "已取消启动第三方脚本。"; return 0; }
-  info "正在启动第三方脚本..."
+  is_confirmed "$answer" || { yellow "已取消启动 · 系统未变更"; return 0; }
+  info "启动第三方系统脚本"
   bash <(curl -fsSL --retry 3 --connect-timeout 10 \
     https://raw.githubusercontent.com/ylx2016/Linux-NetSpeed/master/tcp.sh)
 }
@@ -3490,13 +4678,13 @@ manage_bbr() {
 restart_services() {
   require_root
   load_env
-  brand "${PROJECT_NAME} · 服务重启"
+  brand "${PROJECT_NAME} · 核心服务重启"
   subsection "重启范围"
   key_value "重启服务" "Nginx · $(core_label) · Argo Tunnel"
-  info "正在重启全部服务..."
+  info "正在重启核心服务"
   systemctl daemon-reload
   systemctl restart nginx "$CORE_SERVICE" "$ARGO_SERVICE"
-  green "全部服务已重启。"
+  green "核心服务已重启"
 }
 
 purge_installed_packages() {
@@ -3516,18 +4704,22 @@ uninstall_project() {
   resolved_work_dir="$(readlink -f "$WORK_DIR" 2>/dev/null || true)"
   [[ "$resolved_work_dir" == "$WORK_DIR" ]] ||
     die "项目目录解析结果异常，拒绝递归删除：${WORK_DIR}"
-  brand "${PROJECT_NAME} · 项目卸载" default
-  section "将移除"
-  menu_hint "${PROJECT_NAME} systemd 服务"
-  menu_hint "Sing-box / cloudflared"
-  menu_hint "${WORK_DIR} 配置与订阅"
-  menu_hint "${COMMAND_NAME} / ${COMMAND_NAME_UPPER} 命令入口"
-  read_input "确认卸载 ${PROJECT_NAME}？[Y/n]：" answer
+  brand "${PROJECT_NAME} · 项目卸载" cancel
+  section "将删除"
+  menu_hint "${PROJECT_NAME} 服务"
+  menu_hint "Sing-box / cloudflared 项目文件"
+  menu_hint "Nginx 项目配置"
+  menu_hint "项目配置与统计数据"
+  section "默认保留"
+  menu_hint "系统 Nginx"
+  menu_hint "Cloudflare WARP"
+  menu_hint "第三方 BBR / 内核配置"
+  read_input "输入 REMOVE 确认卸载：" answer
   is_exit_input "$answer" && { return_notice; return 0; }
-  is_confirmed "$answer" || { yellow "已取消卸载。"; return 0; }
+  [[ "$answer" == "REMOVE" ]] || { yellow "已取消卸载 · 项目未变更"; return 0; }
   if command -v nginx >/dev/null 2>&1 ||
     dpkg-query -W -f='${Status}' nginx 2>/dev/null | grep -q 'install ok installed'; then
-    read_input "确认同时卸载 Nginx？可能被其他网站使用 [Y/n]：" answer
+    read_input "确认同时卸载 Nginx？可能被其他网站使用 [y/N]：" answer
     is_exit_input "$answer" && { return_notice; return 0; }
     is_confirmed "$answer" && remove_nginx=1
   fi
@@ -3535,11 +4727,11 @@ uninstall_project() {
     dpkg-query -W -f='${Status}' cloudflare-warp 2>/dev/null | grep -q 'install ok installed' ||
     [[ -e /etc/apt/sources.list.d/cloudflare-client.list ||
       -e /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg ]]; then
-    read_input "确认同时卸载 Cloudflare WARP 客户端、注册与软件源？[Y/n]：" answer
+    read_input "确认同时卸载 Cloudflare WARP 客户端、注册与软件源？[y/N]：" answer
     is_exit_input "$answer" && { return_notice; return 0; }
     is_confirmed "$answer" && remove_warp=1
   fi
-  read_input "确认同时卸载 curl 等通用工具？可能被其他程序使用 [Y/n]：" answer
+  read_input "确认同时卸载 curl 等通用工具？可能被其他程序使用 [y/N]：" answer
   is_exit_input "$answer" && { return_notice; return 0; }
   is_confirmed "$answer" && remove_tools=1
 
@@ -3584,8 +4776,54 @@ uninstall_project() {
       yellow "部分通用工具卸载失败，请手工检查。"
   fi
   systemctl daemon-reload
-  green "${PROJECT_NAME} 已彻底卸载；本次脚本执行结束。"
+  green "${PROJECT_NAME} 已卸载"
   exit 0
+}
+
+load_language() {
+  local stored
+  if [[ -r "${CONFIG_DIR}/language" ]]; then
+    IFS= read -r stored <"${CONFIG_DIR}/language" || true
+    case "${stored:-}" in en|zh) UI_LANGUAGE="$stored" ;; esac
+  fi
+  case "$UI_LANGUAGE" in en|zh) ;; *) UI_LANGUAGE=en ;; esac
+}
+configure_language() {
+  local choice temp
+  require_root
+  brand "${PROJECT_NAME} · 语言设置" default
+  menu_item 1 "English (default)"
+  menu_item 2 "简体中文"
+  menu_item 0 "退出脚本"
+  read_choice "请选择："; choice="$REPLY"
+  case "$choice" in 1) UI_LANGUAGE=en ;; 2) UI_LANGUAGE=zh ;; 0) exit 0 ;; *) die "无效选项" ;; esac
+  install -d -m 700 "$CONFIG_DIR"
+  temp="$(mktemp "${CONFIG_DIR}/language.XXXXXX")"
+  printf '%s\n' "$UI_LANGUAGE" >"$temp"
+  chmod 600 "$temp"; mv -f "$temp" "${CONFIG_DIR}/language"
+  green "语言设置已保存"
+}
+record_script_run() {
+  local response mode="${1:-hit}" value_pattern
+  ((SCRIPT_RUNS_REQUESTED == 0)) || return 0
+  SCRIPT_RUNS_REQUESTED=1
+  command -v curl >/dev/null 2>&1 || return 0
+  # /hit 有副作用：限时单次请求，不重试，避免响应丢失后重复计数。
+  if response="$(curl -fsS --connect-timeout 2 --max-time 3 \
+    "${SCRIPT_STATS_URL}/${mode}/${SCRIPT_STATS_NAMESPACE}/${SCRIPT_STATS_KEY}" 2>/dev/null)"; then
+    value_pattern='^[[:space:]]*\{[[:space:]]*"value"[[:space:]]*:[[:space:]]*(0|[1-9][0-9]*)[[:space:]]*\}[[:space:]]*$'
+    [[ "$response" =~ $value_pattern ]] && SCRIPT_RUNS_TOTAL="${BASH_REMATCH[1]}"
+  fi
+  return 0
+}
+show_script_runs() {
+  ((SCRIPT_RUNS_REQUESTED == 1 && SCRIPT_RUNS_SHOWN == 0)) || return 0
+  SCRIPT_RUNS_SHOWN=1
+  if [[ -n "$SCRIPT_RUNS_TOTAL" ]]; then
+    key_value "脚本统计" "执行 ${SCRIPT_RUNS_TOTAL} 次"
+  else
+    key_value "脚本统计" "暂不可用"
+  fi
 }
 
 menu() {
@@ -3595,40 +4833,52 @@ menu() {
   ui_line
   brand "${PROJECT_NAME} · 控制中心" main
   UI_TIGHT_SECTION=1
-  section "运行管理"
+  section "常用操作"
   menu_item 1 "节点订阅" "${COMMAND_NAME} -n"
-  menu_item 2 "服务启停" "${COMMAND_NAME} -a"
-  menu_item 3 "参数配置" "${COMMAND_NAME} -c"
-  section "状态观测"
+  menu_item 2 "配置中心" "${COMMAND_NAME} -c"
+  menu_item 3 "服务管理" "${COMMAND_NAME} -a"
+  section "运行观测"
   menu_item 4 "流量统计" "${COMMAND_NAME} -t"
   menu_item 5 "运行诊断" "${COMMAND_NAME} -x"
   section "系统维护"
-  menu_item 6 "项目安装" "${COMMAND_NAME} -i"
-  menu_item 7 "组件更新" "${COMMAND_NAME} -v"
-  menu_item 8 "备份恢复" "${COMMAND_NAME} -k"
-  menu_item 9 "BBR / DD" "${COMMAND_NAME} -b"
+  menu_item 6 "组件更新" "${COMMAND_NAME} -v"
+  menu_item 7 "备份恢复" "${COMMAND_NAME} -k"
+  menu_item 8 "系统工具" "${COMMAND_NAME} -b"
+  section "项目管理"
+  menu_item 9 "项目安装" "${COMMAND_NAME} -i"
   menu_item 10 "项目卸载" "${COMMAND_NAME} -u"
+  menu_item 11 "语言设置" "${COMMAND_NAME} -l"
   menu_item 0 "退出脚本"
   ui_line
   read_choice "请选择："; choice="$REPLY"
   case "$choice" in
     1) show_nodes ;;
-    2) manage_services ;;
-    3) manage_config ;;
+    2) manage_config ;;
+    3) manage_services ;;
     4) traffic_statistics_menu ;;
     5) doctor ;;
-    6) install_menu ;;
-    7) sync_versions ;;
-    8) backup_restore_menu ;;
-    9) manage_bbr ;;
+    6) sync_versions ;;
+    7) backup_restore_menu ;;
+    8) manage_bbr ;;
+    9) install_menu ;;
     10) uninstall_project ;;
+    11) configure_language ;;
     0) exit 0 ;;
-    *) die "无效选项：${choice:-空}（请输入 0 到 10）" ;;
+    *) die "无效选项：${choice:-空}（请输入 0 到 11）" ;;
   esac
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  load_language
   case "${1:-}" in
+    --traffic-collect) ;;
+    -i) if [[ "${2:-}" == --github-refreshed ]]; then record_script_run get; else record_script_run; fi ;;
+    ""|-l|-n|-a|-c|-t|-x|-f|-v|-k|-b|-u) record_script_run ;;
+    *) ;;
+  esac
+  trap 'cleanup_config_snapshot; printf "\n"' EXIT
+  case "${1:-}" in
+    -l) configure_language ;;
     -n) show_nodes ;;
     -a) manage_services ;;
     -c) manage_config ;;
@@ -3658,6 +4908,6 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     -u) uninstall_project ;;
     --traffic-collect) traffic_collect ;;
     "") menu ;;
-    *) die "未知参数。可用参数：-n、-a、-c、-t、-x、-i、-f、-v、-k、-b、-u。" ;;
+    *) die "未知参数。可用参数：-n、-a、-c、-t、-x、-i、-f、-v、-k、-b、-u、-l。" ;;
   esac
 fi

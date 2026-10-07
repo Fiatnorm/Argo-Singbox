@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+export UI_LANGUAGE=zh
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=../argo-singbox.sh
@@ -40,6 +41,7 @@ BRUTAL_UP_MBPS=800
 BRUTAL_DOWN_MBPS=1200
 MULTIPLEX_ENABLED=1
 TCP_BRUTAL_ENABLED=1
+OUTBOUND_IP_FAMILY=ipv4
 
 ensure_project_layout() {
   mkdir -p "$CONFIG_DIR" "$DATA_DIR" "$SUBSCRIPTION_DIR" "$RULE_SET_DIR"
@@ -66,6 +68,30 @@ mkdir -p "$BIN_DIR"
 chmod 755 "${BIN_DIR}/sing-box"
 ensure_nodes_config
 validate_nodes_config
+
+cp "$NODES_CONFIG" "${NODES_CONFIG}.valid"
+printf 'origin-conflict|vless|/origin-conflict|%s|\n' "$ORIGIN_PORT" >"$NODES_CONFIG"
+if origin_conflict_error="$(validate_nodes_config 2>&1)"; then
+  printf 'node port matching the Argo origin unexpectedly accepted\n' >&2
+  exit 1
+fi
+grep -Fq "节点端口与 Argo 回源端口冲突：${ORIGIN_PORT}" <<<"$origin_conflict_error"
+mv "${NODES_CONFIG}.valid" "$NODES_CONFIG"
+
+WARP_ENABLED=1
+WARP_PROXY_PORT=3011
+WARP_DOMAINS="openai.com"
+if warp_conflict_error="$(validate_environment 2>&1)"; then
+  printf 'WARP port matching a node listener unexpectedly accepted\n' >&2
+  exit 1
+fi
+grep -Fq 'WARP 代理端口不能与节点监听端口相同：3011' <<<"$warp_conflict_error"
+WARP_PROXY_PORT=3014
+[[ "$(next_node_port)" == "3015" ]]
+WARP_ENABLED=0
+WARP_PROXY_PORT=40000
+WARP_DOMAINS=""
+
 write_sing_box_config
 generate_nodes
 
@@ -80,6 +106,7 @@ if (config.inbounds.some(x => x.multiplex?.enabled !== true || x.multiplex?.padd
 if (config.inbounds.some(x => x.multiplex?.brutal?.enabled !== true || x.multiplex?.brutal?.up_mbps !== 800 || x.multiplex?.brutal?.down_mbps !== 1200)) throw new Error('server brutal missing');
 if (config.experimental?.clash_api?.external_controller !== '127.0.0.1:18085') throw new Error('missing clash api');
 if (Object.keys(config.experimental).join(',') !== 'clash_api') throw new Error('unexpected experimental api');
+if (config.outbounds[0]?.inet4_bind_address !== '0.0.0.0' || config.outbounds[0]?.domain_resolver.strategy !== 'ipv4_only') throw new Error('direct outbound IPv4 selection missing');
 NODE
 else
   jq -e '
@@ -89,9 +116,25 @@ else
     (all(.inbounds[]; .multiplex.enabled == true and .multiplex.padding == true)) and
     (all(.inbounds[]; .multiplex.brutal.enabled == true and .multiplex.brutal.up_mbps == 800 and .multiplex.brutal.down_mbps == 1200)) and
     (.experimental.clash_api.external_controller == "127.0.0.1:18085") and
+    (.outbounds[0].inet4_bind_address == "0.0.0.0" and .outbounds[0].domain_resolver.strategy == "ipv4_only") and
     ([.experimental | keys[]] == ["clash_api"])
   ' "$SING_BOX_CONFIG" >/dev/null
 fi
+
+OUTBOUND_IP_FAMILY=ipv6
+IPV6_CONFIG="${CONFIG_DIR}/sing-box-ipv6-egress.json"
+write_sing_box_config "$IPV6_CONFIG" "${BIN_DIR}/sing-box"
+if command -v node >/dev/null 2>&1; then
+node - "$IPV6_CONFIG" <<'NODE'
+const fs = require('fs');
+const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+if (config.outbounds[0]?.inet6_bind_address !== '::' || config.outbounds[0]?.domain_resolver.strategy !== 'ipv6_only') throw new Error('direct outbound IPv6 selection missing');
+if (Object.hasOwn(config.outbounds[0], 'inet4_bind_address')) throw new Error('IPv6 outbound retained IPv4 bind');
+NODE
+else
+  jq -e '.outbounds[0].inet6_bind_address == "::" and .outbounds[0].domain_resolver.strategy == "ipv6_only" and (.outbounds[0] | has("inet4_bind_address") | not)' "$IPV6_CONFIG" >/dev/null
+fi
+OUTBOUND_IP_FAMILY=ipv4
 
 [[ "$(wc -l <"$NODES_FILE")" -eq 3 ]]
 grep -Fq 'ed%3D2560' "$NODES_FILE"
@@ -267,6 +310,49 @@ assert [item["name"] for item in config["proxies"]] == ["香港 01 🚀", 'US "P
 PY
 fi
 
+cat >"$NODES_CONFIG" <<'EOF'
+HTTP|vless|/http|3011|http://test:secret@192.0.2.1:6305
+SOCKS|vmess|/socks|3012|socks5://test:secret@[2001:db8::1]:6305
+Legacy|trojan|/legacy|3013|192.0.2.2:6305:test:secret
+Direct6|vless|/direct6|3014|direct:ipv6
+EOF
+WARP_ENABLED=1 WARP_DOMAINS=example.com WARP_GEOSITES=""
+write_sing_box_config
+generate_nodes
+if [[ -n "${SING_BOX_TEST_BINARY:-}" ]]; then "$SING_BOX_TEST_BINARY" check -c "$SING_BOX_CONFIG"; fi
+if command -v node >/dev/null 2>&1; then
+node - "$SING_BOX_CONFIG" <<'NODE'
+const c = JSON.parse(require('fs').readFileSync(process.argv[2], 'utf8'));
+const out = tag => c.outbounds.find(x => x.tag === tag);
+if (out('socks-HTTP').type !== 'http' || 'version' in out('socks-HTTP')) throw Error('HTTP outbound fields');
+if (out('socks-SOCKS').type !== 'socks' || out('socks-SOCKS').version !== '5') throw Error('SOCKS5 outbound');
+if (out('socks-SOCKS').server !== '2001:db8::1') throw Error('IPv6 URL host');
+if (out('socks-Legacy').type !== 'socks' || out('direct-Direct6').domain_resolver.strategy !== 'prefer_ipv6') throw Error('legacy egress');
+for (const tag of ['HTTP', 'SOCKS', 'Legacy']) {
+  const route = c.route.rules.find(x => x.inbound?.includes(tag));
+  if (route.outbound !== `socks-${tag}`) throw Error('node proxy route');
+  if (c.route.rules.indexOf(route) < c.route.rules.findIndex(x => x.outbound === 'warp')) throw Error('WARP priority');
+}
+if (c.route.final !== 'direct') throw Error('direct fallback');
+NODE
+else
+  jq -e 'any(.outbounds[]; .tag == "socks-HTTP" and .type == "http" and (has("version") | not)) and any(.outbounds[]; .tag == "socks-SOCKS" and .type == "socks" and .version == "5") and .route.final == "direct"' "$SING_BOX_CONFIG" >/dev/null
+fi
+for invalid_proxy in 'https://test:secret@192.0.2.1:6305' 'http://test@192.0.2.1:6305' 'http://test:secret@999.0.0.1:6305' 'socks5://test:secret@host:65536' 'http://test:secret@host:6305/path' 'http://test:secret@host:6305|extra' 'http://test:secret@host:6305?query'; do
+  if valid_socks5 "$invalid_proxy"; then printf 'invalid proxy accepted\n' >&2; exit 1; fi
+done
+# CRUD switches the actual stored fifth field to HTTP, preserving other nodes.
+require_root() { :; }; validate_environment() { :; }; list_node_profiles() { :; }
+begin_config_change() { :; }; apply_runtime_config() { :; }
+edit_node_profile >/dev/null <<'EOF'
+SOCKS
+
+
+
+
+http://test:secret@192.0.2.3:6306
+EOF
+grep -Fq 'SOCKS|vmess|/socks|3012|http://test:secret@192.0.2.3:6306' "$NODES_CONFIG"
 printf 'unsupported|unsupported|/unsupported|3014|\n' >"$NODES_CONFIG"
 if unsupported_error="$(validate_nodes_config 2>&1)"; then
   printf 'unsupported protocol unexpectedly accepted\n' >&2

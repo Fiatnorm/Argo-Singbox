@@ -1,13 +1,13 @@
-# Argo-Singbox v2026.08.12
+# Argo-Singbox v2026.10.07
 
-Argo-Singbox 是单内核项目，`AGS` 是管理命令和终端紧凑显示使用的简称。脚本版本按 `YYYY.MM.DD` 日期迭代。运行时只安装和管理官方 Sing-box，保留节点、订阅、WARP、长期全局流量统计、诊断、备份恢复和安装更新能力。
+Argo-Singbox 是单内核项目，`AGS` 是管理命令和终端紧凑显示使用的简称。当前脚本版本 `2026.10.07`。默认使用英语，可通过 `ags -l` 或控制中心的语言设置切换为简体中文，选择保存后持续生效。运行时只安装和管理官方 Sing-box，保留节点、订阅、WARP、长期全局流量统计、诊断、备份恢复和安装更新能力。
 
 ## 项目结构
 
 - `argo-singbox.sh`：唯一安装与管理入口。
 - `argo-singbox.env.example`：配置格式示例。
 - `argo-singbox.sh.sha256`：入口脚本校验值。
-- `reference/sba/`：本地只读对照树，不随本仓库发布；2026-08-10 已核验与上游 `fscarmen/sba` `main` 的 `9388bac7cba21b7ce3d5acd6698db9359f328bf1` 一致。
+- `reference/sba/`：本地只读对照树，不随本仓库发布；2026-09-28 已核验与上游 `fscarmen/sba` `main` 的 `e53b6701f7ac17a20e57eab3db4c0cc3d8a6b80d` 一致。
 - `TERMINAL_UI_DESIGN.md`：64 列终端 UI 合同。
 - `UPSTREAM_PARITY.md`：Argo-Singbox 与 SBA / ArgoX 共有功能、差异和取舍。
 - `AGENTS.md`：工程、验证和发布约束。
@@ -21,7 +21,8 @@ Argo-Singbox 是单内核项目，`AGS` 是管理命令和终端紧凑显示使�
 - Sing-box 官方稳定版 `SagerNet/sing-box` `v1.13.18`。
 - VLESS、VMess、Trojan WebSocket。
 - WS 节点默认启用带 padding 的 h2mux 多路复用，并在服务器已加载 `brutal` 内核模块且配置开关开启时启用 TCP Brutal。
-- 每节点 SOCKS5、Cloudflare 官方 WARP SOCKS5 域名与 geosite 分类分流。
+- 每节点 HTTP/SOCKS5 代理 URL、Cloudflare 官方 WARP SOCKS5 域名与 geosite 分类分流。
+- Sing-box `direct` 节点出站支持 IPv4/IPv6；双栈时可在配置中心选择地址族，单栈时自动使用可用出口。
 - 原始、Base64、Clash/Mihomo、Sing-box 与 User-Agent 自适应订阅。
 - 白名单配置文件导入；默认优选入口为 `polestar.com:443`，省略端口时使用 `443`。
 - Clash API + SQLite 的每分钟全局上传/下载长期统计。
@@ -30,10 +31,10 @@ Sing-box 客户端订阅只是客户端格式，不是第二个服务端内核�
 
 ## 安装与管理
 
-项目发布于 `Fiatnorm/Argo-Singbox`。Debian/Ubuntu 可直接下载当前 `main` 脚本并安装：
+项目发布于 `Fiatnorm/Argo-Singbox`。Debian/Ubuntu 可下载 R2 上的安装脚本并直接启动安装：
 
 ```bash
-curl -fsSL --retry 3 --connect-timeout 10 -o /tmp/argo-singbox.sh https://raw.githubusercontent.com/Fiatnorm/Argo-Singbox/main/argo-singbox.sh && sudo bash /tmp/argo-singbox.sh -i
+curl -fsSL --retry 3 --connect-timeout 10 -o /tmp/argo-singbox.sh https://r2gate.fiatnorm.pp.ua/argo-singbox.sh && sudo bash /tmp/argo-singbox.sh -i --github-refreshed
 ```
 
 从完整项目目录安装时，先校验脚本：
@@ -79,16 +80,17 @@ bash argo-singbox.sh -i -f /root/argo-singbox.env
 ```text
 ags        控制中心（选择一个动作后退出）
 ags -n     节点订阅
-ags -a     服务启停
-ags -c     参数配置
+ags -a     服务管理
+ags -c     配置中心
 ags -t     流量统计
 ags -x     运行诊断
 ags -i     项目安装
 ags -f     导入配置
 ags -v     组件更新
 ags -k     备份恢复
-ags -b     BBR / DD
+ags -b     系统工具
 ags -u     项目卸载
+ags -l     语言设置（English / 简体中文）
 ```
 
 ## 节点与订阅
@@ -96,32 +98,34 @@ ags -u     项目卸载
 `nodes.conf` 每行格式：
 
 ```text
-标签|协议|传输路径|本地端口|SOCKS5
+标签|协议|传输路径|本地端口|节点出站
 ```
 
-协议固定为 `vless`、`vmess`、`trojan`。新安装默认各生成一个节点；升级不会向已有节点文件静默插入新节点，其他协议会在配置校验阶段中止。
+配置文件中的协议值固定为 `vless`、`vmess`、`trojan`，终端统一显示为 `VLESS`、`VMess`、`Trojan`。新安装默认各生成一个节点；升级不会向已有节点文件静默插入新节点，其他协议会在配置校验阶段中止。
 
 `ags -n` 显示订阅面板、自适应、原始、Base64、Clash/Mihomo 与 Sing-box 链接；只为自适应订阅显示一张 QR。
 
 自适应入口按 User-Agent 匹配常见 Clash/Mihomo、Sing-box 和 URI/Base64 客户端，直接返回本地原子生成的对应订阅；原 `/clash` 与 `/sing-box` 输出格式不变。
 
-节点标签接受当前主流客户端常见的中英文、数字、空格及常用符号，禁止控制字符和字段分隔符 `|`。添加节点页会先显示当前节点列表；节点配置不再反复要求输入，任一字段无效即终止本次命令，已有配置保持不变。
+节点标签接受当前主流客户端常见的中英文、数字、空格及常用符号，禁止控制字符和字段分隔符 `|`。添加、修改和删除节点前会先验证现有配置；监听端口不得与其他节点、Argo 回源、Clash API 或启用中的 WARP SOCKS5 冲突。添加节点页会先显示当前节点列表；节点配置不再反复要求输入，任一字段无效即终止本次命令，已有配置保持不变。
 
 WS early-data 与 SBA/ArgoX 一致为 `2560`。节点输出不再强制 XUDP 或固定 TLS 指纹，由客户端使用默认值；VMess 安全算法使用 SBA 的 `auto`。
 
 ## 配置导入
 
-复制 `argo-singbox.env.example` 后填写需要的字段。首次安装使用 `bash argo-singbox.sh -i -f /path/to/argo-singbox.env`，已安装实例使用 `ags -f /path/to/argo-singbox.env`，也可从 `ags -c` 进入“导入配置文件”。导入限制为 64 KiB、普通非链接文件与固定字段白名单；未知字段、异常行、无效 URL 或参数会在写入前中止。运行时更新沿用现有快照、配置检查、服务重启和失败回滚事务。
+复制 `argo-singbox.env.example` 后填写需要的字段。首次安装使用 `bash argo-singbox.sh -i -f /path/to/argo-singbox.env`，已安装实例使用 `ags -f /path/to/argo-singbox.env`，也可从 `ags -c` 进入“配置导入”。导入限制为 64 KiB、普通非链接文件与固定字段白名单；未知字段、异常行、无效 URL 或参数会在写入前中止。运行时更新沿用现有快照、配置检查、服务重启和失败回滚事务。
 
 ## 命令与终端行为
 
-脚本遵循标准单动作 Unix CLI：每次执行只选择或指定一个动作，完成后直接退出，不回到当前或上级菜单。所有可取消输入统一提示 `Enter · 默认 | 0 · 取消`。脚本启动时不执行 `clear`，因此不会抹去命令上下文，也不会额外制造整屏重绘。
+菜单与输入页统一显示高亮的 `Enter · 默认 | 0 · 退出`。菜单按最安全选项处理 Enter；危险确认 `[y/N]` 的 Enter 默认拒绝。0 在菜单和文本输入中都直接退出脚本，不返回上一级。项目卸载必须输入 `REMOVE`。脚本启动时不执行 `clear`。
 
-首页以 64 列显示系统环境、服务状态、VPS IPv4 与英文国家代码/ASN/运营商、全局上传/下载累计量以及当前管理脚本的运行内存。IP 归属合并为一行，上传与下载合并为一行；内核版本隐藏 Debian 构建后缀。状态统一为绿色“已启用”、黄色“未启用”，异常为鲜红色并使用 `原因：...` 说明。WARP 是可选能力，未启用不会计入诊断警告。
+首页以 64 列显示系统环境、功能特性与运行状态。运行状态依次显示服务与功能状态、节点概览、Argo 域名/优选入口/回源、VPS IPv4、VPS IPv6、节点落地 IP、全局流量、运行内存、项目/组件版本标题栏。公网 IP 信息来自 GeoJS `https://get.geojs.io/v1/ip/geo.json`，IPv4 与 IPv6 分别通过 `curl -4` 和 `curl -6` 验证；IPv4 检测失败会明确显示 GeoJS 查询失败，IPv6 未确认时显示 None，不以多个“未知”字段冒充结果。GeoJS 的 `country_code`、`asn`、`organization_name`（缺失时使用 `organization`）分别用于国家/地区代码、`AS` 编号和组织名。双栈时配置中心允许选择节点 `direct` 出站使用 IPv4 或 IPv6，默认 IPv4；IPv4 不可用而 IPv6 可用时自动使用 IPv6。该设置控制节点的直连出口，与订阅优选入口无关。运行内存是管理脚本和项目服务进程的 RSS 总和，包含 Sing-box、cloudflared、流量采集、Nginx 与已安装的 WARP；它不是脚本文件大小，也不包含 VPS 上无关进程。项目没有 Node.js 运行组件。正常启用状态使用绿色，警告和提醒使用黄色，错误和异常使用红色；节点概览使用紫色，菜单编号、Enter、0 及项目/组件版本值使用黄色。控制中心使用 `TERMINAL_UI_DESIGN.md` 品牌头部中的六行 ASCII 大字标，最大显示宽度为 64 列。脚本每次运行退出时会在标准输出末尾追加一行空行。WARP 是可选能力，未启用不会计入诊断警告。
+
+控制中心按“常用操作、运行观测、系统维护、项目管理”分组；配置页将 WARP 开关与域名/geosite 规则、TCP Brutal 操作与 h2mux 操作分别分组。终端对象名固定使用 `Argo Tunnel`、`Sing-box Core`、`WARP`、`h2mux`、`TCP Brutal`、`SOCKS5` 与 `Clash API`。结果行统一使用 `✓ / ! / ✗ / •` 表达成功、提醒、错误和过程信息；诊断使用对象名加状态的报告行；完整 URL 与节点 URI 不截断。标准输出与标准错误分别根据对应终端状态控制 ANSI 颜色。
 
 ## WARP geosite
 
-WARP 可同时匹配域名和 geosite 分类，例如 `google,openai,geolocation-!cn`；输入也接受 `geosite:google`。域名管理与 geosite 分类分别进入独立子页面，各自提供添加和删除操作。分类规则从官方 `SagerNet/sing-geosite` 的 `rule-set` 分支下载为本地 `.srs` 缓存，Sing-box 配置使用本地二进制 rule-set。规则顺序仍为 `WARP → 节点 SOCKS5 → direct`，新增或修改分类必须先通过下载、JSON 生成与 Sing-box 配置检查。
+WARP 可同时匹配域名和 geosite 分类，例如 `google,openai,geolocation-!cn`；输入也接受 `geosite:google`。域名管理与 geosite 分类分别进入独立子页面，各自提供添加和删除操作。分类规则从官方 `SagerNet/sing-geosite` 的 `rule-set` 分支下载为本地 `.srs` 缓存，Sing-box 配置使用本地二进制 rule-set。规则顺序仍为 `WARP → 节点 HTTP/SOCKS5 → direct`，新增或修改分类必须先通过下载、JSON 生成与 Sing-box 配置检查。
 
 ## 流量统计
 
@@ -165,3 +169,13 @@ grep -n $'\r' argo-singbox.sh && exit 1 || true
 ```
 
 本地检查不能替代 VPS 上的 `nginx -t`、Sing-box 配置检查、systemd、Clash API 实时计数、Cloudflare Tunnel 及公网 WS 实测。
+
+## 2026.10.07 界面与节点代理
+
+- 默认英语；中文与英语共享菜单、颜色、危险确认和退出逻辑。语言保存在 `/etc/argo-singbox/config/language`（权限 600）。
+- 控制中心使用六行斜体 ASCII 字标，单行标题为 `Argo-Singbox  v2026.10.07 Argo Tunnel · Sing-box Core · WSS Proxy`。系统/内核信息换行保留全文，节点概览为紫色，项目/组件版本统一置于黄色版本栏。
+- 脚本统计保留原联网计数源及单次限时请求，只显示 `Executed 6 times` / `执行 6 次`；不显示“全局累计”。没有确认到 IPv6 时显示 `None`。
+- 第五字段支持 `http://user:pass@host:port`、`socks5://user:pass@host:port`，IPv6 主机使用方括号；兼容旧 `host:port:user:pass` 和逐节点 `direct:ipv4` / `direct:ipv6`。凭据继续限于字母、数字及 `._~-`，不支持 URL 编码或省略认证。概览仅显示类型和主机端口。
+- 出站优先级为 `WARP → 节点 HTTP/SOCKS5 → direct`。HTTP 使用 Sing-box 的 HTTP CONNECT 出站。
+
+配置生成使用 1.13.18 的 `domain_resolver` 与本地 DNS，不依赖已停用的旧 `domain_strategy` 兼容开关。普通布局 64 列；用户指定的完整品牌标题为 65 列并保持单行。

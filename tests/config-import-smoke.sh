@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+export UI_LANGUAGE=zh
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=../argo-singbox.sh
@@ -24,6 +25,7 @@ BRUTAL_UP_MBPS=1000
 BRUTAL_DOWN_MBPS=1000
 MULTIPLEX_ENABLED=1
 TCP_BRUTAL_ENABLED=1
+OUTBOUND_IP_FAMILY=auto
 
 cat >"${TEST_DIR}/valid.env" <<'EOF'
 # Argo-Singbox import fixture
@@ -41,12 +43,14 @@ BRUTAL_UP_MBPS=900
 BRUTAL_DOWN_MBPS=1100
 MULTIPLEX_ENABLED=1
 TCP_BRUTAL_ENABLED=0
+OUTBOUND_IP_FAMILY=ipv6
 EOF
 load_config_file "${TEST_DIR}/valid.env" >/dev/null
 [[ "$UUID" == "22222222-2222-4222-8222-222222222222" ]]
 [[ "$ARGO_DOMAIN" == "tunnel.example.com" ]]
 [[ "$SERVER" == "polestar.com" && "$SERVER_PORT" == "443" ]]
 [[ "$WARP_GEOSITES" == "geosite:google,openai" ]]
+[[ "$OUTBOUND_IP_FAMILY" == "ipv6" ]]
 validate_environment
 [[ "$WARP_GEOSITES" == "google,openai" ]]
 
@@ -73,6 +77,13 @@ if (load_config_file "${TEST_DIR}/unknown.env" >/dev/null 2>&1); then
   printf 'unknown import key unexpectedly accepted\n' >&2
   exit 1
 fi
+
+OUTBOUND_IP_FAMILY=invalid
+if (validate_environment >/dev/null 2>&1); then
+  printf 'invalid outbound IP family unexpectedly accepted\n' >&2
+  exit 1
+fi
+OUTBOUND_IP_FAMILY=auto
 
 injection_target="${TEST_DIR}/executed"
 printf "ARGO_DOMAIN='\$(touch %s)'\n" "$injection_target" >"${TEST_DIR}/literal.env"
