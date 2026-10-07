@@ -91,3 +91,9 @@ if grep -n $'\r' argo-singbox.sh; then exit 1; fi
 ## 2026.10.07 紧凑布局补充
 
 顶部标题为 `Argo-Singbox  v2026.10.07 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。
+
+## 2026.10.07 节点与订阅展示
+
+- 安装结果与节点页的 URI 每行最多 128 字符，TTY 使用实时终端列数与 128 的较小值，非 TTY 使用 128；不得添加空格或丢失字符，订阅文件仍保持每个 URI 一行。
+- 订阅链接顺序固定为订阅面板、节点链接格式（`/raw`）、自适应订阅、Base64 订阅、Clash/Mihomo 订阅、Sing-box 订阅。
+- 订阅面板采用简洁 HTML 文件索引，列出 `raw / auto / base64 / clash / sing-box`、格式、实际修改时间与字节数；`auto` 为动态入口，时间和大小显示 `—`，窄屏可横向滚动。

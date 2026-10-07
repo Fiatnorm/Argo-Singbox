@@ -187,6 +187,19 @@ fi
 
 nginx() { :; }
 write_nginx_config
+grep -Fq "<h1>Index of /${UUID}/</h1>" "$NGINX_CONFIG"
+grep -Fq "<td class=\"size\">$(stat -c %s "$SUB_FILE")</td>" "$NGINX_CONFIG"
+grep -Fq '<a href="auto">auto</a></td><td>—</td><td class="size">—</td>' "$NGINX_CONFIG"
+! grep -Eq 'class=hero|class=card|<script|<img' "$NGINX_CONFIG"
+if [[ -n "${SUBSCRIPTION_PREVIEW_FILE:-}" ]]; then
+  sed -n "s/^[[:space:]]*return 200 '\(.*\)';$/\1/p" "$NGINX_CONFIG" >"$SUBSCRIPTION_PREVIEW_FILE"
+  preview_dir="$(dirname "$SUBSCRIPTION_PREVIEW_FILE")"
+  install -m 644 "$SUB_FILE" "$preview_dir/raw"
+  install -m 644 "$SUB_BASE64_FILE" "$preview_dir/base64"
+  install -m 644 "$SUB_BASE64_FILE" "$preview_dir/auto"
+  install -m 644 "$SUB_CLASH_FILE" "$preview_dir/clash"
+  install -m 644 "$SUB_SING_BOX_FILE" "$preview_dir/sing-box"
+fi
 grep -Fq "~*(clash|mihomo|stash|clash-verge|clashx|flclash|nyanpasu|surfboard) ${SUB_CLASH_FILE};" "$NGINX_CONFIG"
 grep -Fq "~*(sing-box|singbox|sfi|sfa|sfm) ${SUB_SING_BOX_FILE};" "$NGINX_CONFIG"
 ! grep -Eq 'clash-full|sing-box-full|clash-provider' "$NGINX_CONFIG"

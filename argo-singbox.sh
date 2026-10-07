@@ -225,6 +225,7 @@ declare -A UI_EN=(
   ['原始节点']='Raw nodes'
   ['原始节点订阅']='Raw subscription'
   ['原始订阅']='Raw subscription'
+  ['节点链接格式']='Node links'
   ['反代）：']='Anti-generation):'
   ['发布包结构无效。']='The release package structure is invalid.'
   ['发布包缺少']='Release package missing'
@@ -1272,6 +1273,26 @@ state_value() {
 link_value() {
   field_label "$1"
   printf '%s%s%s%s\n' "$C_BRIGHT_WHITE" "$C_UNDERLINE" "$2" "$C_RESET"
+}
+node_output_width() {
+  local rows columns="" limit=128
+  if [[ -t 1 ]]; then
+    read -r rows columns < <(stty size 2>/dev/null </dev/tty) || true
+    columns="${columns:-${COLUMNS:-}}"
+    if [[ "$columns" =~ ^[1-9][0-9]{0,4}$ ]] && ((columns < limit)); then
+      limit="$columns"
+    fi
+  fi
+  printf -v "$1" '%s' "$limit"
+}
+print_node_uri() {
+  # URI data is ASCII (labels and paths are URL/Base64 encoded). Wrap only display.
+  local LC_ALL=C node="$1" width
+  node_output_width width
+  while [[ -n "$node" ]]; do
+    printf '%s%s%s\n' "$C_BRIGHT_WHITE" "${node:0:width}" "$C_RESET"
+    node="${node:width}"
+  done
 }
 prompt() { printf '%s%s› %s%s' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$(ui_text "$*")" "$C_RESET"; }
 read_choice() {
@@ -2334,11 +2355,31 @@ write_all_core_configs() {
 
 write_available_core_configs() { write_all_core_configs; }
 
+subscription_index_rows() {
+  local route file modified size format
+  while IFS='|' read -r route file format; do
+    modified="—"; size="—"
+    if [[ -n "$file" && -f "$file" ]]; then
+      modified="$(LC_ALL=C date -r "$file" '+%d-%b-%Y %H:%M')"
+      size="$(stat -c %s "$file")"
+    fi
+    printf '<tr><td><a href="%s">%s</a></td><td>%s</td><td class="size">%s</td><td>%s</td></tr>' \
+      "$route" "$route" "$modified" "$size" "$format"
+  done <<EOF
+raw|${SUB_FILE}|节点链接格式 · URI
+auto||自适应订阅 · User-Agent
+base64|${SUB_BASE64_FILE}|Base64 订阅
+clash|${SUB_CLASH_FILE}|Clash/Mihomo · YAML
+sing-box|${SUB_SING_BOX_FILE}|Sing-box · JSON
+EOF
+}
+
 write_nginx_config() {
-  local tag protocol path port socks
+  local tag protocol path port socks index_rows
   ensure_nodes_config
   validate_environment
   validate_nodes_config
+  index_rows="$(subscription_index_rows)"
   cat >"$NGINX_CONFIG" <<EOF
 map \$http_upgrade \$connection_upgrade {
     default upgrade;
@@ -2381,7 +2422,7 @@ EOF
     }
     location = /${UUID}/ {
         default_type text/html;
-        return 200 '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AGS 订阅中心</title><style>body{margin:0;background:#fff;color:#17345f;font:16px/1.65 system-ui,sans-serif}main{max-width:960px;margin:auto;padding:52px 24px 64px}.ey{margin:0;color:#0969da;font-size:12px;font-weight:800;letter-spacing:.14em}h1{margin:4px 0 5px;color:#0757c7;font-size:36px;letter-spacing:-.03em}p,small{color:#61708a}.hero,.card{border:1px solid #cfe1fb;border-radius:16px;background:#fff;box-shadow:0 10px 28px #1d5fa00d}.hero{display:grid;grid-template-columns:166px 1fr;gap:28px;align-items:center;margin:28px 0 40px;padding:26px}.hero img{display:block;width:146px;height:146px;padding:9px;border:1px solid #cfe1fb;border-radius:11px}.hero b{color:#0757c7;font-size:23px}.hero p{margin:6px 0 0}.open{display:inline-block;margin-top:16px;padding:9px 15px;border-radius:8px;background:#0969da;color:#fff;text-decoration:none;font-weight:800}.head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px}.head h2{margin:0;color:#0757c7;font-size:21px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{min-height:70px;padding:20px;color:#0757c7;text-decoration:none;font-weight:800;transition:border-color .16s,transform .16s,box-shadow .16s}.card:hover{border-color:#0969da;box-shadow:0 12px 28px #1d5fa018;transform:translateY(-2px)}.card small{display:block;margin-top:7px;font-weight:400}@media(max-width:560px){main{padding:34px 18px 48px}.hero{grid-template-columns:1fr;gap:18px;padding:22px}.hero img{margin:auto}.head{align-items:flex-start;flex-direction:column;gap:2px}.grid{grid-template-columns:1fr}}</style><main><p class=ey>AGS</p><h1>订阅中心</h1><p>选择适合客户端的订阅方式。</p><section class=hero><a href=auto><img src=auto-qr.svg alt="自适应订阅 QR"></a><div><b>自适应订阅</b><p>推荐使用。扫码或打开链接，自动匹配客户端格式。</p><a class=open href=auto>打开自适应订阅</a></div></section><div class=head><h2>指定格式</h2><small>共四类订阅</small></div><section class=grid><a class=card href=raw>原始节点订阅<small>VLESS、VMess、Trojan</small></a><a class=card href=base64>Base64 订阅<small>Karing、V2rayN、NekoBox</small></a><a class=card href=clash>Clash/Mihomo 订阅<small>完整 YAML 配置</small></a><a class=card href=sing-box>Sing-box 订阅<small>JSON 出站配置</small></a></section></main>';
+        return 200 '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Index of /${UUID}/ · Argo-Singbox</title><style>body{margin:24px;background:#fff;color:#222}main{max-width:1100px}h1{margin:0 0 22px;font:700 clamp(22px,3vw,36px)/1.3 Georgia,serif;overflow-wrap:anywhere}a{color:#06c}a:hover{color:#004399}.files{overflow-x:auto;border-top:1px solid #aaa;border-bottom:1px solid #aaa;padding:16px 0}table{width:100%;border-collapse:collapse;font:14px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:nowrap}th,td{text-align:left;padding:3px 20px 3px 0}th{color:#666;font-weight:400;border-bottom:1px solid #eee}tbody tr:hover{background:#f5f8fc}.size{text-align:right}footer{margin-top:14px;color:#777;font:12px/1.6 system-ui,sans-serif}@media(max-width:600px){body{margin:18px 12px}th,td{padding-right:14px}table{font-size:13px}}</style><main><h1>Index of /${UUID}/</h1><div class="files"><table aria-label="订阅文件"><thead><tr><th>文件 / File</th><th>修改时间 / Modified</th><th class="size">字节 / Bytes</th><th>格式 / Format</th></tr></thead><tbody>${index_rows}</tbody></table></div><footer>Argo-Singbox · auto 按客户端返回格式，大小随格式变化。</footer></main></html>';
     }
     location = /${UUID}/auto-qr.svg {
         default_type image/svg+xml;
@@ -3293,7 +3334,8 @@ report_node_port_owners() {
 
 show_install_nodes() {
   section "原始节点"
-  cat "$NODES_FILE"
+  local node
+  while IFS= read -r node; do print_node_uri "$node"; done <"$NODES_FILE"
   printf '\n'
 }
 
@@ -4464,8 +4506,8 @@ show_nodes() {
   UI_TIGHT_SECTION=1
   subsection "订阅链接"
   link_value "订阅面板" "https://${ARGO_DOMAIN}/${UUID}/"
+  link_value "节点链接格式" "https://${ARGO_DOMAIN}/${UUID}/raw"
   link_value "自适应订阅" "$auto_url"
-  link_value "原始订阅" "https://${ARGO_DOMAIN}/${UUID}/raw"
   link_value "Base64 订阅" "https://${ARGO_DOMAIN}/${UUID}/base64"
   link_value "Clash/Mihomo 订阅" "https://${ARGO_DOMAIN}/${UUID}/clash"
   link_value "Sing-box 订阅" "https://${ARGO_DOMAIN}/${UUID}/sing-box"
@@ -4478,10 +4520,10 @@ show_nodes() {
     IFS= read -r node <&3 || break
     ((index+=1))
     ((index > 1)) && printf '\n'
-    printf '%s%s[%02d]%s %s%s%s %s· %s%s\n%s%s%s\n' \
+    printf '%s%s[%02d]%s %s%s%s %s· %s%s\n' \
       "$C_BOLD" "$C_BRIGHT_CYAN" "$index" "$C_RESET" "$C_BRIGHT_MAGENTA" "$tag" "$C_RESET" \
-      "$C_BRIGHT_GREEN" "$(node_type_label "$protocol")" "$C_RESET" \
-      "$C_BRIGHT_WHITE" "$node" "$C_RESET"
+      "$C_BRIGHT_GREEN" "$(node_type_label "$protocol")" "$C_RESET"
+    print_node_uri "$node"
   done <"$NODES_CONFIG" 3<"$NODES_FILE"
   printf '\n'
 }
