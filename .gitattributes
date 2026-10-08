@@ -1,3 +1,4 @@
 *.sh text eol=lf
 *.sh.sha256 text eol=lf
 assets/singbox-icon.svg text eol=lf
+assets/subscription-panel.html text eol=lf

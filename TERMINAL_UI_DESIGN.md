@@ -1,6 +1,6 @@
 # Argo-Singbox Terminal UI Design
 
-> 设计基线：`Fiatnorm/Argo-Singbox` 当前行为，脚本版本 `2026.10.07`
+> 设计基线：`Fiatnorm/Argo-Singbox` 当前行为，脚本版本 `2026.10.08`
 >
 > 适用范围：`argo-singbox.sh` 及其全部交互式终端输出
 >
@@ -405,7 +405,7 @@ TERM=dumb
 推荐品牌区：
 
 ```text
-Argo-Singbox  v2026.10.07 · Argo Tunnel · Sing-box Core
+Argo-Singbox  v2026.10.08 · Argo Tunnel · Sing-box Core
 功能特性      WS/TLS · WARP · h2mux · TCP Brutal
 系统环境      Debian GNU/Linux 13 · amd64 · Kernel 6.12.101
 ----------------------------------------------------------------
@@ -931,7 +931,7 @@ vmess://...
 
 URL 和节点 URI 必须完整输出，不做 64 列截断。安装结果和节点页恢复每个 URI 完整单行输出，不主动换行、不检测 SSH 窗口尺寸、不限制为 128 字符；终端自然折行由终端处理。订阅文件仍为每个 URI 一行。
 
-订阅面板标题为“AGS 订阅中心”，采用 R2Gate 顶部品牌栏、导航和圆角文件列表布局的亮色 Material Design 3 风格；品牌图标与 favicon 使用用户提供的 Sing-box SVG。保留自适应订阅二维码，列表顺序为 `raw / auto / base64 / clash / sing-box`，显示实际文件修改时间与字节数，`auto` 的时间为 `—`、大小为“按客户端”。窄屏使用紧凑文件行。HTML、SVG 与 QR 均从本地 UUID 路径提供，不加载外部样式或脚本。
+订阅面板采用 Material 官网亮色配色与 R2Gate 顶部品牌栏、状态 / 订阅 / 开源协议 / GitHub 导航布局，单屏显示。列表顺序仍为 `raw / auto / base64 / clash / sing-box`，列为文件、格式、修改时间、大小/字节、下载。`auto` 更新时间取默认 Base64 文件，大小按客户端变化。删除旧页尾说明。中英文分别生成，默认首页与保存的脚本语言同步。状态页实时检查五种订阅和 HTML/SVG/QR，不检测节点连通性；GPL v3 原文分页展示并支持下载。品牌图标、QR 与其他页面资源从本地 UUID 路径提供。
 
 ---
 
@@ -2072,7 +2072,7 @@ Argo Tunnel 回源端口     → Argo 回源
 # # # #  ##  #      ##  ### # #  ## ##   #  # #
 # # # #  ##  #      ##  ### # #  ## ##   #  # #
 
-Argo-Singbox  v2026.10.07 · Argo Tunnel · Sing-box Core
+Argo-Singbox  v2026.10.08 · Argo Tunnel · Sing-box Core
 功能特性      WS/TLS · WARP · h2mux · TCP Brutal
 系统环境      Debian GNU/Linux 13 · amd64 · Kernel 6.12.101
 ----------------------------------------------------------------
@@ -2240,7 +2240,7 @@ Argo-Singbox Terminal UI 的目标不是“做得像图形界面”，而是成�
 11. 不清屏、不动态刷屏、不把日志噪声当作 UI。
 12. 新增功能必须先确定所属功能组，再设计页面和文案。
 
-## 2026.10.07 双语合同（覆盖旧示例中的冲突项）
+## 2026.10.08 双语合同（覆盖旧示例中的冲突项）
 
 中文为默认语言，控制中心第 11 项或 `ags -l` 可切换英语/简体中文；页面、提示、状态、成功、警告和错误使用所选语言，组件与协议名固定。中文示例用于对应中文模式。所有菜单/input 的 0 直接退出，危险确认 Enter 默认 No。英语提示为 `Enter · Default | 0 · Exit`，中文为 `Enter · 默认 | 0 · 退出`，Enter/0 黄色。
 
@@ -2252,16 +2252,16 @@ Argo-Singbox Terminal UI 的目标不是“做得像图形界面”，而是成�
 
 品牌标题单行完整显示；分隔线和菜单布局仍为 64 列。
 
-## 2026.10.07 排版修订
+## 2026.10.08 排版修订
 
 - 默认中文，已显式保存的语言选择继续有效；中文和英文使用同一布局。
-- 字标首行之前严格一行空白。顶部信息标签占 12 个显示列，后跟两个空格，与标题版本号同在第 15 列；其余键值标签占 18 列，后跟两个空格，值起始列为 21。使用 UTF-8 字符码点计算显示宽度，避免 locale 改变中文宽度或误判英文。
+- 字标首行之前不额外输出空行。顶部信息标签占 12 个显示列，后跟两个空格，与标题版本号同在第 15 列；其余键值标签占 18 列，后跟两个空格，值起始列为 21。使用 UTF-8 字符码点计算显示宽度，避免 locale 改变中文宽度或误判英文。
 - 品牌、功能特性、系统环境、脚本统计各占一行。系统环境示例为 `Debian GNU/Linux 13 · amd64 · Kernel 6.12.101`，不显示 `+deb13-amd64` 构建后缀。
 - 执行次数始终为 `Executed N times`，失败为 `Unavailable`，不会人为递增 API 返回的次数。
 - 删除运行状态中的节点落地 IP 行；保留配置页的直连地址族功能。组件版本在运行状态下显示为 `Sing-box 1.13.18 · cloudflared 2026.7.3`，只有数字版本为黄色，组件名和分隔符为白色。
 - 蓝色分隔线及页面 Enter/0 提示保持 64 列；信息字段不因这条线而截断或换行。
 - 内存采用唯一 PID 的 RSS 总和：管理脚本、Nginx master/workers、Sing-box、cloudflared、活跃流量采集及 SQLite 子进程、已安装 WARP。重叠 MainPID/cgroup/后代 PID 只算一次。SQLite 数据库文件不是进程内存；库页已经计入进程 RSS。RSS 可能包含各进程共享页，不能视为去重后的物理内存或 PSS；不可读进程会标记统计不完整。
 
-## 2026.10.07 紧凑布局补充
+## 2026.10.08 紧凑布局补充
 
-顶部标题为 `Argo-Singbox  v2026.10.07 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。
+顶部标题为 `Argo-Singbox  v2026.10.08 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。

@@ -43,7 +43,7 @@ def width(s):
 for language in ['zh', 'en']:
     assert (root / (language+'-C')).read_bytes() == (root / (language+'-C.UTF-8')).read_bytes()
     lines = (root / (language+'-C')).read_text(encoding='utf-8').splitlines()
-    assert lines[0] == '' and lines[1].startswith('    ___'), 'exactly one leading blank line'
+    assert lines[0].startswith('    ___'), 'no leading blank line'
     expected = {
         'zh': [('功能特性','WS/TLS'), ('系统环境','Debian'), ('脚本统计','Executed 22 times'), ('Argo Tunnel','已启用'), ('Sing-box Core','已启用'), ('流量采集','已启用'), ('全局流量','↑'), ('运行内存','347.2 MiB'), ('组件版本','Sing-box 1.13.18')],
         'en': [('Features','WS/TLS'), ('System','Debian'), ('Script runs','Executed 22 times'), ('Argo Tunnel','Enabled'), ('Sing-box Core','Enabled'), ('Traffic collector','Enabled'), ('Traffic total','↑'), ('Memory','347.2 MiB'), ('Components','Sing-box 1.13.18')]
@@ -53,7 +53,7 @@ for language in ['zh', 'en']:
         expected_width = 14 if label in ('功能特性','系统环境','脚本统计','Features','System','Script runs') else 20
         assert width(row[:row.index(value)]) == expected_width, (label, row)
     header = next(x for x in lines if x.startswith('Argo-Singbox  v'))
-    assert header == 'Argo-Singbox  v2026.10.07 · Argo Tunnel · Sing-box Core'
+    assert header == 'Argo-Singbox  v2026.10.08 · Argo Tunnel · Sing-box Core'
     assert width(header[:header.index('v2026')]) == 14
     system = next(x for x in lines if x.startswith(('系统环境 ', 'System ')))
     assert system.endswith('Kernel 6.12.101')

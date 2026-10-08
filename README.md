@@ -1,6 +1,6 @@
-# Argo-Singbox v2026.10.07
+# Argo-Singbox v2026.10.08
 
-Argo-Singbox 是单内核项目，`AGS` 是管理命令和终端紧凑显示使用的简称。当前脚本版本 `2026.10.07`。默认使用中文，可通过 `ags -l` 或控制中心的语言设置切换为简体中文，选择保存后持续生效。运行时只安装和管理官方 Sing-box，保留节点、订阅、WARP、长期全局流量统计、诊断、备份恢复和安装更新能力。
+Argo-Singbox 是单内核项目，`AGS` 是管理命令和终端紧凑显示使用的简称。当前脚本版本 `2026.10.08`。默认使用中文，可通过 `ags -l` 或控制中心的语言设置切换为简体中文，选择保存后持续生效。运行时只安装和管理官方 Sing-box，保留节点、订阅、WARP、长期全局流量统计、诊断、备份恢复和安装更新能力。
 
 ## 项目结构
 
@@ -107,7 +107,9 @@ ags -l     语言设置（English / 简体中文）
 
 安装结果与节点页恢复每个 URI 完整单行输出，不主动换行、不读取 SSH 窗口尺寸、不限制为 128 字符；终端可按自身设置自然折行。订阅文件仍保持每个 URI 一行。
 
-网页标题为“AGS 订阅中心”，沿用 R2Gate 的顶部品牌栏、导航和圆角文件列表布局，采用亮色 Material Design 3 配色。用户提供的 `assets/singbox-icon.svg` 用作品牌图标和 favicon，原始 SVG 内嵌到安装脚本，单文件安装无需额外下载资产。面板与图标生成为本地静态文件 `subscriptions/index.html`、`subscriptions/favicon.svg`，由 Nginx 在 UUID 路径下提供；配置事务同时备份和恢复这两个文件。页面显示实际文件修改时间和字节数，`auto` 大小显示“按客户端”；保留自适应订阅二维码，窄屏使用紧凑文件行，不加载外部样式或脚本。
+订阅中心沿用 R2Gate 的顶部品牌栏、状态 / 订阅 / 开源协议 / GitHub 导航与圆角文件列表；使用 Material 官网亮色配色，页面适配单屏。列表按文件、格式、修改时间、大小/字节、下载排列，`auto` 时间取对应 Base64 默认文件的实际更新时间，大小显示“按客户端”。状态页通过浏览器实时检查五个订阅入口、HTML、SVG、QR 的可访问性及基本内容，不代表代理节点连接测试；访问状态页时检查一次，也可手动重新检查。开源协议页展示本仓库 GPL v3 原文，采用分页阅读并提供原文下载。
+
+生成 `index.zh.html` 和 `index.en.html` 两个版本，`index.html` 按保存的脚本语言选择；`ags -l` 保存语言后自动更新已安装面板。中文标题为“AGS 订阅中心”，英文为“AGS Subscription Center”。`assets/subscription-panel.html` 是 HTML 源文件，修改后运行 `python scripts/embed-panel.py` 同步脚本内嵌内容。用户 SVG、HTML 模板与 GPL 原文都内嵌于安装脚本，单文件安装不需下载额外资产。配置事务备份和恢复两种语言、当前首页、图标、协议文件；页面只使用本地资源。
 
 自适应入口按 User-Agent 匹配常见 Clash/Mihomo、Sing-box 和 URI/Base64 客户端，直接返回本地原子生成的对应订阅；原 `/clash` 与 `/sing-box` 输出格式不变。
 
@@ -174,26 +176,26 @@ grep -n $'\r' argo-singbox.sh && exit 1 || true
 
 本地检查不能替代 VPS 上的 `nginx -t`、Sing-box 配置检查、systemd、Clash API 实时计数、Cloudflare Tunnel 及公网 WS 实测。
 
-## 2026.10.07 界面与节点代理
+## 2026.10.08 界面与节点代理
 
 - 默认中文；中文与英语共享菜单、颜色、危险确认和退出逻辑。语言保存在 `/etc/argo-singbox/config/language`（权限 600）。
-- 控制中心使用六行斜体 ASCII 字标，单行标题为 `Argo-Singbox  v2026.10.07 · Argo Tunnel · Sing-box Core`。系统环境单行显示，Kernel 仅显示数字版本，节点概览为紫色；运行状态内以组件版本字段显示 Sing-box / cloudflared，只有版本号为黄色，名称与分隔符为白色。
+- 控制中心使用六行斜体 ASCII 字标，单行标题为 `Argo-Singbox  v2026.10.08 · Argo Tunnel · Sing-box Core`。系统环境单行显示，Kernel 仅显示数字版本，节点概览为紫色；运行状态内以组件版本字段显示 Sing-box / cloudflared，只有版本号为黄色，名称与分隔符为白色。
 - 脚本统计保留原联网计数源及单次限时请求，中英文均显示 `Executed 6 times`；不显示“全局累计”。没有确认到 IPv6 时显示 `None`。
 - 第五字段支持 `http://user:pass@host:port`、`socks5://user:pass@host:port`，IPv6 主机使用方括号；兼容旧 `host:port:user:pass` 和逐节点 `direct:ipv4` / `direct:ipv6`。凭据继续限于字母、数字及 `._~-`，不支持 URL 编码或省略认证。概览仅显示类型和主机端口。
 - 出站优先级为 `WARP → 节点 HTTP/SOCKS5 → direct`。HTTP 使用 Sing-box 的 HTTP CONNECT 出站。
 
 配置生成使用 1.13.18 的 `domain_resolver` 与本地 DNS，不依赖已停用的旧 `domain_strategy` 兼容开关。普通布局 64 列；品牌标题保持单行并位于 64 列布局内。
 
-## 2026.10.07 排版修订
+## 2026.10.08 排版修订
 
 - 默认中文，已显式保存的语言选择继续有效；中文和英文使用同一布局。
-- 字标首行之前严格一行空白。顶部信息标签占 12 个显示列，后跟两个空格，与标题版本号同在第 15 列；其余键值标签占 18 列，后跟两个空格，值起始列为 21。使用 UTF-8 字符码点计算显示宽度，避免 locale 改变中文宽度或误判英文。
+- 字标首行之前不额外输出空行。顶部信息标签占 12 个显示列，后跟两个空格，与标题版本号同在第 15 列；其余键值标签占 18 列，后跟两个空格，值起始列为 21。使用 UTF-8 字符码点计算显示宽度，避免 locale 改变中文宽度或误判英文。
 - 品牌、功能特性、系统环境、脚本统计各占一行。系统环境示例为 `Debian GNU/Linux 13 · amd64 · Kernel 6.12.101`，不显示 `+deb13-amd64` 构建后缀。
 - 执行次数始终为 `Executed N times`，失败为 `Unavailable`，不会人为递增 API 返回的次数。
 - 删除运行状态中的节点落地 IP 行；保留配置页的直连地址族功能。组件版本在运行状态下显示为 `Sing-box 1.13.18 · cloudflared 2026.7.3`，只有数字版本为黄色，组件名和分隔符为白色。
 - 蓝色分隔线及页面 Enter/0 提示保持 64 列；信息字段不因这条线而截断或换行。
 - 内存采用唯一 PID 的 RSS 总和：管理脚本、Nginx master/workers、Sing-box、cloudflared、活跃流量采集及 SQLite 子进程、已安装 WARP。重叠 MainPID/cgroup/后代 PID 只算一次。SQLite 数据库文件不是进程内存；库页已经计入进程 RSS。RSS 可能包含各进程共享页，不能视为去重后的物理内存或 PSS；不可读进程会标记统计不完整。
 
-## 2026.10.07 紧凑布局补充
+## 2026.10.08 紧凑布局补充
 
-顶部标题为 `Argo-Singbox  v2026.10.07 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。
+顶部标题为 `Argo-Singbox  v2026.10.08 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。

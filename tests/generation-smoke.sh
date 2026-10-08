@@ -194,12 +194,40 @@ grep -Fq "alias ${SUBSCRIPTION_DIR}/;" "$NGINX_CONFIG"
 grep -Fq 'index index.html;' "$NGINX_CONFIG"
 grep -Fq "location = /${UUID}/index.html {" "$NGINX_CONFIG"
 grep -Fq "alias ${ICON_FILE};" "$NGINX_CONFIG"
-grep -Fq '<h1>AGS 订阅中心</h1>' "$PANEL_FILE"
+grep -Fq '<h1 data-i18n="title">AGS 订阅中心</h1>' "$PANEL_FILE"
 grep -Fq '<meta name="color-scheme" content="light">' "$PANEL_FILE"
 grep -Fq "<span class=\"size\">$(stat -c %s "$SUB_FILE")</span>" "$PANEL_FILE"
-grep -Fq '<small>auto</small></span><time>—</time><span class="size">按客户端</span>' "$PANEL_FILE"
+grep -Fq "<time class=\"date\">$(LC_ALL=C date -r "$SUB_BASE64_FILE" '+%d-%b-%Y %H:%M')</time>" "$PANEL_FILE"
 grep -Fq 'src="auto-qr.svg"' "$PANEL_FILE"
-! grep -Eq '<script|https?://[^" ]+\.(css|js)' "$PANEL_FILE"
+! grep -Eq 'https?://[^" ]+\.(css|js)' "$PANEL_FILE"
+! grep -Fq 'Argo-Singbox · 自适应订阅的内容与大小随客户端格式变化。' "$PANEL_FILE"
+cmp "$ROOT_DIR/LICENSE" "$SUBSCRIPTION_DIR/license.txt"
+grep -Fq '<html lang="en">' "$SUBSCRIPTION_DIR/index.en.html"
+grep -Fq '<title>AGS Subscription Center</title>' "$SUBSCRIPTION_DIR/index.en.html"
+for panel_language in zh en; do
+  UI_LANGUAGE="$panel_language" write_subscription_panel
+  cmp "$SUBSCRIPTION_DIR/index.$panel_language.html" "$PANEL_FILE"
+done
+UI_LANGUAGE=zh write_subscription_panel
+(
+  require_root() { :; }; load_env() { :; }
+  if [[ "${OSTYPE:-}" == msys* ]]; then
+    install() { [[ "$1" == -d ]] && mkdir -p "${@: -1}" || command install "$@"; }
+  fi
+  : >"$ENV_FILE"
+  configure_language >/dev/null <<<'1'
+  cmp "$SUBSCRIPTION_DIR/index.en.html" "$PANEL_FILE"
+  configure_language >/dev/null <<<'2'
+  cmp "$SUBSCRIPTION_DIR/index.zh.html" "$PANEL_FILE"
+)
+if command -v node >/dev/null 2>&1; then
+  node - "$ROOT_DIR/argo-singbox.sh" "$ROOT_DIR/assets/subscription-panel.html" <<'NODE'
+const fs = require('fs');
+const script = fs.readFileSync(process.argv[2], 'utf8');
+const payload = script.split("<<'HTML'\n")[1].split('\nHTML\n')[0];
+if (!Buffer.from(payload, 'base64').equals(fs.readFileSync(process.argv[3]))) throw Error('embedded HTML differs from source');
+NODE
+fi
 cmp "$ROOT_DIR/assets/singbox-icon.svg" "$ICON_FILE"
 [[ "$(stat -c %a "$PANEL_FILE")" == 644 ]]
 [[ "$(stat -c %a "$ICON_FILE")" == 644 ]]
@@ -212,6 +240,9 @@ if [[ -n "${SUBSCRIPTION_PREVIEW_FILE:-}" ]]; then
   preview_dir="$(dirname "$SUBSCRIPTION_PREVIEW_FILE")"
   install -m 644 "$NGINX_CONFIG" "$preview_dir/nginx-fixture.conf"
   install -m 644 "$ICON_FILE" "$preview_dir/favicon.svg"
+  install -m 644 "$SUBSCRIPTION_DIR/index.zh.html" "$preview_dir/index.zh.html"
+  install -m 644 "$SUBSCRIPTION_DIR/index.en.html" "$preview_dir/index.en.html"
+  install -m 644 "$SUBSCRIPTION_DIR/license.txt" "$preview_dir/license.txt"
   install -m 644 "$SUB_AUTO_QR_FILE" "$preview_dir/auto-qr.svg"
   install -m 644 "$SUB_FILE" "$preview_dir/raw"
   install -m 644 "$SUB_BASE64_FILE" "$preview_dir/base64"
