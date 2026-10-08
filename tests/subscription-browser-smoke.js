@@ -29,22 +29,28 @@ async (page) => {
     await page.route('**/raw', route => route.fulfill({ status: 404, body: 'missing' }));
     await page.locator('#recheck').click();
     await page.locator('#status-card.error').waitFor();
+    if (!(await page.locator('.check.error').textContent()).includes('HTTP 404')) throw Error('missing HTTP error reason');
+    await page.unroute('**/raw');
+    await page.route('**/sing-box',route=>route.fulfill({status:200,body:'{invalid'}));
+    await page.locator('#recheck').click();
+    await page.locator('#status-card.error').waitFor();
+    if (!(await page.locator('.check.error').textContent()).includes('sing-box')) throw Error('invalid JSON not detected');
+    await page.unroute('**/sing-box');
+    await page.route('**/raw',route=>route.fulfill({status:200,body:''}));
+    await page.locator('#recheck').click();
+    await page.locator('#status-card.error').waitFor();
     await page.unroute('**/raw');
     await page.locator('#recheck').click();
     await page.locator('#status-card.ok').waitFor();
-    await page.locator('[data-view="license"]').click();
-    await page.waitForFunction(() => document.querySelector('#license-copy').textContent.includes('GENERAL PUBLIC'));
-    const previous = await page.locator('#license-copy').textContent();
-    await page.locator('#next').click();
-    if ((await page.locator('#license-copy').textContent()) === previous) throw Error('license pagination failed');
-    const fit = await page.locator('#license-copy').evaluate(e => e.scrollHeight <= e.clientHeight + 1);
-    if (!fit) throw Error('license page requires scrolling');
+    if (await page.locator('.license').getAttribute('href') !== 'https://raw.githubusercontent.com/Fiatnorm/Argo-Singbox/refs/heads/main/LICENSE') throw Error('license redirect mismatch');
     await page.locator('[data-view="subscriptions"]').click();
+    if (await page.locator('a.file').count()) throw Error('filename still navigates');
+    if (await page.locator('.file-open').count() !== 5) throw Error('missing open buttons');
     const downloadEvent = page.waitForEvent('download');
     await page.locator('.file-download[data-file="raw"]').click();
     const download = await downloadEvent;
     if (download.suggestedFilename() !== 'raw.txt') throw Error('download filename mismatch');
     await download.delete();
   }
-  return { result: 'SUBSCRIPTION_BROWSER_SMOKE_OK', viewports: results, checks: 'healthy, missing-file, recovery, license paging, raw download' };
+  return { result: 'SUBSCRIPTION_BROWSER_SMOKE_OK', viewports: results, checks: 'healthy, missing-file, recovery, license redirect, raw download' };
 }

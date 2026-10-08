@@ -107,9 +107,9 @@ ags -l     语言设置（English / 简体中文）
 
 安装结果与节点页恢复每个 URI 完整单行输出，不主动换行、不读取 SSH 窗口尺寸、不限制为 128 字符；终端可按自身设置自然折行。订阅文件仍保持每个 URI 一行。
 
-订阅中心沿用 R2Gate 的顶部品牌栏、状态 / 订阅 / 开源协议 / GitHub 导航与圆角文件列表；使用 Material 官网亮色配色，页面适配单屏。列表按文件、格式、修改时间、大小/字节、下载排列，`auto` 时间取对应 Base64 默认文件的实际更新时间，大小显示“按客户端”。状态页通过浏览器实时检查五个订阅入口、HTML、SVG、QR 的可访问性及基本内容，不代表代理节点连接测试；访问状态页时检查一次，也可手动重新检查。开源协议页展示本仓库 GPL v3 原文，采用分页阅读并提供原文下载。
+订阅中心沿用 R2Gate 的顶部品牌栏、状态 / 订阅 / 开源协议 / GitHub 导航与圆角文件列表；使用 Material 官网亮色配色，页面适配单屏。列表按文件、格式、修改时间、大小/字节、下载排列，`auto` 时间取对应 Base64 默认文件的实际更新时间，大小显示“按客户端”。状态页通过浏览器实时检查五个订阅入口、HTML、SVG、QR 的可访问性及基本内容，不代表代理节点连接测试；访问状态页时检查一次，也可手动重新检查。开源协议入口跳转至 https://raw.githubusercontent.com/Fiatnorm/Argo-Singbox/refs/heads/main/LICENSE 。
 
-生成 `index.zh.html` 和 `index.en.html` 两个版本，`index.html` 按保存的脚本语言选择；`ags -l` 保存语言后自动更新已安装面板。中文标题为“AGS 订阅中心”，英文为“AGS Subscription Center”。`assets/subscription-panel.html` 是 HTML 源文件，修改后运行 `python scripts/embed-panel.py` 同步脚本内嵌内容。用户 SVG、HTML 模板与 GPL 原文都内嵌于安装脚本，单文件安装不需下载额外资产。配置事务备份和恢复两种语言、当前首页、图标、协议文件；页面只使用本地资源。
+生成 `index.zh.html` 和 `index.en.html` 两个版本，`index.html` 按保存的脚本语言选择；`ags -l` 保存语言后自动更新已安装面板。中文标题为“AGS 订阅中心”，英文为“AGS Subscription Center”。`assets/subscription-panel.html` 是 HTML 源文件，修改后运行 `python scripts/embed-panel.py` 同步脚本内嵌内容。用户 SVG 与 HTML 模板内嵌于安装脚本，单文件安装不需下载额外资产。配置事务备份和恢复两种语言、当前首页和图标；页面只使用本地资源。
 
 自适应入口按 User-Agent 匹配常见 Clash/Mihomo、Sing-box 和 URI/Base64 客户端，直接返回本地原子生成的对应订阅；原 `/clash` 与 `/sing-box` 输出格式不变。
 
@@ -199,3 +199,7 @@ grep -n $'\r' argo-singbox.sh && exit 1 || true
 ## 2026.10.08 紧凑布局补充
 
 顶部标题为 `Argo-Singbox  v2026.10.08 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。
+
+### 订阅中心布局与显示修订
+
+订阅与状态视图在可用页面区域居中；订阅列表扩大，五列标题与内容居中对齐，文件名不再导航，文件列提供独立打开按钮。修改时间格式为 `31 Aug 2026 11:10:53`，大小附加 `B`；采用用户指定的文件及协议 SVG，增大二维码。状态检测显示实际 HTTP、格式或网络失败原因。动画仅用于视图进入及按钮交互，尊重减少动态效果设置。`/sing-box` 返回已缩进的 JSON 原文，采用 `text/plain` 避免浏览器 JSON Pretty-print 控件；自适应入口仍按客户端返回订阅内容。
