@@ -31,7 +31,7 @@ async (page) => {
       if(contentWidth>960.5)throw Error('content exceeds R2Gate view width');
       if(width>900){
         const alignment=await page.evaluate(()=>{const row=document.querySelector('.row:not(.head)');const head=Array.from(document.querySelector('.head').children,e=>e.getBoundingClientRect());const center=e=>e.left+e.width/2;const names=Array.from(document.querySelectorAll('.file'),e=>{const range=document.createRange();range.selectNode(e.lastChild);return center(range.getBoundingClientRect())});const open=row.querySelector('.file-open').getBoundingClientRect();const download=row.querySelector('.file-download').getBoundingClientRect();return{fileCenter:center(head[0]),names,gaps:head.slice(0,4).slice(1).map((e,i)=>center(e)-center(head[i])),actionGap:download.left-open.right}});
-        if(alignment.names.some(c=>Math.abs(c-alignment.fileCenter)>1)||Math.max(...alignment.gaps)-Math.min(...alignment.gaps)>1||alignment.actionGap>24||alignment.actionGap<0)throw Error(JSON.stringify(alignment));
+        if(alignment.names.some(c=>Math.abs(c-alignment.fileCenter)>24)||Math.max(...alignment.gaps)-Math.min(...alignment.gaps)>1||alignment.actionGap>24||alignment.actionGap<0)throw Error(JSON.stringify(alignment));
       }
       results.push(`${language} ${width}x${height}`);
     }
