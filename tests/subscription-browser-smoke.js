@@ -3,6 +3,7 @@
 async (page) => {
   const root = new URL('.', page.url()).href;
   const results = [];
+  const foreignRequests=[];page.on('request',r=>{if(r.url().includes('www.w3.org'))foreignRequests.push(r.url())});
   for (const language of ['zh', 'en']) {
     for (const [width, height] of [[1366, 768], [1280, 720], [1920, 1080], [375, 812], [360, 640]]) {
       await page.setViewportSize({ width, height });
@@ -20,6 +21,11 @@ async (page) => {
       if (bounds.bottom > availableHeight || bounds.right > width || bounds.pageWidth > width || bounds.pageHeight > height || bounds.rows !== 5 || bounds.lang !== language || bounds.autoDate === '—') {
         throw Error(JSON.stringify({ language, width, height, bounds }));
       }
+      const typography=await page.evaluate(()=>({head:getComputedStyle(document.querySelector('.head')).fontSize,file:getComputedStyle(document.querySelector('.file')).fontSize,nav:getComputedStyle(document.querySelector('.nav-item')).fontSize,columns:document.querySelector('.head').children.length,labels:Array.from(document.querySelectorAll('.head [data-i18n]'),e=>e.textContent),icons:Array.from(document.querySelectorAll('.file svg'),e=>e.getBoundingClientRect().left),sizes:Array.from(document.querySelectorAll('[data-bytes]'),e=>[Number(e.dataset.bytes),e.textContent])}));
+      if(typography.head!=='14px'||typography.file!=='16px'||typography.nav!=='12px'||typography.columns!==6)throw Error(JSON.stringify(typography));
+      if(typography.labels.join(',')!=='File,Format,Modified,Size,Open,Download')throw Error('inconsistent headers');
+      if(width>600&&Math.max(...typography.icons)-Math.min(...typography.icons)>1)throw Error('file icons not aligned');
+      for(const [bytes,label] of typography.sizes)if(bytes>=1000?!label.endsWith('KB'):!label.endsWith('B'))throw Error('incorrect size unit');
       results.push(`${language} ${width}x${height}`);
     }
     await page.locator('[data-view="status"]').click();
@@ -52,5 +58,6 @@ async (page) => {
     if (download.suggestedFilename() !== 'raw.txt') throw Error('download filename mismatch');
     await download.delete();
   }
+  if(foreignRequests.length)throw Error('unexpected external SVG request');
   return { result: 'SUBSCRIPTION_BROWSER_SMOKE_OK', viewports: results, checks: 'healthy, missing-file, recovery, license redirect, raw download' };
 }

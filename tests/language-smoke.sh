@@ -77,4 +77,25 @@ C_BRIGHT_YELLOW=yellow C_BRIGHT_RED=red C_BRIGHT_GREEN=green C_BRIGHT_MAGENTA=pu
 [[ "$(state_value WARP 'Enabled · Running')" == *green* ]]
 [[ "$(state_value WARP 'Enabled · Error: process not running')" == *red* ]]
 [[ "$(component_version_value)" == *yellow*1.13.18*yellow*2026.7.3* ]]
+# Reproduce a legacy runtime env overriding the separately saved language.
+ENV_FILE="$TEST_DIR/legacy.env"
+printf 'UI_LANGUAGE=zh\n' >"$ENV_FILE"
+UI_LANGUAGE=en
+load_env
+[[ "$UI_LANGUAGE" == en ]]
+printf 'zh\n' >"$CONFIG_DIR/language"
+(
+  control_panel() { printf 'LANG=%s %s\n' "$UI_LANGUAGE" "$(ui_text '节点概览')"; }
+  runtime_overview() { :; }
+  menu <<'CHOICES'
+11
+1
+0
+CHOICES
+) >"$TEST_DIR/menu-language"
+grep -Fq 'LANG=zh 节点概览' "$TEST_DIR/menu-language"
+grep -Fq 'LANG=en Nodes' "$TEST_DIR/menu-language"
+UI_LANGUAGE=zh
+load_language
+[[ "$UI_LANGUAGE" == en ]]
 printf 'LANGUAGE_SMOKE_OK\n'

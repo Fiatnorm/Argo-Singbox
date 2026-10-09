@@ -1,6 +1,6 @@
-# Argo-Singbox v2026.10.08
+# Argo-Singbox v2026.10.09
 
-Argo-Singbox 是单内核项目，`AGS` 是管理命令和终端紧凑显示使用的简称。当前脚本版本 `2026.10.08`。默认使用中文，可通过 `ags -l` 或控制中心的语言设置切换为简体中文，选择保存后持续生效。运行时只安装和管理官方 Sing-box，保留节点、订阅、WARP、长期全局流量统计、诊断、备份恢复和安装更新能力。
+Argo-Singbox 是单内核项目，`AGS` 是管理命令和终端紧凑显示使用的简称。当前脚本版本 `2026.10.09`。默认使用中文，可通过 `ags -l` 或控制中心的语言设置切换为简体中文，选择保存后持续生效。运行时只安装和管理官方 Sing-box，保留节点、订阅、WARP、长期全局流量统计、诊断、备份恢复和安装更新能力。
 
 ## 项目结构
 
@@ -176,17 +176,17 @@ grep -n $'\r' argo-singbox.sh && exit 1 || true
 
 本地检查不能替代 VPS 上的 `nginx -t`、Sing-box 配置检查、systemd、Clash API 实时计数、Cloudflare Tunnel 及公网 WS 实测。
 
-## 2026.10.08 界面与节点代理
+## 2026.10.09 界面与节点代理
 
 - 默认中文；中文与英语共享菜单、颜色、危险确认和退出逻辑。语言保存在 `/etc/argo-singbox/config/language`（权限 600）。
-- 控制中心使用六行斜体 ASCII 字标，单行标题为 `Argo-Singbox  v2026.10.08 · Argo Tunnel · Sing-box Core`。系统环境单行显示，Kernel 仅显示数字版本，节点概览为紫色；运行状态内以组件版本字段显示 Sing-box / cloudflared，只有版本号为黄色，名称与分隔符为白色。
+- 控制中心使用六行斜体 ASCII 字标，单行标题为 `Argo-Singbox  v2026.10.09 · Argo Tunnel · Sing-box Core`。系统环境单行显示，Kernel 仅显示数字版本，节点概览为紫色；运行状态内以组件版本字段显示 Sing-box / cloudflared，只有版本号为黄色，名称与分隔符为白色。
 - 脚本统计保留原联网计数源及单次限时请求，中英文均显示 `Executed 6 times`；不显示“全局累计”。没有确认到 IPv6 时显示 `None`。
 - 第五字段支持 `http://user:pass@host:port`、`socks5://user:pass@host:port`，IPv6 主机使用方括号；兼容旧 `host:port:user:pass` 和逐节点 `direct:ipv4` / `direct:ipv6`。凭据继续限于字母、数字及 `._~-`，不支持 URL 编码或省略认证。概览仅显示类型和主机端口。
 - 出站优先级为 `WARP → 节点 HTTP/SOCKS5 → direct`。HTTP 使用 Sing-box 的 HTTP CONNECT 出站。
 
 配置生成使用 1.13.18 的 `domain_resolver` 与本地 DNS，不依赖已停用的旧 `domain_strategy` 兼容开关。普通布局 64 列；品牌标题保持单行并位于 64 列布局内。
 
-## 2026.10.08 排版修订
+## 2026.10.09 排版修订
 
 - 默认中文，已显式保存的语言选择继续有效；中文和英文使用同一布局。
 - 字标首行之前不额外输出空行。顶部信息标签占 12 个显示列，后跟两个空格，与标题版本号同在第 15 列；其余键值标签占 18 列，后跟两个空格，值起始列为 21。使用 UTF-8 字符码点计算显示宽度，避免 locale 改变中文宽度或误判英文。
@@ -196,10 +196,14 @@ grep -n $'\r' argo-singbox.sh && exit 1 || true
 - 蓝色分隔线及页面 Enter/0 提示保持 64 列；信息字段不因这条线而截断或换行。
 - 内存采用唯一 PID 的 RSS 总和：管理脚本、Nginx master/workers、Sing-box、cloudflared、活跃流量采集及 SQLite 子进程、已安装 WARP。重叠 MainPID/cgroup/后代 PID 只算一次。SQLite 数据库文件不是进程内存；库页已经计入进程 RSS。RSS 可能包含各进程共享页，不能视为去重后的物理内存或 PSS；不可读进程会标记统计不完整。
 
-## 2026.10.08 紧凑布局补充
+## 2026.10.09 紧凑布局补充
 
-顶部标题为 `Argo-Singbox  v2026.10.08 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。
+顶部标题为 `Argo-Singbox  v2026.10.09 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。
 
 ### 订阅中心布局与显示修订
 
-订阅与状态视图在可用页面区域居中；订阅列表扩大，五列标题与内容居中对齐，文件名不再导航，文件列提供独立打开按钮。修改时间格式为 `31 Aug 2026 11:10:53`，大小附加 `B`；采用用户指定的文件及协议 SVG，增大二维码。状态检测显示实际 HTTP、格式或网络失败原因。动画仅用于视图进入及按钮交互，尊重减少动态效果设置。`/sing-box` 返回已缩进的 JSON 原文，采用 `text/plain` 避免浏览器 JSON Pretty-print 控件；自适应入口仍按客户端返回订阅内容。
+订阅与状态视图在可用页面区域居中；订阅列表扩大，六列表头均匀排列，文件列左对齐，其余内容居中，文件名不再导航，文件列提供独立打开按钮。修改时间格式为 `31 Aug 2026 11:10:53`，大小自动显示 `B` / `KB`；采用用户指定的文件及协议 SVG，增大二维码。状态检测显示实际 HTTP、格式或网络失败原因。动画仅用于视图进入及按钮交互，尊重减少动态效果设置。`/sing-box` 返回已缩进的 JSON 原文，采用 `text/plain` 避免浏览器 JSON Pretty-print 控件；自适应入口仍按客户端返回订阅内容。
+
+### 2026.10.09 订阅中心与语言修订
+
+文件与协议使用简洁内联 SVG。文件图标与名称左对齐，列表采用 File / Format / Modified / Size / Open / Download 六列；表头 14px，文件名 16px，导航 12px，Subs 为订阅导航简称。中文页导航、Status 标题、Check again、表头和 By client 使用英文，其余正文保留中文。Size 以 1000B 为界自动显示 B / KB。移动端保持六列并用图标表示动作表头，按钮保留可访问名称。运行配置不得覆盖独立保存的语言设置；控制中心 11 保存后立即重绘菜单。

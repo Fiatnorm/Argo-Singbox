@@ -53,7 +53,7 @@ for language in ['zh', 'en']:
         expected_width = 14 if label in ('功能特性','系统环境','脚本统计','Features','System','Script runs') else 20
         assert width(row[:row.index(value)]) == expected_width, (label, row)
     header = next(x for x in lines if x.startswith('Argo-Singbox  v'))
-    assert header == 'Argo-Singbox  v2026.10.08 · Argo Tunnel · Sing-box Core'
+    assert header == 'Argo-Singbox  v2026.10.09 · Argo Tunnel · Sing-box Core'
     assert width(header[:header.index('v2026')]) == 14
     system = next(x for x in lines if x.startswith(('系统环境 ', 'System ')))
     assert system.endswith('Kernel 6.12.101')
