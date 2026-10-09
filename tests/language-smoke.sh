@@ -29,6 +29,11 @@ UI_LANGUAGE=invalid
 load_language
 [[ "$UI_LANGUAGE" == zh ]]
 UI_LANGUAGE=en
+for test_locale in C C.UTF-8 en_US.UTF-8; do
+  [[ "$(LC_ALL="$test_locale" ui_text '语言设置已保存')" == 'Language preference saved' ]]
+  [[ "$(LC_ALL="$test_locale" ui_text '功能特性')" == Features ]]
+  [[ "$(LC_ALL="$test_locale" ui_text '已启用 · 运行中')" == 'Enabled · Running' ]]
+done
 [[ "$(ui_text '节点概览')" == Nodes ]]
 [[ "$(ui_text '执行 6 次')" == 'Executed 6 times' ]]
 [[ "$(ui_text '不可用 · 缺少 brutal 内核模块')" == 'Unavailable · Missing brutal kernel module' ]]

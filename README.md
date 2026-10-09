@@ -207,3 +207,7 @@ grep -n $'\r' argo-singbox.sh && exit 1 || true
 ### 2026.10.09 订阅中心与语言修订
 
 文件与协议使用简洁内联 SVG。文件图标与名称左对齐，列表采用 File / Format / Modified / Size / Open / Download 六列；表头 14px，文件名 16px，导航 12px，Subs 为订阅导航简称。中文页导航、Status 标题、Check again、表头和 By client 使用英文，其余正文保留中文。Size 以 1000B 为界自动显示 B / KB。移动端保持六列并用图标表示动作表头，按钮保留可访问名称。运行配置不得覆盖独立保存的语言设置；控制中心 11 保存后立即重绘菜单。
+
+### 英语翻译兼容与内容宽度修订
+
+终端翻译按词典文字直接匹配，不依赖中文字符正则范围或 UTF-8 locale 的字符排序规则；完整词条优先返回，混合文字采用最早出现的最长词条。订阅和状态内容采用与 R2Gate 文件视图相同的 960px 最大宽度，列表行收紧至 54px，仍在可用窗口区域居中。中文页的 5 formats、Open adaptive subscription、Adaptive、Checked at 使用英文。

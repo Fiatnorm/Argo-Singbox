@@ -26,6 +26,9 @@ async (page) => {
       if(typography.labels.join(',')!=='File,Format,Modified,Size,Open,Download')throw Error('inconsistent headers');
       if(width>600&&Math.max(...typography.icons)-Math.min(...typography.icons)>1)throw Error('file icons not aligned');
       for(const [bytes,label] of typography.sizes)if(bytes>=1000?!label.endsWith('KB'):!label.endsWith('B'))throw Error('incorrect size unit');
+      if(await page.locator('.page-header .chip').textContent()!=='5 formats'||await page.locator('.hero .button').textContent()!=='Open adaptive subscription ↗'||await page.locator('[data-adaptive="adaptive"]').textContent()!=='Adaptive')throw Error('mixed labels not updated');
+      const contentWidth=await page.locator('main').evaluate(e=>e.getBoundingClientRect().width);
+      if(contentWidth>960.5)throw Error('content exceeds R2Gate view width');
       results.push(`${language} ${width}x${height}`);
     }
     await page.locator('[data-view="status"]').click();
