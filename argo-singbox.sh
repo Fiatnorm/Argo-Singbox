@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2026.10.11.04"
+VERSION="2026.10.11.05"
 PROJECT_NAME="Argo-Singbox"
 PROJECT_CODE="AGS"
 SCRIPT_NAME="argo-singbox.sh"
@@ -788,6 +788,8 @@ declare -A UI_EN=(
   ['运行日志读取失败']='Failed to read runtime logs'
   ['近期日志包含错误']='Recent logs contain errors'
   ['监听正常。']='is listening normally.'
+  ['端口检测通过 · 全部本地端口监听正常。']='Port check passed · All local ports are listening normally.'
+  ['端口检测失败 · 未监听：']='Port check failed · Not listening: '
   ['公网传输探测超时，未确认连通性；请用客户端实测。']='Public transport probe timed out; connectivity is unconfirmed. Please test with a client.'
   ['运行正常。']='It works fine.'
   ['运行状态']='Runtime status'
@@ -3252,7 +3254,7 @@ runtime_overview() {
   detect_public_ips
   totals="$(read_traffic_totals)"
   IFS='|' read -r upload download <<<"$totals"
-  subsection "运行状态"
+  if [[ "${1:-full}" == diagnostic ]]; then subsection "状态报告"; else subsection "运行状态"; fi
   if [[ "${1:-full}" != diagnostic ]]; then
     state_value "Argo Tunnel" "$(service_status "$ARGO_SERVICE")"
     state_value "Sing-box Core" "$(service_status "$CORE_SERVICE")"
@@ -3534,6 +3536,7 @@ report_runtime_config_failure() {
 
 health_check() {
   local failed=0 local_failed=0 ws_failed=0 ws_unknown=0 public_code public_headers curl_status port path tag protocol socks mode="${1:-full}"
+  local bad_ports="" port_errors=0
   WS_HEALTH_WARNINGS=0
   HEALTH_CHECK_ERRORS=0
   ensure_nodes_config
@@ -3574,14 +3577,16 @@ health_check() {
   while read -r port; do
     if ! ss -lntH "sport = :${port}" 2>/dev/null | grep -q .; then
       ((local_failed+=1))
-      [[ "$mode" == ws ]] || red "本地端口 ${port} 未监听。"
+      bad_ports+="${bad_ports:+ · }${port}"
+      [[ "$mode" == ws || "$mode" == diagnostic ]] || red "本地端口 ${port} 未监听。"
       failed=1
-    elif [[ "$mode" == diagnostic ]]; then
-      green "本地端口 ${port} 监听正常。"
     fi
   done < <(printf '%s\n' "$ORIGIN_PORT" "$STATS_API_PORT"; cut -d'|' -f4 "$NODES_CONFIG")
   if [[ "$mode" == "ws" ]]; then
     if ((local_failed)); then state_value "本地端口" "未运行 · ${local_failed} 个未监听"; else state_value "本地端口" "已通过"; fi
+  elif [[ "$mode" == diagnostic ]]; then
+    if ((local_failed)); then red "端口检测失败 · 未监听：${bad_ports}"
+    else green "端口检测通过 · 全部本地端口监听正常。"; fi
   fi
 
   while IFS='|' read -r tag protocol path port socks; do
@@ -3608,7 +3613,9 @@ health_check() {
       failed=1
     fi
   done <"$NODES_CONFIG"
-  HEALTH_CHECK_ERRORS=$((HEALTH_CHECK_ERRORS + local_failed + ws_failed))
+  port_errors="$local_failed"
+  if [[ "$mode" == diagnostic ]] && ((local_failed)); then port_errors=1; fi
+  HEALTH_CHECK_ERRORS=$((HEALTH_CHECK_ERRORS + port_errors + ws_failed))
   WS_HEALTH_WARNINGS="$ws_unknown"
   if [[ "$mode" == "ws" ]]; then
     if ((ws_failed)); then state_value "公网 WS" "失败 · ${ws_failed} 项异常"; fi
@@ -4928,15 +4935,6 @@ filter_journal_noise() {
   grep -Ev 'infra/conf/serial: Reading config:|common/errors: The feature (WebSocket transport|VMess|Trojan).*deprecated'
 }
 
-diagnostic_value() {
-  local label="$1" value="$2"
-  case "$value" in
-    *失败*|*Failed*) red "${label} · ${value}" ;;
-    *不可用*|*未启用*|*Unavailable*|*Disabled*) yellow "${label} · ${value}" ;;
-    *) green "${label} · ${value}" ;;
-  esac
-}
-
 doctor() {
   local failed=0 error_count=0 token_in_unit=0 warp_target directory mode warnings=0
   require_root
@@ -4949,58 +4947,58 @@ doctor() {
   section "配置检查"
   if (validate_nodes_config) && valid_uuid "$UUID" && valid_argo_token "$ARGO_TOKEN" &&
     [[ -n "$ARGO_DOMAIN" ]]; then
-    diagnostic_value "AGS 配置" "已通过"
+    state_value "AGS 配置" "已通过"
   else
-    diagnostic_value "AGS 配置" "失败 · 字段或节点无效"
+    state_value "AGS 配置" "失败 · 字段或节点无效"
     failed=1; ((error_count+=1))
   fi
-  if core_check >/dev/null 2>&1; then diagnostic_value "$(core_label) 配置" "已通过"; else diagnostic_value "$(core_label) 配置" "失败"; failed=1; ((error_count+=1)); fi
-  if nginx -t >/dev/null 2>&1; then diagnostic_value "Nginx 配置" "已通过"; else diagnostic_value "Nginx 配置" "失败"; failed=1; ((error_count+=1)); fi
-  detect_tcp_brutal
-  if [[ "$TCP_BRUTAL_ENABLED" != "1" ]]; then
-    diagnostic_value "TCP Brutal" "未启用 · 配置关闭"
-  elif [[ "$MULTIPLEX_ENABLED" != "1" ]]; then
-    diagnostic_value "TCP Brutal" "未启用 · h2mux 已关闭"
-  elif [[ "$IS_BRUTAL" == "true" ]]; then
-    diagnostic_value "TCP Brutal" "已通过 · 模块已加载"
-  else
-    diagnostic_value "TCP Brutal" "不可用 · 缺少 brutal 内核模块"
-    ((warnings+=1))
-  fi
-  diagnostic_value "h2mux" "$(multiplex_status)"
-  for directory in "$CONFIG_DIR" "$DATA_DIR" "$SUBSCRIPTION_DIR"; do
-    mode="$(stat -c '%a' "$directory" 2>/dev/null || true)"
-    case "$directory:$mode" in
-      "$CONFIG_DIR:700") diagnostic_value "config 权限" "已通过 · 700" ;;
-      "$DATA_DIR:700") diagnostic_value "data 权限" "已通过 · 700" ;;
-      "$SUBSCRIPTION_DIR:755") diagnostic_value "subscriptions 权限" "已通过 · 755" ;;
-      *) diagnostic_value "$(basename "$directory") 权限" "失败 · 当前 ${mode:-不存在}"; failed=1; ((error_count+=1)) ;;
-    esac
-  done
+  if nginx -t >/dev/null 2>&1; then state_value "Nginx 配置" "已通过"; else state_value "Nginx 配置" "失败"; failed=1; ((error_count+=1)); fi
   [[ -f "/etc/systemd/system/${ARGO_SERVICE}.service" ]] &&
     grep -Fq -- "--token ${ARGO_TOKEN}" "/etc/systemd/system/${ARGO_SERVICE}.service" && token_in_unit=1
-  if ((token_in_unit)); then diagnostic_value "Argo Token" "已通过 · 服务文件一致"; else diagnostic_value "Argo Token" "失败 · 服务文件未同步"; failed=1; ((error_count+=1)); fi
+  if ((token_in_unit)); then state_value "Argo Token" "已通过 · 服务文件一致"; else state_value "Argo Token" "失败 · 服务文件未同步"; failed=1; ((error_count+=1)); fi
+  if core_check >/dev/null 2>&1; then state_value "$(core_label) 配置" "已通过"; else state_value "$(core_label) 配置" "失败"; failed=1; ((error_count+=1)); fi
   if [[ "$WARP_ENABLED" == "1" ]]; then
     if systemctl is-active --quiet warp-svc &&
       ss -lntH "sport = :${WARP_PROXY_PORT}" | grep -q .; then
-      green "WARP 运行正常 · 127.0.0.1:${WARP_PROXY_PORT}。"
+      state_value "WARP" "已通过 · 127.0.0.1:${WARP_PROXY_PORT}"
     else
-      red "WARP 服务或代理端口异常。"
+      state_value "WARP" "失败 · 服务或端口异常"
       failed=1; ((error_count+=1))
     fi
     warp_target="${WARP_DOMAINS%%,*}"
     if [[ -z "$warp_target" ]]; then
-      diagnostic_value "WARP 规则" "已配置 · geosite ${WARP_GEOSITES}"
+      state_value "WARP 规则" "已配置 · geosite ${WARP_GEOSITES}"
     elif curl -fsS --socks5-hostname "127.0.0.1:${WARP_PROXY_PORT}" --connect-timeout 5 \
       --max-time 10 -o /dev/null "https://${warp_target}"; then
-      diagnostic_value "WARP 目标" "已通过 · ${warp_target}"
+      state_value "WARP 目标" "已通过 · ${warp_target}"
     else
-      diagnostic_value "WARP 目标" "失败 · ${warp_target} 不可达"
+      state_value "WARP 目标" "失败 · ${warp_target} 不可达"
       failed=1; ((error_count+=1))
     fi
   else
-    yellow "WARP 未启用（可选功能）。"
+    state_value "WARP" "未启用 · 可选功能"
   fi
+  state_value "h2mux" "$(multiplex_status)"
+  detect_tcp_brutal
+  if [[ "$TCP_BRUTAL_ENABLED" != "1" ]]; then
+    state_value "TCP Brutal" "未启用 · 配置关闭"
+  elif [[ "$MULTIPLEX_ENABLED" != "1" ]]; then
+    state_value "TCP Brutal" "未启用 · h2mux 已关闭"
+  elif [[ "$IS_BRUTAL" == "true" ]]; then
+    state_value "TCP Brutal" "已通过 · 模块已加载"
+  else
+    state_value "TCP Brutal" "不可用 · 缺少 brutal 内核模块"
+    ((warnings+=1))
+  fi
+  for directory in "$CONFIG_DIR" "$DATA_DIR" "$SUBSCRIPTION_DIR"; do
+    mode="$(stat -c '%a' "$directory" 2>/dev/null || true)"
+    case "$directory:$mode" in
+      "$CONFIG_DIR:700") state_value "config 权限" "已通过 · 700" ;;
+      "$DATA_DIR:700") state_value "data 权限" "已通过 · 700" ;;
+      "$SUBSCRIPTION_DIR:755") state_value "subscriptions 权限" "已通过 · 755" ;;
+      *) state_value "$(basename "$directory") 权限" "失败 · 当前 ${mode:-不存在}"; failed=1; ((error_count+=1)) ;;
+    esac
+  done
   section "服务状态"
   if ! health_check diagnostic; then failed=1; fi
   error_count=$((error_count + HEALTH_CHECK_ERRORS))

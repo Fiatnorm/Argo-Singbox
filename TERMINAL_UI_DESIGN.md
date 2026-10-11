@@ -1,6 +1,6 @@
 # Argo-Singbox Terminal UI Design
 
-> 设计基线：`Fiatnorm/Argo-Singbox` 当前行为，脚本版本 `2026.10.11.04`
+> 设计基线：`Fiatnorm/Argo-Singbox` 当前行为，脚本版本 `2026.10.11.05`
 >
 > 适用范围：`argo-singbox.sh` 及其全部交互式终端输出
 >
@@ -405,7 +405,7 @@ TERM=dumb
 推荐品牌区：
 
 ```text
-Argo-Singbox  v2026.10.11.04 · Argo Tunnel · Sing-box Core
+Argo-Singbox  v2026.10.11.05 · Argo Tunnel · Sing-box Core
 功能特性      WS/TLS · WARP · h2mux · TCP Brutal
 系统环境      Debian GNU/Linux 13 · amd64 · Kernel 6.12.101
 ----------------------------------------------------------------
@@ -2072,7 +2072,7 @@ Argo Tunnel 回源端口     → Argo 回源
 # # # #  ##  #      ##  ### # #  ## ##   #  # #
 # # # #  ##  #      ##  ### # #  ## ##   #  # #
 
-Argo-Singbox  v2026.10.11.04 · Argo Tunnel · Sing-box Core
+Argo-Singbox  v2026.10.11.05 · Argo Tunnel · Sing-box Core
 功能特性      WS/TLS · WARP · h2mux · TCP Brutal
 系统环境      Debian GNU/Linux 13 · amd64 · Kernel 6.12.101
 ----------------------------------------------------------------
@@ -2264,7 +2264,7 @@ Argo-Singbox Terminal UI 的目标不是“做得像图形界面”，而是成�
 
 ## 2026.10.11 紧凑布局补充
 
-顶部标题为 `Argo-Singbox  v2026.10.11.04 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。
+顶部标题为 `Argo-Singbox  v2026.10.11.05 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。
 
 ### 订阅中心布局与显示修订
 
@@ -2296,7 +2296,7 @@ File 使用约 116px 的紧凑图标与名称组合，在列内整体居中；�
 
 安装完成后复用节点订阅内容：按固定顺序显示六个订阅链接、自适应订阅二维码，以及含编号、标签、协议和完整 URI 的全部原始节点；不重复节点页品牌标题，URI 保持单行，末尾不额外追加空行。
 
-运行诊断固定为运行状态 / 配置检查 / 服务状态 / 诊断结果四部分，不输出运行日志、不读取 journal，也不显示系统内存。诊断运行状态保留节点概览、域名、入口、回源、IPv4/IPv6、流量、运行内存、组件版本、节点文件及管理命令；Argo Tunnel、Sing-box Core、流量采集、WARP、h2mux、TCP Brutal 不在该模块重复显示。配置检查保留配置、权限、Token、h2mux / TCP Brutal 以及 WARP 状态、代理端口和规则目标；服务状态依次检查 Nginx、Sing-box Core、Argo Tunnel、流量定时器、Clash API、全部本地端口及逐节点公网 WS。WARP 未启用时显示“! WARP 未启用（可选功能）。”；每项实际失败计一个错误，WS 超时计提醒而不宣称连接成功。安装和控制中心的完整运行状态保留原有服务与功能字段。
+运行诊断固定为状态报告 / 配置检查 / 服务状态 / 诊断结果四部分，不输出运行日志、不读取 journal，也不显示系统内存。诊断状态报告保留节点概览、域名、入口、回源、IPv4/IPv6、流量、运行内存、组件版本、节点文件及管理命令；Argo Tunnel、Sing-box Core、流量采集、WARP、h2mux、TCP Brutal 不在该模块重复显示。配置检查保留配置、权限、Token、h2mux / TCP Brutal 以及 WARP 状态、代理端口和规则目标；服务状态依次检查 Nginx、Sing-box Core、Argo Tunnel、流量定时器、Clash API、全部本地端口及逐节点公网 WS。配置检查按 AGS 配置、Nginx 配置、Argo Token、Sing-box 配置、WARP、h2mux、TCP Brutal、config / data / subscriptions 权限顺序使用键值行显示，标签占 18 个显示列，后跟两个空格，值从第 21 列开始。WARP 未启用时值为“未启用 · 可选功能”；端口仍逐个检测回源、Clash API 和全部节点监听，只合并显示一项“端口检测”结果，失败列出全部未监听端口，并计一个错误，公网 WS 继续逐节点显示。其余每项实际失败计一个错误，WS 超时计提醒而不宣称连接成功。安装和控制中心的完整运行状态保留原有服务与功能字段。
 
 安装结果的管理命令与订阅链接标题之间保留一行空行。所有运行内存值及管理命令 ags / AGS 的命令名统一使用紫色，分隔符继续为白色；非 TTY、TERM=dumb 和 NO_COLOR 不输出 ANSI。
 

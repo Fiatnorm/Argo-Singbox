@@ -8,7 +8,7 @@ trap 'rm -rf "$TEST_DIR"' EXIT
 CONFIG_DIR="$TEST_DIR/config" DATA_DIR="$TEST_DIR/data" SUBSCRIPTION_DIR="$TEST_DIR/subscriptions"
 mkdir -p "$CONFIG_DIR" "$DATA_DIR" "$SUBSCRIPTION_DIR" "$TEST_DIR/systemd"
 NODES_CONFIG="$CONFIG_DIR/nodes.conf" NODES_FILE="$DATA_DIR/nodes.txt"
-printf 'One|vless|/one|3011|\nTwo|vmess|/two|3012|\nThree|trojan|/three|3013|\n' >"$NODES_CONFIG"
+printf 'One|vless|/one|3011|\nTwo|vmess|/two|3012|\nThree|trojan|/three|3013|\nFour|vmess|/four|3014|\n' >"$NODES_CONFIG"
 ARGO_TOKEN=fixture-token UUID=11111111-1111-4111-8111-111111111111
 ARGO_DOMAIN=example.com SERVER=example.com SERVER_PORT=443 ORIGIN_PORT=3010 STATS_API_PORT=18085
 WARP_ENABLED=0 WARP_PROXY_PORT=40000 WARP_DOMAINS=example.com WARP_GEOSITES=""
@@ -40,7 +40,12 @@ systemctl() {
   [[ "$SCENARIO" != mixed || ( "${*: -1}" != "$CORE_SERVICE" && "${*: -1}" != "${TRAFFIC_TIMER}.timer" ) ]]
 }
 traffic_collect() { [[ "$SCENARIO" != mixed ]] || exit 1; }
-ss() { [[ "$SCENARIO" != mixed || "$*" != *':3011'* ]] && printf 'LISTEN\n'; }
+ss() {
+  printf '%s\n' "$*" >>"$TEST_DIR/port-calls"
+  [[ "$SCENARIO" != mixed || "$*" != *':3011'* ]] || return 1
+  [[ "$SCENARIO" != ports-failed || ( "$*" != *':3011'* && "$*" != *':3012'* ) ]] || return 1
+  printf 'LISTEN\n'
+}
 curl() {
   if [[ "$*" == *--socks5-hostname* ]]; then [[ "$SCENARIO" != warp-failed ]]; return; fi
   if [[ "$SCENARIO" == mixed && "${*: -1}" == */one ]]; then printf 'HTTP/1.1 403 Forbidden\r\n'; return; fi
@@ -52,27 +57,50 @@ journalctl() {
   return 1
 }
 for UI_LANGUAGE in zh en; do
-  for SCENARIO in healthy mixed warp-healthy warp-failed; do
+  for SCENARIO in healthy mixed warp-healthy warp-failed ports-failed; do
+    : >"$TEST_DIR/port-calls"
     WARP_ENABLED=0
     [[ "$SCENARIO" != warp-* ]] || WARP_ENABLED=1
     result=0
-    doctor >"$TEST_DIR/output" 2>"$TEST_DIR/errors" || result=$?
-    cat "$TEST_DIR/errors" >>"$TEST_DIR/output"
-    [[ ( "$SCENARIO" == mixed || "$SCENARIO" == warp-failed ) && "$result" == 1 ||
+    doctor >"$TEST_DIR/output" 2>&1 || result=$?
+    [[ ( "$SCENARIO" == mixed || "$SCENARIO" == warp-failed || "$SCENARIO" == ports-failed ) && "$result" == 1 ||
       ( "$SCENARIO" == healthy || "$SCENARIO" == warp-healthy ) && "$result" == 0 ]]
     if [[ "$UI_LANGUAGE" == zh ]]; then
       mapfile -t headings < <(grep '^▸ ' "$TEST_DIR/output")
-      [[ "${headings[*]}" == '▸ 运行状态 ▸ 配置检查 ▸ 服务状态 ▸ 诊断结果' ]]
+      [[ "${headings[*]}" == '▸ 状态报告 ▸ 配置检查 ▸ 服务状态 ▸ 诊断结果' ]]
       awk '/^▸ 配置检查$/ {exit} {print}' "$TEST_DIR/output" >"$TEST_DIR/status"
       ! grep -E '^(Argo Tunnel|Sing-box Core|流量采集|WARP 分流|h2mux|TCP Brutal|系统内存) ' "$TEST_DIR/status"
       awk '/^▸ 配置检查$/ {show=1; next} /^▸ 服务状态$/ {exit} show {print}' "$TEST_DIR/output" >"$TEST_DIR/config-output"
       awk '/^▸ 服务状态$/ {show=1; next} /^▸ 诊断结果$/ {exit} show {print}' "$TEST_DIR/output" >"$TEST_DIR/services"
       ! grep -Fq WARP "$TEST_DIR/services"
       if [[ "$SCENARIO" != warp-failed ]]; then grep -Fq WARP "$TEST_DIR/config-output"; fi
+      ! grep -E '^[✓!✗] ' "$TEST_DIR/config-output"
+      ! grep -E '^[✓!✗] 本地端口 ' "$TEST_DIR/services"
+      [[ "$(grep -c '端口检测' "$TEST_DIR/services")" -eq 1 ]]
+      if [[ "$SCENARIO" == healthy ]]; then
+        python - "$TEST_DIR/config-output" <<'PY'
+import pathlib, sys, unicodedata
+rows = pathlib.Path(sys.argv[1]).read_text(encoding='utf-8').splitlines()
+labels = ['AGS 配置', 'Nginx 配置', 'Argo Token', 'Sing-box 配置', 'WARP', 'h2mux', 'TCP Brutal', 'config 权限', 'data 权限', 'subscriptions 权限']
+rows = [row for row in rows if row.strip()]
+assert len(rows) == len(labels)
+for row, label in zip(rows, labels):
+    assert row.startswith(label + '  '), (label, row)
+    prefix = row[:len(label)] + row[len(label):].split(next(x for x in row[len(label):] if x != ' '), 1)[0]
+    assert sum(2 if unicodedata.east_asian_width(c) in ('W', 'F') else 1 for c in prefix) == 20, row
+PY
+        for port in 3010 18085 3011 3012 3013 3014; do
+          [[ "$(grep -cF "sport = :${port}" "$TEST_DIR/port-calls")" -eq 1 ]]
+        done
+        for path in /one /two /three /four; do grep -Fq "${path}：公网 WS 握手正常" "$TEST_DIR/services"; done
+      fi
       case "$SCENARIO" in
         healthy|warp-healthy) grep -Fq '诊断完成 · 0 个错误 · 0 个提醒' "$TEST_DIR/output" ;;
         mixed) grep -Fq '诊断完成 · 6 个错误 · 2 个提醒' "$TEST_DIR/output" ;;
         warp-failed) grep -Fq '诊断完成 · 2 个错误 · 0 个提醒' "$TEST_DIR/output" ;;
+        ports-failed)
+          grep -Fq '端口检测失败 · 未监听：3011 · 3012' "$TEST_DIR/services"
+          grep -Fq '诊断完成 · 1 个错误 · 0 个提醒' "$TEST_DIR/output" ;;
       esac
     else
       ! grep -P '[\x{4E00}-\x{9FFF}]' "$TEST_DIR/output"
