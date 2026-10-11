@@ -33,39 +33,42 @@ validate_nodes_config() { :; }; valid_uuid() { :; }; valid_argo_token() { :; }
 core_check() { [[ "$SCENARIO" != mixed ]]; }
 nginx() { :; }
 stat() { [[ "${*: -1}" == "$SUBSCRIPTION_DIR" ]] && printf 755 || printf 700; }
-free() { printf 'Mem: 1024 100 924\n'; }
 detect_tcp_brutal() { IS_BRUTAL=true; [[ "$SCENARIO" != mixed ]] || IS_BRUTAL=false; }
 systemctl() {
   [[ "$1" == is-active ]] || return 0
+  [[ "$SCENARIO" != warp-failed || "${*: -1}" != warp-svc ]] || return 1
   [[ "$SCENARIO" != mixed || ( "${*: -1}" != "$CORE_SERVICE" && "${*: -1}" != "${TRAFFIC_TIMER}.timer" ) ]]
 }
 traffic_collect() { [[ "$SCENARIO" != mixed ]] || exit 1; }
 ss() { [[ "$SCENARIO" != mixed || "$*" != *':3011'* ]] && printf 'LISTEN\n'; }
 curl() {
+  if [[ "$*" == *--socks5-hostname* ]]; then [[ "$SCENARIO" != warp-failed ]]; return; fi
   if [[ "$SCENARIO" == mixed && "${*: -1}" == */one ]]; then printf 'HTTP/1.1 403 Forbidden\r\n'; return; fi
   if [[ "$SCENARIO" == mixed && "${*: -1}" == */two ]]; then return 28; fi
   printf 'HTTP/1.1 101 Switching Protocols\r\n'
 }
 journalctl() {
-  [[ "$SCENARIO" != logs-unavailable ]] || return 1
-  [[ "$SCENARIO" != empty-logs ]] || return 0
-  printf '2026-10-11T12:00:00 INFO service started\n'
-  [[ "$SCENARIO" != mixed ]] || printf '2026-10-11T12:00:01 ERROR fixture failure\n'
-  return 0
+  touch "$TEST_DIR/unexpected-journal"
+  return 1
 }
 for UI_LANGUAGE in zh en; do
-  for SCENARIO in healthy mixed empty-logs logs-unavailable; do
+  for SCENARIO in healthy mixed warp-healthy warp-failed; do
+    WARP_ENABLED=0
+    [[ "$SCENARIO" != warp-* ]] || WARP_ENABLED=1
     result=0
     doctor >"$TEST_DIR/output" 2>"$TEST_DIR/errors" || result=$?
     cat "$TEST_DIR/errors" >>"$TEST_DIR/output"
-    [[ "$SCENARIO" == mixed && "$result" == 1 || "$SCENARIO" != mixed && "$result" == 0 ]]
+    [[ ( "$SCENARIO" == mixed || "$SCENARIO" == warp-failed ) && "$result" == 1 ||
+      ( "$SCENARIO" == healthy || "$SCENARIO" == warp-healthy ) && "$result" == 0 ]]
     if [[ "$UI_LANGUAGE" == zh ]]; then
       mapfile -t headings < <(grep '^▸ ' "$TEST_DIR/output")
-      [[ "${headings[*]}" == '▸ 运行状态 ▸ 运行检查 ▸ 运行日志 ▸ 诊断结果' ]]
+      [[ "${headings[*]}" == '▸ 运行状态 ▸ 配置检查 ▸ 服务状态 ▸ 诊断结果' ]]
+      awk '/^▸ 配置检查$/ {exit} {print}' "$TEST_DIR/output" >"$TEST_DIR/status"
+      ! grep -E '^(Argo Tunnel|Sing-box Core|流量采集|WARP 分流|h2mux|TCP Brutal|系统内存) ' "$TEST_DIR/status"
       case "$SCENARIO" in
-        healthy|empty-logs) grep -Fq '诊断完成 · 0 个错误 · 0 个提醒' "$TEST_DIR/output" ;;
-        mixed) grep -Fq '诊断完成 · 6 个错误 · 3 个提醒' "$TEST_DIR/output" ;;
-        logs-unavailable) grep -Fq '诊断完成 · 0 个错误 · 1 个提醒' "$TEST_DIR/output" ;;
+        healthy|warp-healthy) grep -Fq '诊断完成 · 0 个错误 · 0 个提醒' "$TEST_DIR/output" ;;
+        mixed) grep -Fq '诊断完成 · 6 个错误 · 2 个提醒' "$TEST_DIR/output" ;;
+        warp-failed) grep -Fq '诊断完成 · 2 个错误 · 0 个提醒' "$TEST_DIR/output" ;;
       esac
     else
       ! grep -P '[\x{4E00}-\x{9FFF}]' "$TEST_DIR/output"
@@ -75,6 +78,11 @@ for UI_LANGUAGE in zh en; do
     ! grep -q '安装完成' "$TEST_DIR/output"
     grep -Fq 'Sing-box 1.14.3 · cloudflared 2026.10.0' "$TEST_DIR/output"
     grep -Fq "$NODES_FILE" "$TEST_DIR/output"
+    [[ ! -f "$TEST_DIR/unexpected-journal" ]]
   done
 done
+# Numeric memory and both command names are purple; separator keeps its original color.
+C_BRIGHT_MAGENTA=PURPLE C_BRIGHT_WHITE=WHITE C_RESET=RESET
+[[ "$(key_value '运行内存' '461.1 MiB')" == *'PURPLE461.1 MiBRESET'* ]]
+[[ "$(key_value '管理命令' 'ags / AGS')" == *'PURPLEagsWHITE / PURPLEAGSRESET'* ]]
 printf 'DIAGNOSTIC_SMOKE_OK\n'

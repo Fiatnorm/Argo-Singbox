@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2026.10.11.02"
+VERSION="2026.10.11.03"
 PROJECT_NAME="Argo-Singbox"
 PROJECT_CODE="AGS"
 SCRIPT_NAME="argo-singbox.sh"
@@ -791,6 +791,9 @@ declare -A UI_EN=(
   ['公网传输探测超时，未确认连通性；请用客户端实测。']='Public transport probe timed out; connectivity is unconfirmed. Please test with a client.'
   ['运行正常。']='It works fine.'
   ['运行状态']='Runtime status'
+  ['WARP 未启用（可选功能）。']='WARP is not enabled (optional feature).'
+  ['WARP 运行正常 ·']='WARP is running normally ·'
+  ['WARP 服务或代理端口异常。']='WARP service or proxy port is abnormal.'
   ['运行观测']=Monitoring
   ['运行诊断']=Diagnostics
   ['近期错误日志']='Recent errors'
@@ -1261,6 +1264,13 @@ key_value() {
   local value value_color="$C_BRIGHT_WHITE"
   if [[ "$2" == /* ]]; then value="$2"; else value="$(ui_text "$2")"; fi
   field_label "$1"
+  case "$1" in
+    运行内存|Memory) value_color="$C_BRIGHT_MAGENTA" ;;
+    管理命令|Commands)
+      printf '%s%s%s / %s%s%s\n' "$C_BRIGHT_MAGENTA" "$COMMAND_NAME" "$C_BRIGHT_WHITE" \
+        "$C_BRIGHT_MAGENTA" "$COMMAND_NAME_UPPER" "$C_RESET"
+      return ;;
+  esac
   field_text "$value" "$value_color"
 }
 ip_value() {
@@ -3243,12 +3253,14 @@ runtime_overview() {
   totals="$(read_traffic_totals)"
   IFS='|' read -r upload download <<<"$totals"
   subsection "运行状态"
-  state_value "Argo Tunnel" "$(service_status "$ARGO_SERVICE")"
-  state_value "Sing-box Core" "$(service_status "$CORE_SERVICE")"
-  state_value "流量采集" "$(traffic_timer_status)"
-  state_value "WARP 分流" "$(warp_status)"
-  state_value "h2mux" "$(multiplex_status)"
-  state_value "TCP Brutal" "$(tcp_brutal_status)"
+  if [[ "${1:-full}" != diagnostic ]]; then
+    state_value "Argo Tunnel" "$(service_status "$ARGO_SERVICE")"
+    state_value "Sing-box Core" "$(service_status "$CORE_SERVICE")"
+    state_value "流量采集" "$(traffic_timer_status)"
+    state_value "WARP 分流" "$(warp_status)"
+    state_value "h2mux" "$(multiplex_status)"
+    state_value "TCP Brutal" "$(tcp_brutal_status)"
+  fi
   state_value "节点概览" "$(node_overview)"
   if [[ -n "${ARGO_DOMAIN:-}" ]]; then
     key_value "Argo 域名" "$ARGO_DOMAIN"
@@ -3543,6 +3555,19 @@ health_check() {
         ((HEALTH_CHECK_ERRORS+=1))
       fi
     done
+    if [[ "$mode" == diagnostic ]]; then
+      if [[ "$WARP_ENABLED" == 1 ]]; then
+        if systemctl is-active --quiet warp-svc &&
+          ss -lntH "sport = :${WARP_PROXY_PORT}" | grep -q .; then
+          green "WARP 运行正常 · 127.0.0.1:${WARP_PROXY_PORT}。"
+        else
+          red "WARP 服务或代理端口异常。"
+          failed=1; ((HEALTH_CHECK_ERRORS+=1))
+        fi
+      else
+        yellow "WARP 未启用（可选功能）。"
+      fi
+    fi
     if systemctl is-active --quiet "${TRAFFIC_TIMER}.timer"; then
       green "流量统计定时器运行正常。"
     else
@@ -3854,7 +3879,7 @@ report_node_port_owners() {
 }
 
 show_install_nodes() {
-  show_subscription_nodes
+  show_subscription_nodes install
 }
 
 install_project() {
@@ -4927,17 +4952,14 @@ diagnostic_value() {
 
 doctor() {
   local failed=0 error_count=0 token_in_unit=0 warp_target directory mode warnings=0
-  local system_memory logs log_errors=0
   require_root
   load_env
   ensure_nodes_config
   brand "${PROJECT_NAME} · 运行诊断"
-  runtime_overview
-  system_memory="$(free -m | awk '/^Mem:/{printf "%s/%s MiB (%.0f%%)",$3,$2,$3*100/$2}')"
-  key_value "系统内存" "${system_memory:-未知}"
+  runtime_overview diagnostic
   key_value "节点文件" "$NODES_FILE"
   key_value "管理命令" "${COMMAND_NAME} / ${COMMAND_NAME_UPPER}"
-  section "运行检查"
+  section "配置检查"
   if (validate_nodes_config) && valid_uuid "$UUID" && valid_argo_token "$ARGO_TOKEN" &&
     [[ -n "$ARGO_DOMAIN" ]]; then
     diagnostic_value "AGS 配置" "已通过"
@@ -4972,13 +4994,6 @@ doctor() {
     grep -Fq -- "--token ${ARGO_TOKEN}" "/etc/systemd/system/${ARGO_SERVICE}.service" && token_in_unit=1
   if ((token_in_unit)); then diagnostic_value "Argo Token" "已通过 · 服务文件一致"; else diagnostic_value "Argo Token" "失败 · 服务文件未同步"; failed=1; ((error_count+=1)); fi
   if [[ "$WARP_ENABLED" == "1" ]]; then
-    if systemctl is-active --quiet warp-svc &&
-      ss -lntH "sport = :${WARP_PROXY_PORT}" | grep -q .; then
-      diagnostic_value "WARP 代理" "已通过 · 127.0.0.1:${WARP_PROXY_PORT}"
-    else
-      diagnostic_value "WARP 代理" "失败 · 服务或端口异常"
-      failed=1; ((error_count+=1))
-    fi
     warp_target="${WARP_DOMAINS%%,*}"
     if [[ -z "$warp_target" ]]; then
       diagnostic_value "WARP 规则" "已配置 · geosite ${WARP_GEOSITES}"
@@ -4989,29 +5004,11 @@ doctor() {
       diagnostic_value "WARP 目标" "失败 · ${warp_target} 不可达"
       failed=1; ((error_count+=1))
     fi
-  else
-    diagnostic_value "WARP" "未启用 · 可选功能"
   fi
+  section "服务状态"
   if ! health_check diagnostic; then failed=1; fi
   error_count=$((error_count + HEALTH_CHECK_ERRORS))
   warnings=$((warnings + WS_HEALTH_WARNINGS))
-  section "运行日志"
-  if logs="$(journalctl -u "$CORE_SERVICE" -u "$ARGO_SERVICE" -n 30 --no-pager -o short-iso 2>/dev/null)"; then
-    logs="$(printf '%s\n' "$logs" | filter_journal_noise || true)"
-    if [[ -n "$logs" && "$logs" != "-- No entries --" ]]; then
-      log_errors="$(grep -cE ' ERROR | ERROR\[' <<<"$logs" || true)"
-      printf '%s\n' "$logs" | tail -n 8 | colorize_journal
-      if ((log_errors)); then
-        yellow "近期日志包含错误 · ${log_errors}"
-        ((warnings+=1))
-      fi
-    else
-      info "暂无运行日志"
-    fi
-  else
-    yellow "运行日志读取失败"
-    ((warnings+=1))
-  fi
   section "诊断结果"
   if ((failed)); then
     red "诊断完成 · ${error_count} 个错误 · ${warnings} 个提醒"
@@ -5033,7 +5030,11 @@ show_nodes() {
 show_subscription_nodes() {
   local node tag protocol path port socks index=0 auto_url
   auto_url="https://${ARGO_DOMAIN}/${UUID}/auto"
-  UI_TIGHT_SECTION=1
+  if [[ "${1:-page}" == install ]]; then
+    UI_TIGHT_SECTION=0 UI_LAST_WAS_LINE=0
+  else
+    UI_TIGHT_SECTION=1
+  fi
   subsection "订阅链接"
   link_value "订阅面板" "https://${ARGO_DOMAIN}/${UUID}/"
   link_value "节点链接格式" "https://${ARGO_DOMAIN}/${UUID}/raw"

@@ -36,7 +36,8 @@ for UI_LANGUAGE in zh en; do
 done
 UI_LANGUAGE=zh
 ! declare -F node_output_width print_node_uri >/dev/null
-show_install_nodes >"$TEST_DIR/install"
+{ key_value '管理命令' 'ags / AGS'; show_install_nodes; } >"$TEST_DIR/install"
+awk '/ags \/ AGS$/ {getline; if ($0 != "") exit 1; getline; if ($0 != "▸ 订阅链接") exit 1; found=1} END {if (!found) exit 1}' "$TEST_DIR/install"
 grep -E '^(vless|vmess|trojan)://' "$TEST_DIR/install" >"$TEST_DIR/uris"
 cmp "$NODES_FILE" "$TEST_DIR/uris"
 [[ "$(tail -n1 "$TEST_DIR/install")" == trojan://* ]]
