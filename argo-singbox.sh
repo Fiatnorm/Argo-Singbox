@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2026.10.11.03"
+VERSION="2026.10.11.04"
 PROJECT_NAME="Argo-Singbox"
 PROJECT_CODE="AGS"
 SCRIPT_NAME="argo-singbox.sh"
@@ -3555,19 +3555,6 @@ health_check() {
         ((HEALTH_CHECK_ERRORS+=1))
       fi
     done
-    if [[ "$mode" == diagnostic ]]; then
-      if [[ "$WARP_ENABLED" == 1 ]]; then
-        if systemctl is-active --quiet warp-svc &&
-          ss -lntH "sport = :${WARP_PROXY_PORT}" | grep -q .; then
-          green "WARP 运行正常 · 127.0.0.1:${WARP_PROXY_PORT}。"
-        else
-          red "WARP 服务或代理端口异常。"
-          failed=1; ((HEALTH_CHECK_ERRORS+=1))
-        fi
-      else
-        yellow "WARP 未启用（可选功能）。"
-      fi
-    fi
     if systemctl is-active --quiet "${TRAFFIC_TIMER}.timer"; then
       green "流量统计定时器运行正常。"
     else
@@ -4994,6 +4981,13 @@ doctor() {
     grep -Fq -- "--token ${ARGO_TOKEN}" "/etc/systemd/system/${ARGO_SERVICE}.service" && token_in_unit=1
   if ((token_in_unit)); then diagnostic_value "Argo Token" "已通过 · 服务文件一致"; else diagnostic_value "Argo Token" "失败 · 服务文件未同步"; failed=1; ((error_count+=1)); fi
   if [[ "$WARP_ENABLED" == "1" ]]; then
+    if systemctl is-active --quiet warp-svc &&
+      ss -lntH "sport = :${WARP_PROXY_PORT}" | grep -q .; then
+      green "WARP 运行正常 · 127.0.0.1:${WARP_PROXY_PORT}。"
+    else
+      red "WARP 服务或代理端口异常。"
+      failed=1; ((error_count+=1))
+    fi
     warp_target="${WARP_DOMAINS%%,*}"
     if [[ -z "$warp_target" ]]; then
       diagnostic_value "WARP 规则" "已配置 · geosite ${WARP_GEOSITES}"
@@ -5004,6 +4998,8 @@ doctor() {
       diagnostic_value "WARP 目标" "失败 · ${warp_target} 不可达"
       failed=1; ((error_count+=1))
     fi
+  else
+    yellow "WARP 未启用（可选功能）。"
   fi
   section "服务状态"
   if ! health_check diagnostic; then failed=1; fi

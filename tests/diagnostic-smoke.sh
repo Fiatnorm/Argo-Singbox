@@ -65,6 +65,10 @@ for UI_LANGUAGE in zh en; do
       [[ "${headings[*]}" == '▸ 运行状态 ▸ 配置检查 ▸ 服务状态 ▸ 诊断结果' ]]
       awk '/^▸ 配置检查$/ {exit} {print}' "$TEST_DIR/output" >"$TEST_DIR/status"
       ! grep -E '^(Argo Tunnel|Sing-box Core|流量采集|WARP 分流|h2mux|TCP Brutal|系统内存) ' "$TEST_DIR/status"
+      awk '/^▸ 配置检查$/ {show=1; next} /^▸ 服务状态$/ {exit} show {print}' "$TEST_DIR/output" >"$TEST_DIR/config-output"
+      awk '/^▸ 服务状态$/ {show=1; next} /^▸ 诊断结果$/ {exit} show {print}' "$TEST_DIR/output" >"$TEST_DIR/services"
+      ! grep -Fq WARP "$TEST_DIR/services"
+      if [[ "$SCENARIO" != warp-failed ]]; then grep -Fq WARP "$TEST_DIR/config-output"; fi
       case "$SCENARIO" in
         healthy|warp-healthy) grep -Fq '诊断完成 · 0 个错误 · 0 个提醒' "$TEST_DIR/output" ;;
         mixed) grep -Fq '诊断完成 · 6 个错误 · 2 个提醒' "$TEST_DIR/output" ;;
