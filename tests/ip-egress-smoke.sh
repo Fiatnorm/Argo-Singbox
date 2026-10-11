@@ -9,6 +9,13 @@ ip() { printf '%s\n' 'default dev eth0 src 192.0.2.1'; }
 curl() {
   printf '%s\n' "$*" >>"$TEST_DIR/curl.log"
   [[ "$*" == *"https://get.geojs.io/v1/ip/geo.json"* && "$*" == *"--noproxy *"* ]] || return 1
+  [[ "$*" == *"--connect-timeout 2 --max-time 3"* && "$*" != *--retry* ]]
+  touch "$TEST_DIR/ready${1:1:1}"
+  for attempt in {1..40}; do
+    [[ -f "$TEST_DIR/ready4" && -f "$TEST_DIR/ready6" ]] && break
+    sleep 0.05
+  done
+  [[ -f "$TEST_DIR/ready4" && -f "$TEST_DIR/ready6" ]] || return 1
   if [[ "$1" == -4fsS ]]; then
     [[ "${TEST_V4:-1}" == 1 ]] || return 1
     printf '{"ip":"107.173.211.29","country_code":"US","asn":36352,"organization_name":"HostPapa"}'

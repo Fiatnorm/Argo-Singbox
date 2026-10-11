@@ -11,7 +11,7 @@ for protocol in vless vmess trojan; do
   builtin printf '%s://%s\n' "$protocol" "$suffix" >>"$NODES_FILE"
   builtin printf '%s|%s|/%s|3011|\n' "$protocol" "$protocol" "$protocol" >>"$NODES_CONFIG"
 done
-load_env() { :; }; qrencode() { :; }
+load_env() { :; }; qrencode() { printf 'QR:%s\n' "${@: -1}"; }
 ARGO_DOMAIN=example.com; UUID=11111111-1111-4111-8111-111111111111
 # Any attempted terminal-width probe is a failure: output must ignore COLUMNS.
 stty() { builtin printf 'Unexpected terminal probe\n' >&2; return 1; }
@@ -37,7 +37,13 @@ done
 UI_LANGUAGE=zh
 ! declare -F node_output_width print_node_uri >/dev/null
 show_install_nodes >"$TEST_DIR/install"
-sed '1,/^▸ 原始节点$/d; /^$/d' "$TEST_DIR/install" >"$TEST_DIR/uris"
+grep -E '^(vless|vmess|trojan)://' "$TEST_DIR/install" >"$TEST_DIR/uris"
 cmp "$NODES_FILE" "$TEST_DIR/uris"
 [[ "$(tail -n1 "$TEST_DIR/install")" == trojan://* ]]
+show_nodes >"$TEST_DIR/page"
+awk 'found {print} /^▸ 订阅链接$/ {found=1}' "$TEST_DIR/page" >"$TEST_DIR/page-content"
+awk 'found {print} /^▸ 订阅链接$/ {found=1}' "$TEST_DIR/install" >"$TEST_DIR/install-content"
+cmp "$TEST_DIR/page-content" "$TEST_DIR/install-content"
+grep -Fq "QR:https://${ARGO_DOMAIN}/${UUID}/auto" "$TEST_DIR/install"
+grep -Fq '[03]' "$TEST_DIR/install"
 printf 'SUBSCRIPTION_DISPLAY_SMOKE_OK\n'

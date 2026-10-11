@@ -1,6 +1,6 @@
 # Argo-Singbox Terminal UI Design
 
-> 设计基线：`Fiatnorm/Argo-Singbox` 当前行为，脚本版本 `2026.10.11.01`
+> 设计基线：`Fiatnorm/Argo-Singbox` 当前行为，脚本版本 `2026.10.11.02`
 >
 > 适用范围：`argo-singbox.sh` 及其全部交互式终端输出
 >
@@ -405,7 +405,7 @@ TERM=dumb
 推荐品牌区：
 
 ```text
-Argo-Singbox  v2026.10.11.01 · Argo Tunnel · Sing-box Core
+Argo-Singbox  v2026.10.11.02 · Argo Tunnel · Sing-box Core
 功能特性      WS/TLS · WARP · h2mux · TCP Brutal
 系统环境      Debian GNU/Linux 13 · amd64 · Kernel 6.12.101
 ----------------------------------------------------------------
@@ -2072,7 +2072,7 @@ Argo Tunnel 回源端口     → Argo 回源
 # # # #  ##  #      ##  ### # #  ## ##   #  # #
 # # # #  ##  #      ##  ### # #  ## ##   #  # #
 
-Argo-Singbox  v2026.10.11.01 · Argo Tunnel · Sing-box Core
+Argo-Singbox  v2026.10.11.02 · Argo Tunnel · Sing-box Core
 功能特性      WS/TLS · WARP · h2mux · TCP Brutal
 系统环境      Debian GNU/Linux 13 · amd64 · Kernel 6.12.101
 ----------------------------------------------------------------
@@ -2264,7 +2264,7 @@ Argo-Singbox Terminal UI 的目标不是“做得像图形界面”，而是成�
 
 ## 2026.10.11 紧凑布局补充
 
-顶部标题为 `Argo-Singbox  v2026.10.11.01 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。
+顶部标题为 `Argo-Singbox  v2026.10.11.02 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。
 
 ### 订阅中心布局与显示修订
 
@@ -2291,3 +2291,11 @@ File 使用约 116px 的紧凑图标与名称组合，在列内整体居中；�
 安装及组件更新通过官方 GitHub `/releases/latest` 检测 Sing-box 和 cloudflared，要求 `draft=false`、`prerelease=false` 且版本号为三段数字（允许 v 前缀）；失败时明确报错，不回退到旧版本或提示已是最新版。2026-10-11 核验正式版为 Sing-box 1.14.3、cloudflared 2026.10.0；下载仍校验官方资产 SHA256，核心仍校验版本、Clash API 构建标签和实际配置。
 
 原始节点输出不再额外追加空行，直接运行退出时仍统一保留一行空行。第三方工具行显示 `Linux-NetSpeed` 和完整项目地址 `https://github.com/ylx2016/Linux-NetSpeed`。在线安装提示为“在线安装会先获取并校验最新版本脚本，再替换本地脚本。”控制中心 11 保存语言后退出，订阅面板语言仍同步更新。
+
+### 安装结果、诊断分组与 GeoJS 探测
+
+安装完成后复用节点订阅内容：按固定顺序显示六个订阅链接、自适应订阅二维码，以及含编号、标签、协议和完整 URI 的全部原始节点；不重复节点页品牌标题，URI 保持单行，末尾不额外追加空行。
+
+运行诊断固定为运行状态 / 运行检查 / 运行日志 / 诊断结果四部分。状态复用安装结果的运行概览，保留系统内存、节点文件和管理命令；检查保留 AGS / Sing-box / Nginx 配置、TCP Brutal / h2mux、目录权限、服务 Token、WARP 代理与规则目标，增加复用安装健康检查的服务、定时器、Clash API 全局统计、本地端口和各节点公网 WS 结果。成功 / 提醒 / 失败分别以 ✓ / ! / ✗ 显示，每项实际失败计一个错误，WS 超时计提醒而不宣称连接成功。日志只读取一次，展示最近八行，最近三十行内存在错误日志或日志读取失败均计一个提醒；无日志时明确显示暂无运行日志。诊断不输出安装完成提示。
+
+IPv4 与 IPv6 GeoJS 请求并行执行，强制对应地址族、排除环境代理并保留默认路由绑定；连接超时 2 秒、单次请求总超时 3 秒，不重试。本次脚本运行内缓存两个地址族的成功和失败结果，配置生成、运行概览和诊断复用，下一次启动重新探测，不保存跨运行缓存。GeoJS 信息通过单次 jq 解析，不改动优选入口或 direct 地址族选择合同。

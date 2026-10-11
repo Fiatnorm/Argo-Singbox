@@ -48,6 +48,7 @@ NO_COLOR=1 TERM=dumb bash -c '
   node_overview() { printf "VLESS 1 · VMess 2 · Trojan 1"; }
   public_ipv4_details() { printf "192.0.2.1|US|AS64500|Example ISP"; }
   public_ipv6_details() { printf "2001:db8::1|US|AS64500|Example ISP"; }
+  detect_public_ips() { :; }
   runtime_memory_usage() { printf "56.8 MiB"; }
   ARGO_DOMAIN="example.com"; SERVER="polestar.com"; SERVER_PORT=443; ORIGIN_PORT=3010; OUTBOUND_IP_FAMILY=ipv4
   runtime_overview
@@ -90,9 +91,9 @@ for required in \
   '节点落地 IP' 'IPv4 直连出站' 'IPv6 直连出站' \
   '启用 h2mux' '停用 h2mux' '设置 Brutal 带宽' \
   'Argo 回源' 'Token / 域名' '节点代理 [http:// 或 socks5://user:pass@host:port；留空为 direct]' \
-  '状态报告' '诊断完成 · 0 个错误 · 0 个提醒' \
+  '运行检查' '诊断完成 · 0 个错误 · 0 个提醒' \
   '不可用 · 缺少 brutal 内核模块' '创建备份' '恢复配置' \
-  '重启核心服务' '近期错误日志' '出站'; do
+  '重启核心服务' '运行日志' '出站'; do
   grep -Fq "$required" "$SCRIPT" || {
     printf 'missing UI contract text: %s\n' "$required" >&2
     exit 1

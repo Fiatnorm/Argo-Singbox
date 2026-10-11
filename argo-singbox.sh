@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2026.10.11.01"
+VERSION="2026.10.11.02"
 PROJECT_NAME="Argo-Singbox"
 PROJECT_CODE="AGS"
 SCRIPT_NAME="argo-singbox.sh"
@@ -783,7 +783,12 @@ declare -A UI_EN=(
   ['运行中']=Running
   ['运行内存']=Memory
   ['运行日志']='Runtime logs'
-  ['运行检查']='run check'
+  ['运行检查']='Runtime checks'
+  ['暂无运行日志']='No runtime logs available'
+  ['运行日志读取失败']='Failed to read runtime logs'
+  ['近期日志包含错误']='Recent logs contain errors'
+  ['监听正常。']='is listening normally.'
+  ['公网传输探测超时，未确认连通性；请用客户端实测。']='Public transport probe timed out; connectivity is unconfirmed. Please test with a client.'
   ['运行正常。']='It works fine.'
   ['运行状态']='Runtime status'
   ['运行观测']=Monitoring
@@ -1032,13 +1037,20 @@ geojs_query() {
   # 与 SBA 一样按地址族检测并绑定默认公网路由，排除环境代理。
   source="$(ip -"$family" route get "$destination" 2>/dev/null | awk '{for(i=1;i<NF;i++) if($i=="src") {print $(i+1); exit}}' || true)"
   [[ -z "$source" ]] || bind=(--interface "$source")
-  curl -"$family"fsS --noproxy '*' "${bind[@]}" --connect-timeout 2 --max-time 4 \
-    --retry 1 --retry-delay 0 --retry-all-errors https://get.geojs.io/v1/ip/geo.json 2>/dev/null || true
+  curl -"$family"fsS --noproxy '*' "${bind[@]}" --connect-timeout 2 --max-time 3 \
+    https://get.geojs.io/v1/ip/geo.json 2>/dev/null || true
 }
 detect_public_ips() {
+  local stage ipv4_pid ipv6_pid
   [[ "${PUBLIC_IPS_DETECTED:-0}" == 1 ]] && return 0
-  PUBLIC_IPV4_JSON="$(geojs_query 4)"
-  PUBLIC_IPV6_JSON="$(geojs_query 6)"
+  stage="$(mktemp -d)"
+  geojs_query 4 >"$stage/ipv4" & ipv4_pid=$!
+  geojs_query 6 >"$stage/ipv6" & ipv6_pid=$!
+  wait "$ipv4_pid" || true
+  wait "$ipv6_pid" || true
+  PUBLIC_IPV4_JSON="$(cat "$stage/ipv4")"
+  PUBLIC_IPV6_JSON="$(cat "$stage/ipv6")"
+  rm -rf "$stage"
   PUBLIC_IPV4="$(geojs_field "$PUBLIC_IPV4_JSON" ip)"
   PUBLIC_IPV6="$(geojs_field "$PUBLIC_IPV6_JSON" ip)"
   [[ "$PUBLIC_IPV4" =~ ^[0-9]+(\.[0-9]+){3}$ ]] && valid_ipv4 "$PUBLIC_IPV4" || PUBLIC_IPV4=""
@@ -1102,10 +1114,9 @@ public_ip_details() {
   json="$(tr '\n' ' ' <<<"$json")"
   [[ -n "$json" ]] || return 1
   if command -v jq >/dev/null 2>&1; then
-    ip="$(jq -r '.ip // empty' <<<"$json" 2>/dev/null || true)"
-    country="$(jq -r '.country_code // empty' <<<"$json" 2>/dev/null || true)"
-    asn="$(jq -r '.asn // empty' <<<"$json" 2>/dev/null || true)"
-    organization="$(jq -r '.organization_name // .organization // empty' <<<"$json" 2>/dev/null || true)"
+    IFS='|' read -r ip country asn organization < <(jq -r '
+      [.ip // "", .country_code // "", .asn // "", .organization_name // .organization // ""]
+      | map(tostring) | join("|")' <<<"$json" 2>/dev/null) || return 1
   else
     ip="$(sed -n 's/.*"ip"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$json" | head -n 1)"
     country="$(sed -n 's/.*"country_code"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$json" | head -n 1)"
@@ -2273,6 +2284,7 @@ write_sing_box_config() (
   validate_nodes_config
   ensure_warp_geosite_files
   detect_tcp_brutal
+  if [[ "${OUTBOUND_IP_FAMILY:-auto}" == auto ]]; then detect_public_ips; fi
   outbound_family="$(effective_outbound_ip_family)" ||
     die "无法通过 GeoJS 确认 IPv4 或 IPv6 公网出口，未生成 Sing-box 配置。"
   case "$outbound_family" in
@@ -3227,6 +3239,7 @@ runtime_memory_usage() {
 runtime_overview() {
   local totals upload download ipv4_details ipv6_details ip country asn isp
   local ipv6_ip ipv6_country
+  detect_public_ips
   totals="$(read_traffic_totals)"
   IFS='|' read -r upload download <<<"$totals"
   subsection "运行状态"
@@ -3510,20 +3523,24 @@ report_runtime_config_failure() {
 health_check() {
   local failed=0 local_failed=0 ws_failed=0 ws_unknown=0 public_code public_headers curl_status port path tag protocol socks mode="${1:-full}"
   WS_HEALTH_WARNINGS=0
+  HEALTH_CHECK_ERRORS=0
   ensure_nodes_config
   if [[ "$mode" == "ws" ]]; then
     section "传输检查"
   else
-    section "运行检查"
+    [[ "$mode" == diagnostic ]] || section "运行检查"
     for service in nginx "$CORE_SERVICE" "$ARGO_SERVICE"; do
       if systemctl is-active --quiet "$service"; then
         green "$(service_label "$service") 运行正常。"
       else
         red "$(service_label "$service") 未运行。"
-        systemctl --no-pager --full status "$service" 2>&1 | filter_journal_noise || true
-        journalctl -u "$service" -n 20 --no-pager -o cat 2>/dev/null |
-          filter_journal_noise || true
+        if [[ "$mode" != diagnostic ]]; then
+          systemctl --no-pager --full status "$service" 2>&1 | filter_journal_noise || true
+          journalctl -u "$service" -n 20 --no-pager -o cat 2>/dev/null |
+            filter_journal_noise || true
+        fi
         failed=1
+        ((HEALTH_CHECK_ERRORS+=1))
       fi
     done
     if systemctl is-active --quiet "${TRAFFIC_TIMER}.timer"; then
@@ -3531,23 +3548,24 @@ health_check() {
     else
       red "流量统计定时器未运行。"
       failed=1
+      ((HEALTH_CHECK_ERRORS+=1))
     fi
-    if traffic_collect; then
+    if (traffic_collect); then
       green "Clash API 全局流量统计已通过。"
     else
       red "Clash API 全局流量统计无效。"
       failed=1
+      ((HEALTH_CHECK_ERRORS+=1))
     fi
   fi
 
   while read -r port; do
     if ! ss -lntH "sport = :${port}" 2>/dev/null | grep -q .; then
-      if [[ "$mode" == "ws" ]]; then
-        ((local_failed+=1))
-      else
-        red "本地端口 ${port} 未监听。"
-      fi
+      ((local_failed+=1))
+      [[ "$mode" == ws ]] || red "本地端口 ${port} 未监听。"
       failed=1
+    elif [[ "$mode" == diagnostic ]]; then
+      green "本地端口 ${port} 监听正常。"
     fi
   done < <(printf '%s\n' "$ORIGIN_PORT" "$STATS_API_PORT"; cut -d'|' -f4 "$NODES_CONFIG")
   if [[ "$mode" == "ws" ]]; then
@@ -3564,17 +3582,22 @@ health_check() {
       "https://${ARGO_DOMAIN}:${SERVER_PORT}${path}" 2>/dev/null)" || curl_status=$?
     public_code="$(awk '/^HTTP/{code=$2} END{print code}' <<<"$public_headers")"
     if grep -qi '^cf-mitigated: *challenge' <<<"$public_headers"; then
-      if [[ "$mode" == "ws" ]]; then ((ws_failed+=1)); else red "${path}：Cloudflare 人机挑战（HTTP ${public_code:-403}）"; fi
+      ((ws_failed+=1))
+      [[ "$mode" == ws ]] || red "${path}：Cloudflare 人机挑战（HTTP ${public_code:-403}）"
       failed=1
     elif [[ "$public_code" == "101" ]]; then
       [[ "$mode" != "ws" ]] && green "${path}：公网 WS 握手正常"
     elif [[ "$curl_status" -eq 28 ]]; then
-      if [[ "$mode" == "ws" ]]; then ((ws_unknown+=1)); else yellow "${path}：公网传输探测超时，未视为安装失败；请用客户端实测。"; fi
+      ((ws_unknown+=1))
+      [[ "$mode" == ws ]] || yellow "${path}：公网传输探测超时，未确认连通性；请用客户端实测。"
     else
-      if [[ "$mode" == "ws" ]]; then ((ws_failed+=1)); else red "${path}：公网传输探测失败（HTTP ${public_code:-000}）"; fi
+      ((ws_failed+=1))
+      [[ "$mode" == ws ]] || red "${path}：公网传输探测失败（HTTP ${public_code:-000}）"
       failed=1
     fi
   done <"$NODES_CONFIG"
+  HEALTH_CHECK_ERRORS=$((HEALTH_CHECK_ERRORS + local_failed + ws_failed))
+  WS_HEALTH_WARNINGS="$ws_unknown"
   if [[ "$mode" == "ws" ]]; then
     if ((ws_failed)); then state_value "公网 WS" "失败 · ${ws_failed} 项异常"; fi
     if ((ws_unknown)); then state_value "公网 WS" "需注意 · ${ws_unknown} 项探测超时"; WS_HEALTH_WARNINGS="$ws_unknown"; fi
@@ -3831,8 +3854,7 @@ report_node_port_owners() {
 }
 
 show_install_nodes() {
-  section "原始节点"
-  cat "$NODES_FILE"
+  show_subscription_nodes
 }
 
 install_project() {
@@ -4059,6 +4081,7 @@ import_configuration() {
 
 list_node_profiles() {
   local mode="${1:-compact}" tag protocol path port socks direct_ip
+  detect_public_ips
   direct_ip="$(public_node_egress_ip)"
   if [[ "$mode" == "spaced" ]]; then
     printf '\n'
@@ -4564,6 +4587,7 @@ configure_transport_optimization() {
 configure_node_egress() {
   local ipv4_details ipv6_details ipv4_ip ipv6_ip choice selected_family
   local old_family="${OUTBOUND_IP_FAMILY:-auto}"
+  detect_public_ips
   ipv4_details="$(public_ipv4_details 2>/dev/null || true)"
   ipv6_details="$(public_ipv6_details 2>/dev/null || true)"
   [[ -n "$ipv4_details" ]] && IFS='|' read -r ipv4_ip _ _ _ <<<"$ipv4_details"
@@ -4892,97 +4916,102 @@ filter_journal_noise() {
   grep -Ev 'infra/conf/serial: Reading config:|common/errors: The feature (WebSocket transport|VMess|Trojan).*deprecated'
 }
 
+diagnostic_value() {
+  local label="$1" value="$2"
+  case "$value" in
+    *失败*|*Failed*) red "${label} · ${value}" ;;
+    *不可用*|*未启用*|*Unavailable*|*Disabled*) yellow "${label} · ${value}" ;;
+    *) green "${label} · ${value}" ;;
+  esac
+}
+
 doctor() {
-  local failed=0 error_count=0 token_in_unit=0 warp_target system_memory directory mode log_errors=0 warnings=0
-  local ipv4_details ipv6_details ip country asn isp ipv6_ip ipv6_country
+  local failed=0 error_count=0 token_in_unit=0 warp_target directory mode warnings=0
+  local system_memory logs log_errors=0
   require_root
   load_env
   ensure_nodes_config
-  system_memory="$(free -m | awk '/^Mem:/{printf "%s/%s MiB (%.0f%%)",$3,$2,$3*100/$2}')"
-  ipv4_details="$(public_ipv4_details 2>/dev/null || true)"
-  ipv6_details="$(public_ipv6_details 2>/dev/null || true)"
   brand "${PROJECT_NAME} · 运行诊断"
-  subsection "状态报告"
-  if [[ -n "$ipv4_details" ]]; then
-    IFS='|' read -r ip country asn isp <<<"$ipv4_details"
-    ip_value "VPS IPv4" "$ip · $country · $asn · $isp"
-  else
-    ip_value "VPS IPv4" "GeoJS 查询失败 · 未确认出口"
-  fi
-  if [[ -n "$ipv6_details" ]]; then
-    IFS='|' read -r ipv6_ip ipv6_country _ _ <<<"$ipv6_details"
-    ip_value "VPS IPv6" "$ipv6_ip · $ipv6_country"
-  else
-    ip_value "VPS IPv6" "None"
-  fi
-  component_version_value
+  runtime_overview
+  system_memory="$(free -m | awk '/^Mem:/{printf "%s/%s MiB (%.0f%%)",$3,$2,$3*100/$2}')"
   key_value "系统内存" "${system_memory:-未知}"
-  key_value "运行内存" "$(runtime_memory_usage)"
-  endpoint_value "优选入口" "${SERVER:-未知}" "${SERVER_PORT:-未知}"
-  key_value "Argo 回源" "127.0.0.1:${ORIGIN_PORT}"
-  section "配置检查"
-  if validate_nodes_config && valid_uuid "$UUID" && valid_argo_token "$ARGO_TOKEN" &&
+  key_value "节点文件" "$NODES_FILE"
+  key_value "管理命令" "${COMMAND_NAME} / ${COMMAND_NAME_UPPER}"
+  section "运行检查"
+  if (validate_nodes_config) && valid_uuid "$UUID" && valid_argo_token "$ARGO_TOKEN" &&
     [[ -n "$ARGO_DOMAIN" ]]; then
-    state_value "AGS 配置" "已通过"
+    diagnostic_value "AGS 配置" "已通过"
   else
-    state_value "AGS 配置" "失败 · 字段或节点无效"
+    diagnostic_value "AGS 配置" "失败 · 字段或节点无效"
     failed=1; ((error_count+=1))
   fi
-  if core_check >/dev/null 2>&1; then state_value "$(core_label) 配置" "已通过"; else state_value "$(core_label) 配置" "失败"; failed=1; ((error_count+=1)); fi
-  if nginx -t >/dev/null 2>&1; then state_value "Nginx 配置" "已通过"; else state_value "Nginx 配置" "失败"; failed=1; ((error_count+=1)); fi
+  if core_check >/dev/null 2>&1; then diagnostic_value "$(core_label) 配置" "已通过"; else diagnostic_value "$(core_label) 配置" "失败"; failed=1; ((error_count+=1)); fi
+  if nginx -t >/dev/null 2>&1; then diagnostic_value "Nginx 配置" "已通过"; else diagnostic_value "Nginx 配置" "失败"; failed=1; ((error_count+=1)); fi
   detect_tcp_brutal
   if [[ "$TCP_BRUTAL_ENABLED" != "1" ]]; then
-    state_value "TCP Brutal" "未启用 · 配置关闭"
+    diagnostic_value "TCP Brutal" "未启用 · 配置关闭"
   elif [[ "$MULTIPLEX_ENABLED" != "1" ]]; then
-    state_value "TCP Brutal" "未启用 · h2mux 已关闭"
+    diagnostic_value "TCP Brutal" "未启用 · h2mux 已关闭"
   elif [[ "$IS_BRUTAL" == "true" ]]; then
-    state_value "TCP Brutal" "已通过 · 模块已加载"
+    diagnostic_value "TCP Brutal" "已通过 · 模块已加载"
   else
-    state_value "TCP Brutal" "不可用 · 缺少 brutal 内核模块"
+    diagnostic_value "TCP Brutal" "不可用 · 缺少 brutal 内核模块"
     ((warnings+=1))
   fi
-  state_value "h2mux" "$(multiplex_status)"
+  diagnostic_value "h2mux" "$(multiplex_status)"
   for directory in "$CONFIG_DIR" "$DATA_DIR" "$SUBSCRIPTION_DIR"; do
     mode="$(stat -c '%a' "$directory" 2>/dev/null || true)"
     case "$directory:$mode" in
-      "$CONFIG_DIR:700") state_value "config 权限" "已通过 · 700" ;;
-      "$DATA_DIR:700") state_value "data 权限" "已通过 · 700" ;;
-      "$SUBSCRIPTION_DIR:755") state_value "subscriptions 权限" "已通过 · 755" ;;
-      *) state_value "$(basename "$directory") 权限" "失败 · 当前 ${mode:-不存在}"; failed=1; ((error_count+=1)) ;;
+      "$CONFIG_DIR:700") diagnostic_value "config 权限" "已通过 · 700" ;;
+      "$DATA_DIR:700") diagnostic_value "data 权限" "已通过 · 700" ;;
+      "$SUBSCRIPTION_DIR:755") diagnostic_value "subscriptions 权限" "已通过 · 755" ;;
+      *) diagnostic_value "$(basename "$directory") 权限" "失败 · 当前 ${mode:-不存在}"; failed=1; ((error_count+=1)) ;;
     esac
   done
   [[ -f "/etc/systemd/system/${ARGO_SERVICE}.service" ]] &&
     grep -Fq -- "--token ${ARGO_TOKEN}" "/etc/systemd/system/${ARGO_SERVICE}.service" && token_in_unit=1
-  if ((token_in_unit)); then state_value "Argo Token" "已通过 · 服务文件一致"; else state_value "Argo Token" "失败 · 服务文件未同步"; failed=1; ((error_count+=1)); fi
-  section "服务状态"
-  if systemctl is-active --quiet nginx; then state_value "Nginx" "已启用 · 运行中"; else state_value "Nginx" "未运行"; failed=1; ((error_count+=1)); fi
-  if systemctl is-active --quiet "$CORE_SERVICE"; then state_value "$(core_label) Core" "已启用 · 运行中"; else state_value "$(core_label) Core" "未运行"; failed=1; ((error_count+=1)); fi
-  if systemctl is-active --quiet "$ARGO_SERVICE"; then state_value "Argo Tunnel" "已启用 · 运行中"; else state_value "Argo Tunnel" "未运行"; failed=1; ((error_count+=1)); fi
+  if ((token_in_unit)); then diagnostic_value "Argo Token" "已通过 · 服务文件一致"; else diagnostic_value "Argo Token" "失败 · 服务文件未同步"; failed=1; ((error_count+=1)); fi
   if [[ "$WARP_ENABLED" == "1" ]]; then
     if systemctl is-active --quiet warp-svc &&
       ss -lntH "sport = :${WARP_PROXY_PORT}" | grep -q .; then
-      state_value "WARP 代理" "已通过 · 127.0.0.1:${WARP_PROXY_PORT}"
+      diagnostic_value "WARP 代理" "已通过 · 127.0.0.1:${WARP_PROXY_PORT}"
     else
-      state_value "WARP 代理" "失败 · 服务或端口异常"
+      diagnostic_value "WARP 代理" "失败 · 服务或端口异常"
       failed=1; ((error_count+=1))
     fi
     warp_target="${WARP_DOMAINS%%,*}"
     if [[ -z "$warp_target" ]]; then
-      state_value "WARP 规则" "已配置 · geosite ${WARP_GEOSITES}"
+      diagnostic_value "WARP 规则" "已配置 · geosite ${WARP_GEOSITES}"
     elif curl -fsS --socks5-hostname "127.0.0.1:${WARP_PROXY_PORT}" --connect-timeout 5 \
       --max-time 10 -o /dev/null "https://${warp_target}"; then
-      state_value "WARP 目标" "已通过 · ${warp_target}"
+      diagnostic_value "WARP 目标" "已通过 · ${warp_target}"
     else
-      state_value "WARP 目标" "失败 · ${warp_target} 不可达"
+      diagnostic_value "WARP 目标" "失败 · ${warp_target} 不可达"
       failed=1; ((error_count+=1))
     fi
   else
-    state_value "WARP" "未启用 · 可选功能"
+    diagnostic_value "WARP" "未启用 · 可选功能"
   fi
-  if ! health_check ws; then failed=1; ((error_count+=1)); fi
+  if ! health_check diagnostic; then failed=1; fi
+  error_count=$((error_count + HEALTH_CHECK_ERRORS))
   warnings=$((warnings + WS_HEALTH_WARNINGS))
-  journalctl -u "$CORE_SERVICE" -u "$ARGO_SERVICE" -n 30 --no-pager -o short-iso 2>/dev/null |
-    grep -qE ' ERROR | ERROR\[' && log_errors=1 || true
+  section "运行日志"
+  if logs="$(journalctl -u "$CORE_SERVICE" -u "$ARGO_SERVICE" -n 30 --no-pager -o short-iso 2>/dev/null)"; then
+    logs="$(printf '%s\n' "$logs" | filter_journal_noise || true)"
+    if [[ -n "$logs" && "$logs" != "-- No entries --" ]]; then
+      log_errors="$(grep -cE ' ERROR | ERROR\[' <<<"$logs" || true)"
+      printf '%s\n' "$logs" | tail -n 8 | colorize_journal
+      if ((log_errors)); then
+        yellow "近期日志包含错误 · ${log_errors}"
+        ((warnings+=1))
+      fi
+    else
+      info "暂无运行日志"
+    fi
+  else
+    yellow "运行日志读取失败"
+    ((warnings+=1))
+  fi
   section "诊断结果"
   if ((failed)); then
     red "诊断完成 · ${error_count} 个错误 · ${warnings} 个提醒"
@@ -4991,23 +5020,19 @@ doctor() {
   else
     green "诊断完成 · 0 个错误 · 0 个提醒"
   fi
-  if ((log_errors)); then
-    section "近期错误日志"
-    journalctl -u "$CORE_SERVICE" -u "$ARGO_SERVICE" -n 30 --no-pager -o short-iso 2>/dev/null |
-      filter_journal_noise |
-      grep -E ' ERROR | ERROR\[' |
-      tail -n 8 |
-      colorize_journal || true
-  fi
   return "$failed"
 }
 
 show_nodes() {
-  local node tag protocol path port socks index=0 auto_url
   load_env
   [[ -f "$NODES_FILE" ]] || die "节点文件不存在，请先安装。"
-  auto_url="https://${ARGO_DOMAIN}/${UUID}/auto"
   brand "${PROJECT_NAME} · 节点订阅"
+  show_subscription_nodes
+}
+
+show_subscription_nodes() {
+  local node tag protocol path port socks index=0 auto_url
+  auto_url="https://${ARGO_DOMAIN}/${UUID}/auto"
   UI_TIGHT_SECTION=1
   subsection "订阅链接"
   link_value "订阅面板" "https://${ARGO_DOMAIN}/${UUID}/"

@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+export NO_COLOR=1 TERM=dumb UI_LANGUAGE=zh
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/argo-singbox.sh"
+TEST_DIR="$(mktemp -d)"
+trap 'rm -rf "$TEST_DIR"' EXIT
+CONFIG_DIR="$TEST_DIR/config" DATA_DIR="$TEST_DIR/data" SUBSCRIPTION_DIR="$TEST_DIR/subscriptions"
+mkdir -p "$CONFIG_DIR" "$DATA_DIR" "$SUBSCRIPTION_DIR" "$TEST_DIR/systemd"
+NODES_CONFIG="$CONFIG_DIR/nodes.conf" NODES_FILE="$DATA_DIR/nodes.txt"
+printf 'One|vless|/one|3011|\nTwo|vmess|/two|3012|\nThree|trojan|/three|3013|\n' >"$NODES_CONFIG"
+ARGO_TOKEN=fixture-token UUID=11111111-1111-4111-8111-111111111111
+ARGO_DOMAIN=example.com SERVER=example.com SERVER_PORT=443 ORIGIN_PORT=3010 STATS_API_PORT=18085
+WARP_ENABLED=0 WARP_PROXY_PORT=40000 WARP_DOMAINS=example.com WARP_GEOSITES=""
+MULTIPLEX_ENABLED=1 TCP_BRUTAL_ENABLED=1
+BRUTAL_UP_MBPS=1000 BRUTAL_DOWN_MBPS=1000
+printf 'ExecStart=cloudflared --token %s\n' "$ARGO_TOKEN" >"$TEST_DIR/systemd/${ARGO_SERVICE}.service"
+# Map only the service-file fixture path; exercise the actual doctor and health checks.
+definition="$(declare -f doctor)"
+definition="${definition//\/etc\/systemd\/system/$TEST_DIR/systemd}"
+eval "$definition"
+require_root() { :; }; load_env() { :; }; ensure_nodes_config() { :; }
+detect_public_ips() { :; }
+public_ipv4_details() { printf '107.173.211.29|US|AS36352|HostPapa'; }
+public_ipv6_details() { return 1; }
+read_traffic_totals() { printf '1024|2048'; }
+runtime_memory_usage() { printf '56.8 MiB'; }
+local_core_version() { printf '1.14.3'; }; local_cloudflared_version() { printf '2026.10.0'; }
+service_status() { printf '已启用 · 运行中'; }
+traffic_timer_status() { printf '已启用 · 每分钟'; }
+warp_status() { printf '未启用 · 可选功能'; }
+validate_nodes_config() { :; }; valid_uuid() { :; }; valid_argo_token() { :; }
+core_check() { [[ "$SCENARIO" != mixed ]]; }
+nginx() { :; }
+stat() { [[ "${*: -1}" == "$SUBSCRIPTION_DIR" ]] && printf 755 || printf 700; }
+free() { printf 'Mem: 1024 100 924\n'; }
+detect_tcp_brutal() { IS_BRUTAL=true; [[ "$SCENARIO" != mixed ]] || IS_BRUTAL=false; }
+systemctl() {
+  [[ "$1" == is-active ]] || return 0
+  [[ "$SCENARIO" != mixed || ( "${*: -1}" != "$CORE_SERVICE" && "${*: -1}" != "${TRAFFIC_TIMER}.timer" ) ]]
+}
+traffic_collect() { [[ "$SCENARIO" != mixed ]] || exit 1; }
+ss() { [[ "$SCENARIO" != mixed || "$*" != *':3011'* ]] && printf 'LISTEN\n'; }
+curl() {
+  if [[ "$SCENARIO" == mixed && "${*: -1}" == */one ]]; then printf 'HTTP/1.1 403 Forbidden\r\n'; return; fi
+  if [[ "$SCENARIO" == mixed && "${*: -1}" == */two ]]; then return 28; fi
+  printf 'HTTP/1.1 101 Switching Protocols\r\n'
+}
+journalctl() {
+  [[ "$SCENARIO" != logs-unavailable ]] || return 1
+  [[ "$SCENARIO" != empty-logs ]] || return 0
+  printf '2026-10-11T12:00:00 INFO service started\n'
+  [[ "$SCENARIO" != mixed ]] || printf '2026-10-11T12:00:01 ERROR fixture failure\n'
+  return 0
+}
+for UI_LANGUAGE in zh en; do
+  for SCENARIO in healthy mixed empty-logs logs-unavailable; do
+    result=0
+    doctor >"$TEST_DIR/output" 2>"$TEST_DIR/errors" || result=$?
+    cat "$TEST_DIR/errors" >>"$TEST_DIR/output"
+    [[ "$SCENARIO" == mixed && "$result" == 1 || "$SCENARIO" != mixed && "$result" == 0 ]]
+    if [[ "$UI_LANGUAGE" == zh ]]; then
+      mapfile -t headings < <(grep '^▸ ' "$TEST_DIR/output")
+      [[ "${headings[*]}" == '▸ 运行状态 ▸ 运行检查 ▸ 运行日志 ▸ 诊断结果' ]]
+      case "$SCENARIO" in
+        healthy|empty-logs) grep -Fq '诊断完成 · 0 个错误 · 0 个提醒' "$TEST_DIR/output" ;;
+        mixed) grep -Fq '诊断完成 · 6 个错误 · 3 个提醒' "$TEST_DIR/output" ;;
+        logs-unavailable) grep -Fq '诊断完成 · 0 个错误 · 1 个提醒' "$TEST_DIR/output" ;;
+      esac
+    else
+      ! grep -P '[\x{4E00}-\x{9FFF}]' "$TEST_DIR/output"
+      [[ "$(grep -c '^▸ ' "$TEST_DIR/output")" -eq 4 ]]
+    fi
+    ! grep -q $'\033' "$TEST_DIR/output"
+    ! grep -q '安装完成' "$TEST_DIR/output"
+    grep -Fq 'Sing-box 1.14.3 · cloudflared 2026.10.0' "$TEST_DIR/output"
+    grep -Fq "$NODES_FILE" "$TEST_DIR/output"
+  done
+done
+printf 'DIAGNOSTIC_SMOKE_OK\n'

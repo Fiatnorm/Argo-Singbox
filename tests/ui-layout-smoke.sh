@@ -25,6 +25,7 @@ for language in zh en; do
       node_overview() { printf "VLESS 1 · VMess 2 · Trojan 1"; }
       public_ipv4_details() { printf "107.173.211.29|US|AS36352|HostPapa"; }
       public_ipv6_details() { return 1; }
+      detect_public_ips() { :; }
       runtime_memory_usage() { printf "347.2 MiB"; }
       ARGO_DOMAIN=example.com SERVER=polestar.com SERVER_PORT=443 ORIGIN_PORT=3010
       SCRIPT_RUNS_REQUESTED=1 SCRIPT_RUNS_TOTAL=22 SCRIPT_RUNS_SHOWN=0
