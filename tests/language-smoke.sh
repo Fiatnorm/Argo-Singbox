@@ -99,7 +99,9 @@ printf 'zh\n' >"$CONFIG_DIR/language"
 CHOICES
 ) >"$TEST_DIR/menu-language"
 grep -Fq 'LANG=zh 节点概览' "$TEST_DIR/menu-language"
-grep -Fq 'LANG=en Nodes' "$TEST_DIR/menu-language"
+! grep -Fq 'LANG=en Nodes' "$TEST_DIR/menu-language"
+[[ "$(grep -c '^LANG=' "$TEST_DIR/menu-language")" -eq 1 ]]
+grep -Fq 'Language preference saved' "$TEST_DIR/menu-language"
 UI_LANGUAGE=zh
 load_language
 [[ "$UI_LANGUAGE" == en ]]

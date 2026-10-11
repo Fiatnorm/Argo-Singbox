@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2026.10.11"
+VERSION="2026.10.11.01"
 PROJECT_NAME="Argo-Singbox"
 PROJECT_CODE="AGS"
 SCRIPT_NAME="argo-singbox.sh"
@@ -58,9 +58,6 @@ LEGACY_MIGRATED=0
 
 DEFAULT_SERVER="polestar.com"
 DEFAULT_SERVER_PORT="443"
-# 固定为已核验的官方最新稳定版，不跟随预发布。
-DEFAULT_SING_BOX_VERSION="1.13.18"
-DEFAULT_CLOUDFLARED_VERSION="2026.7.3"
 
 DEFAULT_ORIGIN_PORT=3010
 DEFAULT_STATS_API_PORT=18085
@@ -265,7 +262,7 @@ declare -A UI_EN=(
   ['回源端口相同。']='The return-to-origin port is the same.'
   ['固定隧道']='fixed tunnel'
   ['在线安装']='Online installation'
-  ['在线安装会先校验并替换本地脚本。']='Online installation will first verify and replace local scripts.'
+  ['在线安装会先获取并校验最新版本脚本，再替换本地脚本。']='Online installation will first fetch and verify the latest script, then replace the local script.'
   ['域名']=Domain
   ['域名。']='domain name.'
   ['域名无效']='Invalid domain name'
@@ -670,6 +667,9 @@ declare -A UI_EN=(
   ['累计值']='Cumulative value'
   ['组件已回滚到更新前版本，请查看']='The component has been rolled back to the pre-update version, please check'
   ['组件更新']='Update components'
+  ['缺少 jq，无法检测最新正式版本：']='Missing jq; cannot detect the latest stable release: '
+  ['无法检测最新正式版本：']='Cannot detect the latest stable release: '
+  ['官方最新发布不是有效正式版本：']='The latest official release is not a valid stable version: '
   ['组件版本']=Components
   ['结尾。']='The end.'
   ['统计']=statistics
@@ -2178,13 +2178,32 @@ verify_github_asset() {
     die "${asset_name} SHA256 校验失败。"
 }
 
-get_sing_box_version() {
-  printf '%s\n' "$DEFAULT_SING_BOX_VERSION"
+get_latest_stable_version() {
+  local repo="$1" metadata version
+  command -v jq >/dev/null 2>&1 || die "缺少 jq，无法检测最新正式版本：${repo}"
+  metadata="$(mktemp)"
+  if ! try_download "https://api.github.com/repos/${repo}/releases/latest" "$metadata"; then
+    rm -f "$metadata"
+    die "无法检测最新正式版本：${repo}"
+  fi
+  if ! version="$(jq -er '
+    select(type == "object" and .draft == false and .prerelease == false)
+    | .tag_name | select(type == "string")
+    | select(test("^v?[0-9]+\\.[0-9]+\\.[0-9]+$"))
+    | ltrimstr("v")' "$metadata")"; then
+    rm -f "$metadata"
+    die "官方最新发布不是有效正式版本：${repo}"
+  fi
+  rm -f "$metadata"
+  printf '%s\n' "$version"
 }
 
+get_sing_box_version() {
+  get_latest_stable_version "$SING_BOX_REPO"
+}
 
 get_cloudflared_version() {
-  printf '%s\n' "$DEFAULT_CLOUDFLARED_VERSION"
+  get_latest_stable_version "cloudflare/cloudflared"
 }
 
 stage_sing_box() {
@@ -3814,7 +3833,6 @@ report_node_port_owners() {
 show_install_nodes() {
   section "原始节点"
   cat "$NODES_FILE"
-  printf '\n'
 }
 
 install_project() {
@@ -3881,8 +3899,8 @@ install_project() {
     fi
   done
   core_stage="$(mktemp)"; argo_stage="$(mktemp)"
-  stage_sing_box "$DEFAULT_SING_BOX_VERSION" "$core_stage"
-  stage_cloudflared "$DEFAULT_CLOUDFLARED_VERSION" "$argo_stage"
+  stage_sing_box "" "$core_stage"
+  stage_cloudflared "" "$argo_stage"
   install -m 755 "$core_stage" "${BIN_DIR}/sing-box.new"
   install -m 755 "$argo_stage" "${BIN_DIR}/cloudflared.new"
   mv -f "${BIN_DIR}/sing-box.new" "${BIN_DIR}/sing-box"
@@ -3956,7 +3974,7 @@ install_menu() {
   subsection "安装方式"
   menu_item 1 "本地安装"
   menu_item 2 "在线安装"
-  menu_hint "在线安装会先校验并替换本地脚本。"
+  menu_hint "在线安装会先获取并校验最新版本脚本，再替换本地脚本。"
   menu_item 0 "退出脚本"
   ui_line
   read_choice "请选择："; choice="$REPLY"
@@ -5012,7 +5030,6 @@ show_nodes() {
       "$C_BRIGHT_GREEN" "$(node_type_label "$protocol")" "$C_RESET" \
       "$C_BRIGHT_WHITE" "$node" "$C_RESET"
   done <"$NODES_CONFIG" 3<"$NODES_FILE"
-  printf '\n'
 }
 
 toggle_service() {
@@ -5172,7 +5189,7 @@ manage_bbr() {
   command -v curl >/dev/null 2>&1 || die "缺少 curl，无法启动 BBR/内核管理脚本。"
   brand "${PROJECT_NAME} · 系统工具" default
   section "第三方工具"
-  key_value "工具" "Linux-NetSpeed"
+  key_value "Linux-NetSpeed" "https://github.com/ylx2016/Linux-NetSpeed"
   section "风险提示"
   yellow "第三方脚本不属于 ${PROJECT_NAME}"
   yellow "可能修改 Linux 内核、网络参数或系统磁盘"
@@ -5380,7 +5397,7 @@ menu() {
     8) manage_bbr ;;
     9) install_menu ;;
     10) uninstall_project ;;
-    11) configure_language; continue ;;
+    11) configure_language ;;
     0) exit 0 ;;
     *) die "无效选项：${choice:-空}（请输入 0 到 11）" ;;
   esac

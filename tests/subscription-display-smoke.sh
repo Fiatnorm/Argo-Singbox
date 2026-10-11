@@ -31,6 +31,7 @@ for UI_LANGUAGE in zh en; do
     ! LC_ALL=C grep -q $'\033' "$TEST_DIR/page"
     grep -Fq '[03]' "$TEST_DIR/page"
     grep -Fq 'Trojan+WS+TLS' "$TEST_DIR/page"
+    [[ "$(tail -n1 "$TEST_DIR/page")" == trojan://* ]]
   done
 done
 UI_LANGUAGE=zh
@@ -38,4 +39,5 @@ UI_LANGUAGE=zh
 show_install_nodes >"$TEST_DIR/install"
 sed '1,/^▸ 原始节点$/d; /^$/d' "$TEST_DIR/install" >"$TEST_DIR/uris"
 cmp "$NODES_FILE" "$TEST_DIR/uris"
+[[ "$(tail -n1 "$TEST_DIR/install")" == trojan://* ]]
 printf 'SUBSCRIPTION_DISPLAY_SMOKE_OK\n'

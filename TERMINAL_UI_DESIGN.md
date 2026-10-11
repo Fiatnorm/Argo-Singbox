@@ -1,6 +1,6 @@
 # Argo-Singbox Terminal UI Design
 
-> 设计基线：`Fiatnorm/Argo-Singbox` 当前行为，脚本版本 `2026.10.11`
+> 设计基线：`Fiatnorm/Argo-Singbox` 当前行为，脚本版本 `2026.10.11.01`
 >
 > 适用范围：`argo-singbox.sh` 及其全部交互式终端输出
 >
@@ -405,7 +405,7 @@ TERM=dumb
 推荐品牌区：
 
 ```text
-Argo-Singbox  v2026.10.11 · Argo Tunnel · Sing-box Core
+Argo-Singbox  v2026.10.11.01 · Argo Tunnel · Sing-box Core
 功能特性      WS/TLS · WARP · h2mux · TCP Brutal
 系统环境      Debian GNU/Linux 13 · amd64 · Kernel 6.12.101
 ----------------------------------------------------------------
@@ -1355,12 +1355,12 @@ TCP Brutal     需注意 · 缺少 brutal 内核模块
 ----------------------------------------------------------------
 ▸ Argo Tunnel · cloudflared
 当前版本       2026.7.3
-目标版本       2026.8.0
+目标版本       2026.10.0
 › 更新 cloudflared？[y/N]：
 
 ▸ Sing-box Core
 当前版本       1.13.18
-目标版本       1.13.19
+目标版本       1.14.3
 › 更新 Sing-box Core？[y/N]：
 ```
 
@@ -1380,8 +1380,8 @@ TCP Brutal     需注意 · 缺少 brutal 内核模块
 成功：
 
 ```text
-✓ cloudflared 已更新：2026.7.3 → 2026.8.0
-✓ Sing-box Core 已更新：1.13.18 → 1.13.19
+✓ cloudflared 已更新：2026.7.3 → 2026.10.0
+✓ Sing-box Core 已更新：1.13.18 → 1.14.3
 ```
 
 失败并回滚：
@@ -1468,7 +1468,7 @@ TCP Brutal     需注意 · 缺少 brutal 内核模块
 ◆ Argo-Singbox · 系统工具            Enter · 默认 | 0 · 退出
 ----------------------------------------------------------------
 ▸ 第三方工具
-工具           Linux-NetSpeed
+Linux-NetSpeed      https://github.com/ylx2016/Linux-NetSpeed
 用途           BBR / 内核 / 网络参数管理
 
 ▸ 风险提示
@@ -1506,7 +1506,7 @@ TCP Brutal     需注意 · 缺少 brutal 内核模块
      • 使用当前本地脚本执行安装
 
   2  在线安装
-     • 校验并刷新仓库最新脚本后执行安装
+     • 在线安装会先获取并校验最新版本脚本，再替换本地脚本。
 
   0  退出脚本
 ----------------------------------------------------------------
@@ -2072,7 +2072,7 @@ Argo Tunnel 回源端口     → Argo 回源
 # # # #  ##  #      ##  ### # #  ## ##   #  # #
 # # # #  ##  #      ##  ### # #  ## ##   #  # #
 
-Argo-Singbox  v2026.10.11 · Argo Tunnel · Sing-box Core
+Argo-Singbox  v2026.10.11.01 · Argo Tunnel · Sing-box Core
 功能特性      WS/TLS · WARP · h2mux · TCP Brutal
 系统环境      Debian GNU/Linux 13 · amd64 · Kernel 6.12.101
 ----------------------------------------------------------------
@@ -2264,7 +2264,7 @@ Argo-Singbox Terminal UI 的目标不是“做得像图形界面”，而是成�
 
 ## 2026.10.11 紧凑布局补充
 
-顶部标题为 `Argo-Singbox  v2026.10.11 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。
+顶部标题为 `Argo-Singbox  v2026.10.11.01 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。
 
 ### 订阅中心布局与显示修订
 
@@ -2272,7 +2272,7 @@ Argo-Singbox Terminal UI 的目标不是“做得像图形界面”，而是成�
 
 ### 2026.10.11 订阅中心与语言修订
 
-文件与协议使用简洁内联 SVG。文件图标固定列对齐，名称居中，列表采用 File / Format / Modified / Size / Copy / Open / Download 七列；表头 14px，文件名 16px，导航 12px，Subs 为订阅导航简称。中文页导航、Status 标题、Check again、表头和 By client 使用英文，其余正文保留中文。Size 以 1000B 为界自动显示 B / KB。移动端保持七列并用图标表示动作表头，按钮保留可访问名称。运行配置不得覆盖独立保存的语言设置；控制中心 11 保存后立即重绘菜单。
+文件与协议使用简洁内联 SVG。文件图标固定列对齐，名称居中，列表采用 File / Format / Modified / Size / Copy / Open / Download 七列；表头 14px，文件名 16px，导航 12px，Subs 为订阅导航简称。中文页导航、Status 标题、Check again、表头和 By client 使用英文，其余正文保留中文。Size 以 1000B 为界自动显示 B / KB。移动端保持七列并用图标表示动作表头，按钮保留可访问名称。运行配置不得覆盖独立保存的语言设置；控制中心 11 保存后退出脚本，下次启动使用已保存的语言。
 
 ### 英语翻译兼容与内容宽度修订
 
@@ -2285,3 +2285,9 @@ File 使用约 116px 的紧凑图标与名称组合，在列内整体居中；�
 ### 订阅中心主题与复制
 
 顶部主题按钮切换 Material 3 风格的浅色 / 深色主题，默认浅色，浏览器保存选择；订阅和 Status 共用配色及 1120px 内容宽度。Copy 复制对应完整订阅链接，显示成功或失败反馈；窄屏三个操作统一为图标按钮，保留可访问名称。
+
+### 组件正式版检测与操作输出
+
+安装及组件更新通过官方 GitHub `/releases/latest` 检测 Sing-box 和 cloudflared，要求 `draft=false`、`prerelease=false` 且版本号为三段数字（允许 v 前缀）；失败时明确报错，不回退到旧版本或提示已是最新版。2026-10-11 核验正式版为 Sing-box 1.14.3、cloudflared 2026.10.0；下载仍校验官方资产 SHA256，核心仍校验版本、Clash API 构建标签和实际配置。
+
+原始节点输出不再额外追加空行，直接运行退出时仍统一保留一行空行。第三方工具行显示 `Linux-NetSpeed` 和完整项目地址 `https://github.com/ylx2016/Linux-NetSpeed`。在线安装提示为“在线安装会先获取并校验最新版本脚本，再替换本地脚本。”控制中心 11 保存语言后退出，订阅面板语言仍同步更新。

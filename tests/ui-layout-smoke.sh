@@ -35,9 +35,10 @@ for language in zh en; do
     ' _ "$ROOT_DIR/argo-singbox.sh" "$TEST_DIR/os-release" >"$TEST_DIR/$language-$locale"
   done
 done
-python - "$TEST_DIR" <<'PY'
-import pathlib, sys, unicodedata
+python - "$TEST_DIR" "$ROOT_DIR/argo-singbox.sh" <<'PY'
+import pathlib, re, sys, unicodedata
 root = pathlib.Path(sys.argv[1])
+script_version = re.search(r'^VERSION="([^"]+)"$', pathlib.Path(sys.argv[2]).read_text(encoding='utf-8'), re.M).group(1)
 def width(s):
     return sum(0 if unicodedata.combining(c) else 2 if unicodedata.east_asian_width(c) in ('W','F') else 1 for c in s)
 for language in ['zh', 'en']:
@@ -53,7 +54,7 @@ for language in ['zh', 'en']:
         expected_width = 14 if label in ('功能特性','系统环境','脚本统计','Features','System','Script runs') else 20
         assert width(row[:row.index(value)]) == expected_width, (label, row)
     header = next(x for x in lines if x.startswith('Argo-Singbox  v'))
-    assert header == 'Argo-Singbox  v2026.10.09 · Argo Tunnel · Sing-box Core'
+    assert header == f'Argo-Singbox  v{script_version} · Argo Tunnel · Sing-box Core'
     assert width(header[:header.index('v2026')]) == 14
     system = next(x for x in lines if x.startswith(('系统环境 ', 'System ')))
     assert system.endswith('Kernel 6.12.101')
