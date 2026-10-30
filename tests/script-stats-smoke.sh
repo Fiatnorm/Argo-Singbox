@@ -81,6 +81,12 @@ eval "$dispatcher" >"${TEST_DIR}/output"
 grep -q '/hit/' "${TEST_DIR}/requests"
 [[ "$SCRIPT_RUNS_TOTAL" == 42 ]]
 ! grep -q '脚本统计\|Executed' "${TEST_DIR}/output"
+uninstall_project() { printf 'UNINSTALL_LOCAL_ONLY'; }
+reset_stats
+set -- -u
+eval "$dispatcher" >"${TEST_DIR}/output"
+[[ ! -s "${TEST_DIR}/requests" && "$SCRIPT_RUNS_REQUESTED" == 0 ]]
+grep -q 'UNINSTALL_LOCAL_ONLY' "${TEST_DIR}/output"
 reset_stats
 command() { [[ "${2:-}" != curl ]] && builtin command "$@"; }
 record_script_run

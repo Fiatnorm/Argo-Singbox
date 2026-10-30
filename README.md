@@ -1,13 +1,13 @@
-# Argo-Singbox v2026.10.30.01
+# Argo-Singbox v2026.10.30.02
 
-Argo-Singbox 是单内核项目，`AGS` 是管理命令和终端紧凑显示使用的简称。当前脚本版本 `2026.10.30.01`。默认使用中文，可通过 `ags -l` 或控制中心的语言设置切换为简体中文，选择保存后持续生效。运行时只安装和管理官方 Sing-box，保留节点、订阅、WARP、长期全局流量统计、诊断、备份恢复和安装更新能力。
+Argo-Singbox 是单内核项目，`AGS` 是管理命令和终端紧凑显示使用的简称。当前脚本版本 `2026.10.30.02`。默认使用中文，可通过 `ags -l` 或控制中心的语言设置切换为简体中文，选择保存后持续生效。运行时只安装和管理官方 Sing-box，保留节点、订阅、WARP、长期全局流量统计、诊断、备份恢复和安装更新能力。
 
 ## 项目结构
 
 - `argo-singbox.sh`：唯一安装与管理入口。
 - `argo-singbox.env.example`：配置格式示例。
 - `argo-singbox.sh.sha256`：入口脚本校验值。
-- `reference/sba/`：本地只读对照树，不随本仓库发布；2026-09-28 已核验与上游 `fscarmen/sba` `main` 的 `e53b6701f7ac17a20e57eab3db4c0cc3d8a6b80d` 一致。
+- `reference/sba/`：本地只读对照树，不随本仓库发布；2026-10-29 已同步并核验与上游 `fscarmen/sba` `main` 的 `c4945f518d62eeff7e94f9e4146239f505872e1b`（v1.1.9）一致，更新分析见 `UPSTREAM_PARITY.md`。
 - `TERMINAL_UI_DESIGN.md`：64 列终端 UI 合同。
 - `UPSTREAM_PARITY.md`：Argo-Singbox 与 SBA / ArgoX 共有功能、差异和取舍。
 - `AGENTS.md`：工程、验证和发布约束。
@@ -170,6 +170,9 @@ bash tests/generation-smoke.sh
 bash tests/traffic-global-smoke.sh
 bash tests/installer-migration-smoke.sh
 bash tests/ui-smoke.sh
+bash tests/ui-request-smoke.sh
+bash tests/script-stats-smoke.sh
+bash tests/download-proxy-smoke.sh
 sha256sum -c argo-singbox.sh.sha256
 grep -n $'\r' argo-singbox.sh && exit 1 || true
 ```
@@ -179,9 +182,9 @@ grep -n $'\r' argo-singbox.sh && exit 1 || true
 ## 2026.10.11 界面与节点代理
 
 - 默认中文；中文与英语共享菜单、颜色、危险确认和退出逻辑。语言保存在 `/etc/argo-singbox/config/language`（权限 600）。
-- 控制中心使用六行斜体 ASCII 字标，单行标题为 `Argo-Singbox  v2026.10.30.01 · Argo Tunnel · Sing-box Core`。系统环境单行显示，Kernel 仅显示数字版本，节点概览为紫色；运行状态内以组件版本字段显示 Sing-box / cloudflared，只有版本号为黄色，名称与分隔符为白色。
+- 控制中心使用六行斜体 ASCII 字标，单行标题为 `Argo-Singbox  v2026.10.30.02 · Argo Tunnel · Sing-box Core`。系统环境单行显示，Kernel 仅显示数字版本，节点概览为紫色；运行状态内以组件版本字段显示 Sing-box / cloudflared，只有版本号为黄色，名称与分隔符为白色。
 - 脚本统计保留原联网计数源及单次限时请求，中英文均显示 `Executed 6 times`；不显示“全局累计”。没有确认到 IPv6 时显示 `None`。
-- 第五字段支持 `http://user:pass@host:port`、`socks5://user:pass@host:port`，IPv6 主机使用方括号；兼容旧 `host:port:user:pass` 和逐节点 `direct:ipv4` / `direct:ipv6`。凭据继续限于字母、数字及 `._~-`，不支持 URL 编码或省略认证。节点列表仅显示类型和完整主机，不显示端口或认证信息。
+- 第五字段支持 `http://user:pass@host:port`、`socks5://user:pass@host:port`，IPv6 主机使用方括号，URL 可带一个尾随 `/`；兼容旧 `host:port:user:pass` 和逐节点 `direct:ipv4` / `direct:ipv6`。凭据继续限于字母、数字及 `._~-`，不支持 URL 编码或省略认证。节点列表仅显示类型和完整主机，不显示端口或认证信息。
 - 出站优先级为 `WARP → 节点 HTTP/SOCKS5 → direct`。HTTP 使用 Sing-box 的 HTTP CONNECT 出站。
 
 配置生成使用 1.13.18 的 `domain_resolver` 与本地 DNS，不依赖已停用的旧 `domain_strategy` 兼容开关。普通布局 64 列；品牌标题保持单行并位于 64 列布局内。
@@ -198,7 +201,7 @@ grep -n $'\r' argo-singbox.sh && exit 1 || true
 
 ## 2026.10.11 紧凑布局补充
 
-顶部标题为 `Argo-Singbox  v2026.10.30.01 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。
+顶部标题为 `Argo-Singbox  v2026.10.30.02 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。
 
 ### 订阅中心布局与显示修订
 
@@ -244,3 +247,17 @@ IPv4 与 IPv6 GeoJS 请求并行执行，强制对应地址族、排除环境代
 - 优选入口输入文字（含端口）使用紫色；Linux-NetSpeed 项目链接加下划线。
 - 节点列表标签、传输路径与出站完整单行显示，不限制列宽；直连为 `Direct · IP`，代理为 `SOCKS5 · 主机` / `HTTP · 主机`，不回显认证信息。
 - WARP geosite 管理与启用提示提供 [GeoSite Explorer](https://geosite-explorer.pages.dev/) 链接，可查看可添加的规则名。
+
+
+## 2026.10.30.02 本地测试版交互与排版统一
+
+- 普通交互终端使用 readline：方向键移动，Ctrl+A/E 跳至行首/行尾，Ctrl+W/U/K 删除前词/行首至光标/光标至行尾，Ctrl+Y 恢复最近删除的内容，Ctrl+L 重绘屏幕。不额外绑定 Home/End，不在启动时清屏。ANSI 提示使用不可见宽度标记，避免光标错位；重定向、TERM=dumb 或 NO_COLOR 保持原输入方式与无 ANSI 输出。
+- `ags -u` 跳过联网执行次数统计，直接进入本地所有权检查及 REMOVE 确认；公共软件包卸载和 WARP 注销仍为独立可选操作。
+- GitHub 下载顺序与 SBA v1.1.9 一致：直连、ghproxy.lvedong.eu.org、accel.cloudflare.nyc.mn；保持原有超时、重试及 SHA256 验证。
+- 新安装默认生成 AGS-Vl / AGS-Vm / AGS-Tr，路径为 /ags-vl / /ags-vm / /ags-tr；已有节点保持原配置。
+- HTTP 与 SOCKS5 认证 URL 均允许一个尾随 `/`，不允许任意路径、查询或多个尾随斜杠。添加节点时分别完整显示两种 URL 格式及“留空为 direct”；修改节点仍以 Enter 保持当前、`-` 改为 direct。
+- 节点列表按完整标签和路径计算列宽；Direct、SOCKS5、HTTP 类型占相同宽度，使中点与后续完整主机地址分别对齐，不显示代理认证信息。
+- geosite 管理及 WARP 启用页使用同一个提示组件，单行显示 `  • geosite url     https://geosite-explorer.pages.dev/`；URL 从第 21 显示列开始，与普通字段一致。
+- 保持六行字标、64 列分隔线、双语词典、Enter/0 黄色提示、默认拒绝确认、信息/成功/提醒/错误标识及完整 URI 的既有全局风格。
+
+节点表的协议列中英文统一占 8 列，避免英文 Protocol 挤占路径列；显示宽度按 UTF-8 字节解码码点，保持长标签、中文与 Emoji 的列对齐，不受 locale 影响。

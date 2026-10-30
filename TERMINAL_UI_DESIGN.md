@@ -1,6 +1,6 @@
 # Argo-Singbox Terminal UI Design
 
-> 设计基线：`Fiatnorm/Argo-Singbox` 当前行为，脚本版本 `2026.10.30.01`
+> 设计基线：`Fiatnorm/Argo-Singbox` 当前行为，脚本版本 `2026.10.30.02`
 >
 > 适用范围：`argo-singbox.sh` 及其全部交互式终端输出
 >
@@ -405,7 +405,7 @@ TERM=dumb
 推荐品牌区：
 
 ```text
-Argo-Singbox  v2026.10.30.01 · Argo Tunnel · Sing-box Core
+Argo-Singbox  v2026.10.30.02 · Argo Tunnel · Sing-box Core
 功能特性      WS/TLS · WARP · h2mux · TCP Brutal
 系统环境      Debian GNU/Linux 13 · amd64 · Kernel 6.12.101
 ----------------------------------------------------------------
@@ -794,11 +794,11 @@ IPv4:port
 统一改为：
 
 ```text
-标签           协议    WS 路径         端口   出站
--------------  ------  --------------  -----  ------------------
-Argo-Vl        VLESS   /argo-vl        3011   107.173.211.29
-Argo-Vm        VMess   /argo-vm        3012   127.0.0.1:1080
-Argo-Tr        Trojan  /argo-tr        3013   127.0.0.1:40000
+标签           协议      传输路径        端口   出站
+-------------  --------  --------------  -----  ------------------
+AGS-Vl         VLESS     /ags-vl         3011   Direct · 107.173.211.29
+AGS-Vm         VMess     /ags-vm         3012   SOCKS5 · 127.0.0.1
+AGS-Tr         Trojan    /ags-tr         3013   HTTP   · 192.0.2.10
 ```
 
 列名必须描述内容，不把“出站”错误写成“出站 IP”。
@@ -816,7 +816,7 @@ Argo-Tr        Trojan  /argo-tr        3013   127.0.0.1:40000
 › 节点协议 [VLESS/VMess/Trojan]：
 › WS 路径 [以 / 开头]：
 › 本地端口 [3014]：
-› 节点代理 [http:// 或 socks5://user:pass@host:port；留空为 direct]：
+› 节点代理 [http://user:pass@host:port  socks5://user:pass@host:port；留空为 direct]：
 ```
 
 当前项目 HTTP/SOCKS5 URL 配置要求认证字段完整，因此不能错误提示为仅 `host:port`。
@@ -827,10 +827,10 @@ Argo-Tr        Trojan  /argo-tr        3013   127.0.0.1:40000
 
 ```text
 ✗ 节点标签无效 · 不能为空、首尾不能留空，且不能包含 | 或控制字符
-✗ 节点标签重复 · 已存在 Argo-Vl
+✗ 节点标签重复 · 已存在 AGS-Vl
 ✗ 节点协议无效 · 仅支持 VLESS / VMess / Trojan
 ✗ WS 路径无效 · 必须以 / 开头
-✗ WS 路径冲突 · /argo-vl 已被其他节点使用
+✗ WS 路径冲突 · /ags-vl 已被其他节点使用
 ✗ 本地端口无效 · 端口范围必须为 1–65535
 ✗ 本地端口冲突 · 3011 已被占用
 ✗ 本地端口冲突 · 3010 被 Argo 回源占用
@@ -841,7 +841,7 @@ Argo-Tr        Trojan  /argo-tr        3013   127.0.0.1:40000
 成功：
 
 ```text
-✓ 节点已添加：Argo-Vl
+✓ 节点已添加：AGS-Vl
 ✓ Sing-box 配置已更新
 ✓ Nginx 配置已更新
 ✓ 节点订阅已更新
@@ -859,19 +859,19 @@ Argo-Tr        Trojan  /argo-tr        3013   127.0.0.1:40000
 › 节点标签：
 
 ▸ 当前节点
-节点标签       Argo-Vl
+节点标签       AGS-Vl
 节点协议       VLESS
-WS 路径        /argo-vl
+WS 路径        /ags-vl
 本地端口       3011
 SOCKS5 出站    127.0.0.1:1080 · 已配置认证
 
 ▸ 修改参数
-› 节点标签 [Argo-Vl]：
+› 节点标签 [AGS-Vl]：
 › 节点协议 [VLESS]：
-› WS 路径 [/argo-vl]：
+› WS 路径 [/ags-vl]：
 › 本地端口 [3011]：
+• 新值格式：http://user:pass@host:port 或 socks5://user:pass@host:port
 › 节点代理 [Enter 保持当前；- 设为 direct]：
-  • 新值格式：http://user:pass@host:port 或 socks5://user:pass@host:port
 ```
 
 不要回显 SOCKS5 用户名和密码。
@@ -886,7 +886,7 @@ SOCKS5 出站    127.0.0.1:1080 · 已配置认证
 
 ▸ 删除节点
 › 节点标签：
-› 确认删除 Argo-Vl？[y/N]：
+› 确认删除 AGS-Vl？[y/N]：
 ```
 
 取消：
@@ -898,7 +898,7 @@ SOCKS5 出站    127.0.0.1:1080 · 已配置认证
 成功：
 
 ```text
-✓ 节点已删除：Argo-Vl
+✓ 节点已删除：AGS-Vl
 ```
 
 ---
@@ -922,10 +922,10 @@ Sing-box       https://.../sing-box
 [QR]
 
 ▸ 原始节点
-[01] Argo-Vl · VLESS+WS+TLS
+[01] AGS-Vl · VLESS+WS+TLS
 vless://...
 
-[02] Argo-Vm · VMess+WS+TLS
+[02] AGS-Vm · VMess+WS+TLS
 vmess://...
 ```
 
@@ -1642,7 +1642,7 @@ Nginx 和通用工具提示必须说明可能被其他程序使用。
 若格式是正常完成输入所必需，应直接说明：
 
 ```text
-› 节点代理 [http:// 或 socks5://user:pass@host:port；留空为 direct]：
+› 节点代理 [http://user:pass@host:port  socks5://user:pass@host:port；留空为 direct]：
 ```
 
 若规则只是校验细节，不应塞进 Prompt。
@@ -1705,7 +1705,7 @@ Nginx 和通用工具提示必须说明可能被其他程序使用。
 ✓ Sing-box Core 已重启
 ✓ WARP 分流已启用
 ✓ TCP Brutal 已停用
-✓ 节点已添加：Argo-Vl
+✓ 节点已添加：AGS-Vl
 ✓ 节点配置已恢复
 ```
 
@@ -2072,7 +2072,7 @@ Argo Tunnel 回源端口     → Argo 回源
 # # # #  ##  #      ##  ### # #  ## ##   #  # #
 # # # #  ##  #      ##  ### # #  ## ##   #  # #
 
-Argo-Singbox  v2026.10.30.01 · Argo Tunnel · Sing-box Core
+Argo-Singbox  v2026.10.30.02 · Argo Tunnel · Sing-box Core
 功能特性      WS/TLS · WARP · h2mux · TCP Brutal
 系统环境      Debian GNU/Linux 13 · amd64 · Kernel 6.12.101
 ----------------------------------------------------------------
@@ -2264,7 +2264,7 @@ Argo-Singbox Terminal UI 的目标不是“做得像图形界面”，而是成�
 
 ## 2026.10.11 紧凑布局补充
 
-顶部标题为 `Argo-Singbox  v2026.10.30.01 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。
+顶部标题为 `Argo-Singbox  v2026.10.30.02 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。
 
 ### 订阅中心布局与显示修订
 
@@ -2310,3 +2310,17 @@ IPv4 与 IPv6 GeoJS 请求并行执行，强制对应地址族、排除环境代
 - 优选入口输入文字（含端口）使用紫色；Linux-NetSpeed 项目链接加下划线。
 - 节点列表标签、传输路径与出站完整单行显示，不限制列宽；直连为 `Direct · IP`，代理为 `SOCKS5 · 主机` / `HTTP · 主机`，不回显认证信息。
 - WARP geosite 管理与启用提示提供 [GeoSite Explorer](https://geosite-explorer.pages.dev/) 链接，可查看可添加的规则名。
+
+
+## 2026.10.30.02 本地测试版交互与排版统一
+
+- 普通交互终端使用 readline：方向键移动，Ctrl+A/E 跳至行首/行尾，Ctrl+W/U/K 删除前词/行首至光标/光标至行尾，Ctrl+Y 恢复最近删除的内容，Ctrl+L 重绘屏幕。不额外绑定 Home/End，不在启动时清屏。ANSI 提示使用不可见宽度标记，避免光标错位；重定向、TERM=dumb 或 NO_COLOR 保持原输入方式与无 ANSI 输出。
+- `ags -u` 跳过联网执行次数统计，直接进入本地所有权检查及 REMOVE 确认；公共软件包卸载和 WARP 注销仍为独立可选操作。
+- GitHub 下载顺序与 SBA v1.1.9 一致：直连、ghproxy.lvedong.eu.org、accel.cloudflare.nyc.mn；保持原有超时、重试及 SHA256 验证。
+- 新安装默认生成 AGS-Vl / AGS-Vm / AGS-Tr，路径为 /ags-vl / /ags-vm / /ags-tr；已有节点保持原配置。
+- HTTP 与 SOCKS5 认证 URL 均允许一个尾随 `/`，不允许任意路径、查询或多个尾随斜杠。添加节点时分别完整显示两种 URL 格式及“留空为 direct”；修改节点仍以 Enter 保持当前、`-` 改为 direct。
+- 节点列表按完整标签和路径计算列宽；Direct、SOCKS5、HTTP 类型占相同宽度，使中点与后续完整主机地址分别对齐，不显示代理认证信息。
+- geosite 管理及 WARP 启用页使用同一个提示组件，单行显示 `  • geosite url     https://geosite-explorer.pages.dev/`；URL 从第 21 显示列开始，与普通字段一致。
+- 保持六行字标、64 列分隔线、双语词典、Enter/0 黄色提示、默认拒绝确认、信息/成功/提醒/错误标识及完整 URI 的既有全局风格。
+
+节点表的协议列中英文统一占 8 列，避免英文 Protocol 挤占路径列；显示宽度按 UTF-8 字节解码码点，保持长标签、中文与 Emoji 的列对齐，不受 locale 影响。

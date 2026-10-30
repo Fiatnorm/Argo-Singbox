@@ -2,8 +2,8 @@
 
 核对基线：
 
-- SBA：`reference/sba`，官方 `main` 提交 `e53b6701f7ac17a20e57eab3db4c0cc3d8a6b80d`（2026-09-28 同步）。
-- Argo-Singbox：内部测试版本 `v2026.09.30.01`，单一官方 Sing-box 内核。
+- SBA：`reference/sba`，官方 `main` 提交 `c4945f518d62eeff7e94f9e4146239f505872e1b`（v1.1.9，2026-10-29 同步）。
+- Argo-Singbox：当前内部测试版本 `v2026.10.30.02`，单一官方 Sing-box 内核；下表为历史功能核对，末节记录本次增量审查。
 - 排除项：临时 Argo、JSON/API 等额外隧道凭据获取方式、脚本语言与多语言界面差异。
 - 项目硬边界：服务端只保留 VLESS、VMess、Trojan WS；因此 SBA 的 Reality 入站不移植。只支持 Debian/Ubuntu + systemd，不复制 Alpine/OpenRC、CentOS、Arch 的系统适配。
 
@@ -57,3 +57,30 @@
 ## 2026.10.07
 
 新增默认英语/可持久保存的中文语言设置，参考 SBA 的持久语言选择模式；运行时使用内嵌翻译，不依赖网络翻译。节点五字段继续保留，出站新增 HTTP/SOCKS5 URL；兼容旧 SOCKS5 与逐节点 direct 地址族。
+
+## 2026.10.29：SBA v1.1.9 增量审查与建议
+
+上游来源：[fscarmen/sba 提交 c4945f5](https://github.com/fscarmen/sba/commit/c4945f518d62eeff7e94f9e4146239f505872e1b)。相对旧参考 `e53b6701f7ac17a20e57eab3db4c0cc3d8a6b80d`，新增一个提交，只有 `README.md` 和 `sba.sh` 变化，共增加 40 行、删除 19 行。脚本版本为 `1.1.9 (2026.10.15)`，README 更新日期仍写 `2026.10.13`，保留上游原文。
+
+本次只更新嵌套参考仓库与核对文档，未将建议写入 Argo-Singbox 主脚本，未变更其版本或校验和，也未提交、推送或发布。
+
+| 上游实际变化 | Argo-Singbox 当前情况与建议 | 优先级及后续验证 |
+|---|---|---|
+| 版本检测改为 releases.atom → GitHub releases API → 默认版本；默认版本从 `1.14.0-beta.17` 改为 `1.15.0-alpha.12`，仍接受预发布版及第三方 force_version。 | `get_latest_stable_version()` 已使用官方 `/releases/latest`，并校验 draft、prerelease 与纯数字版本；没有 SBA 原先拉取整个 releases 列表再重复请求的问题。不直接照搬 Atom 优先或预发布兜底。可先减少同一组件更新中重复获取的发布元数据，再评估 Atom 作为发现候选的备用入口；候选仍须核验官方发布状态、资产 SHA256、二进制版本及 `with_clash_api`，无法核验则停止。 | 中；补充 API 限流、空响应、损坏 JSON、Atom 仅预发布、稳定版本不在 feed 内及元数据请求次数的场景；保留 `tests/component-version-smoke.sh` 的拒绝预发布行为。 |
+| 交互输入改为 `read -er`；彩色提示的 ANSI 用 SOH/STX 标记为不可见字符，避免 readline 光标错位。 | `read_input()` / `read_choice()` 仍使用 `read -r`。建议在交互 TTY 且终端支持时启用 readline，优先解决 Token、域名、代理 URL 等长输入的改字体验。沿用现有双语提示、颜色规则、默认值和 `0` 退出语义；管道输入保持原行为。 | 高；用真实 PTY 检查方向键、Home/End、删除键、中文和彩色提示；验证非 TTY、`TERM=dumb`、`NO_COLOR` 与输入 `0`。 |
+| 提前识别 `-u` / `-U`，跳过 CDN 探测和缺失核心/cloudflared 的预下载；卸载等待从 1 秒改为 0.5 秒。 | AGS 卸载主体没有安装前预下载，但入口将 `-u` 纳入 `record_script_run()`，仍同步请求计数接口，单次总超时 3 秒。建议让 `-u` 跳过该请求，并让控制中心选择卸载后不再引入网络依赖。可选软件包卸载与 WARP 注销须单独标明边界，不能笼统保证全部外部工具零联网。 | 高；mock curl/wget/下载函数，确认进入 `REMOVE` 提示及取消路径不发请求；实际删除和可选软件包卸载另在隔离 Debian/Ubuntu 环境验证。 |
+| GitHub 代理列表缩减为直连、`ghproxy.lvedong.eu.org` 和 `accel.cloudflare.nyc.mn`。 | `try_download()` 已有直连、项目自有代理及两个备用代理。上游列表变化只能证明配置变化，不能证明这些服务在目标 VPS 上更快或可靠。建议先测目标网络中元数据、脚本和发布资产的成功率与耗时，再替换已确认失效的地址；按请求类型收紧超时，避免多地址重试放大等待。 | 中；在目标 VPS 测试直连及各代理的状态码、完整内容、SHA256 和失败耗时；不能用本机网络结果替代。 |
+
+### 审查发现的上游说明边界
+
+- 提交标题提到“将放行规则插入 REJECT/DROP 前”，但本次完整 diff 没有防火墙函数变更；`firewall_configuration()` 仍为原有 CentOS `firewall-cmd` 逻辑。因此不把它记为已交付的防火墙修复，也不据此为 AGS 增加防火墙修改。
+- 上游称卸载“完全离线”，但入口仍无条件调用 `statistics_of_run-times update sba.sh`，函数会后台执行 wget。实际改善是跳过阻塞的 CDN 探测及核心预下载，尚不能据此断言零网络请求。
+- AGS 已有官方稳定版限制、SHA256、构建标签验证、本地订阅生成和失败回滚；本次参考更新不应削弱这些边界。
+- 以上为源码和本地检查结论，不代表真实 VPS 的 systemd、Nginx、Cloudflare 或公网 WS 已完成端到端验证。
+
+本次验证：参考树 5 个文件与固定提交的 Git blob 逐字节一致，嵌套仓库工作区干净，HEAD 与上游 main 一致；两份脚本语法、TCP Brutal、配置导入、全局流量、安装迁移、终端 UI、脚本计数 smoke，以及主脚本 SHA256、LF 和 `git diff --check` 通过。配置生成与组件版本 smoke 因本机缺少 `jq` 未通过，未将其计为通过项。
+
+
+## 2026.10.30：采纳 v1.1.9 的交互与下载改进
+
+内部测试版 v2026.10.30.02 已加入交互 readline 与 ANSI 宽度标记、`-u` 跳过联网计数，并按用户指定将下载列表改为与 SBA 一致的直连及两个代理。代理地址为用户指定，尚未验证目标 VPS 的性能。官方稳定版筛选与资产校验继续保留；未采用 SBA 的预发布版本兜底。

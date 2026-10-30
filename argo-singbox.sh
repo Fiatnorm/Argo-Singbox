@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2026.10.30.01"
+VERSION="2026.10.30.02"
 PROJECT_NAME="Argo-Singbox"
 PROJECT_CODE="AGS"
 SCRIPT_NAME="argo-singbox.sh"
@@ -915,10 +915,26 @@ yellow() { ui_warn "$@"; }
 red() { ui_err "$@"; }
 info() { ui_info "$@"; }
 display_width() {
-  local LC_ALL=C.UTF-8 text="$1" character code width=0
+  local LC_ALL=C
+  local text="$1" character code continuation remaining width=0
   while [[ -n "$text" ]]; do
     character="${text:0:1}"; text="${text:1}"
     printf -v code '%d' "'$character"
+    remaining=0
+    if ((code >= 0xc2 && code <= 0xdf)); then
+      remaining=1; code=$((code & 0x1f))
+    elif ((code >= 0xe0 && code <= 0xef)); then
+      remaining=2; code=$((code & 0x0f))
+    elif ((code >= 0xf0 && code <= 0xf4)); then
+      remaining=3; code=$((code & 0x07))
+    fi
+    while ((remaining > 0)) && [[ -n "$text" ]]; do
+      printf -v continuation '%d' "'${text:0:1}"
+      ((continuation >= 0x80 && continuation <= 0xbf)) || break
+      text="${text:1}"
+      code=$(((code << 6) | (continuation & 0x3f)))
+      remaining=$((remaining - 1))
+    done
     if (( (code >= 0x0300 && code <= 0x036f) || (code >= 0xfe00 && code <= 0xfe0f) )); then
       continue
     elif (( (code >= 0x1100 && code <= 0x115f) || code == 0x2329 || code == 0x232a ||
@@ -1308,19 +1324,39 @@ link_value() {
   printf '%s%s%s%s\n' "$C_BRIGHT_WHITE" "$C_UNDERLINE" "$2" "$C_RESET"
 }
 prompt() { printf '%s%s› %s%s' "$C_BOLD" "$C_BRIGHT_MAGENTA" "$(ui_text "$*")" "$C_RESET"; }
+read_prompt() {
+  local _readline_prompt _readline_color _readline_status=0
+  if [[ -t 0 && -t 1 && -t 2 && -z "${NO_COLOR:-}" && "${TERM:-dumb}" != dumb ]]; then
+    if [[ "${READLINE_READY:-0}" != 1 ]]; then
+      set -o emacs
+      bind -m emacs-standard '"\C-a": beginning-of-line' '"\C-e": end-of-line' \
+        '"\C-w": unix-word-rubout' '"\C-u": unix-line-discard' \
+        '"\C-k": kill-line' '"\C-y": yank' '"\C-l": clear-screen'
+      READLINE_READY=1
+    fi
+    _readline_prompt="$(prompt "$1")"
+    [[ "$1" != 优选入口* ]] || _readline_prompt+="$C_BRIGHT_MAGENTA"
+    # Readline must exclude each ANSI sequence from its cursor-width calculation.
+    for _readline_color in "$C_BOLD" "$C_BRIGHT_MAGENTA" "$C_RESET"; do
+      [[ -z "$_readline_color" ]] || _readline_prompt="${_readline_prompt//"$_readline_color"/$'\001'"$_readline_color"$'\002'}"
+    done
+    IFS= read -e -r -p "$_readline_prompt" "$2" || _readline_status=$?
+    [[ "$1" != 优选入口* ]] || printf '%s' "$C_RESET"
+  else
+    prompt "$1"
+    [[ "$1" != 优选入口* ]] || printf '%s' "$C_BRIGHT_MAGENTA"
+    IFS= read -r "$2" || _readline_status=$?
+    [[ "$1" != 优选入口* ]] || printf '%s' "$C_RESET"
+  fi
+  return "$_readline_status"
+}
 read_choice() {
-  prompt "$1"
-  IFS= read -r REPLY
+  read_prompt "$1" REPLY
   REPLY="${REPLY%$'\r'}"
   [[ -n "$REPLY" ]] || REPLY=0
 }
 read_input() {
-  local input_status=0
-  prompt "$1"
-  [[ "$1" != 优选入口* ]] || printf '%s' "$C_BRIGHT_MAGENTA"
-  IFS= read -r "$2" || input_status=$?
-  [[ "$1" != 优选入口* ]] || printf '%s' "$C_RESET"
-  ((input_status == 0)) || return "$input_status"
+  read_prompt "$1" "$2" || return $?
   printf -v "$2" '%s' "${!2%$'\r'}"
   [[ "${!2}" != 0 ]] || exit 0
 }
@@ -1352,6 +1388,11 @@ menu_item() {
 }
 menu_hint() {
   printf '  %s•%s %s%s%s\n' "$C_BRIGHT_CYAN" "$C_RESET" "$C_DIM" "$(ui_text "$*")" "$C_RESET"
+}
+menu_hint_link() {
+  printf '  %s•%s %s' "$C_BRIGHT_CYAN" "$C_RESET" "$C_DIM"
+  pad_right "$1" 14
+  printf '%s  %s%s%s%s\n' "$C_RESET" "$C_BRIGHT_WHITE" "$C_UNDERLINE" "$2" "$C_RESET"
 }
 protocol_label() {
   case "$1" in
@@ -1937,6 +1978,7 @@ parse_node_proxy() {
       http://*) type=http; authority="${value#http://}" ;;
       *) return 1 ;;
     esac
+    authority="${authority%/}"
     [[ "$authority" == *@* && "$authority" != *[/$'\n'$'\r''|']* ]] || return 1
     credentials="${authority%@*}"; authority="${authority##*@}"
     [[ "$credentials" == *:* ]] || return 1
@@ -1984,9 +2026,9 @@ node_outbound_value() {
 ensure_nodes_config() {
   [[ -f "$NODES_CONFIG" ]] && return
   cat >"$NODES_CONFIG" <<EOF
-Argo-Vl|vless|/argo-vl|$((ORIGIN_PORT + 1))|
-Argo-Vm|vmess|/argo-vm|$((ORIGIN_PORT + 2))|
-Argo-Tr|trojan|/argo-tr|$((ORIGIN_PORT + 3))|
+AGS-Vl|vless|/ags-vl|$((ORIGIN_PORT + 1))|
+AGS-Vm|vmess|/ags-vm|$((ORIGIN_PORT + 2))|
+AGS-Tr|trojan|/ags-tr|$((ORIGIN_PORT + 3))|
 EOF
   chmod 600 "$NODES_CONFIG"
 }
@@ -2043,9 +2085,8 @@ try_download() {
   local url="$1" output="$2"
   local candidate
   for candidate in "$url" \
-    "https://github-proxy.fiatnorm.pp.ua/${url}" \
-    "https://ghproxy.net/${url}" \
-    "https://github.moeyy.xyz/${url}"; do
+    "https://ghproxy.lvedong.eu.org/${url}" \
+    "https://accel.cloudflare.nyc.mn/${url}"; do
     if curl -fsSL --retry 3 --retry-all-errors --connect-timeout 10 --max-time 180 \
       "$candidate" -o "${output}.part"; then
       if [[ -s "${output}.part" ]]; then
@@ -4116,23 +4157,32 @@ import_configuration() {
 }
 
 list_node_profiles() {
-  local mode="${1:-compact}" tag protocol path port socks direct_ip
+  local mode="${1:-compact}" tag protocol path port socks direct_ip outbound
+  local tag_width=13 protocol_width=8 path_width=14 width tag_rule path_rule
   detect_public_ips
   direct_ip="$(public_node_egress_ip)"
   if [[ "$mode" == "spaced" ]]; then
     printf '\n'
     UI_TIGHT_SECTION=1
   fi
+  while IFS='|' read -r tag protocol path port socks; do
+    width="$(display_width "$tag")"; ((width <= tag_width)) || tag_width="$width"
+    width="$(display_width "$path")"; ((width <= path_width)) || path_width="$width"
+  done <"$NODES_CONFIG"
   subsection "节点列表"
   printf '%s%s' "$C_BOLD" "$C_BRIGHT_CYAN"
-  pad_right "$(ui_text '标签')" 13; printf '  '; pad_right "$(ui_text '协议')" 6; printf '  '; pad_right "$(ui_text '传输路径')" 14
+  pad_right "$(ui_text '标签')" "$tag_width"; printf '  '; pad_right "$(ui_text '协议')" "$protocol_width"; printf '  '; pad_right "$(ui_text '传输路径')" "$path_width"
   printf '  '; pad_right "$(ui_text '端口')" 5; printf '  %s%s\n' "$(ui_text 出站)" "$C_RESET"
-  printf '%s%s%s\n' "$C_DIM" '-------------  ------  --------------  -----  ------------------' "$C_RESET"
+  printf -v tag_rule '%*s' "$tag_width" ''
+  printf -v path_rule '%*s' "$path_width" ''
+  printf '%s%s  --------  %s  -----  ------------------%s\n' "$C_DIM" "${tag_rule// /-}" "${path_rule// /-}" "$C_RESET"
   while IFS='|' read -r tag protocol path port socks; do
-    printf '%s' "$C_BRIGHT_WHITE"; pad_right "$tag" 13; printf '%s  %s' "$C_RESET" "$C_BRIGHT_BLUE"
-    pad_right "$(protocol_label "$protocol")" 6; printf '%s  %s' "$C_RESET" "$C_BRIGHT_WHITE"; pad_right "$path" 14
+    printf '%s' "$C_BRIGHT_WHITE"; pad_right "$tag" "$tag_width"; printf '%s  %s' "$C_RESET" "$C_BRIGHT_BLUE"
+    pad_right "$(protocol_label "$protocol")" "$protocol_width"; printf '%s  %s' "$C_RESET" "$C_BRIGHT_WHITE"; pad_right "$path" "$path_width"
     printf '%s  %s' "$C_RESET" "$C_BRIGHT_MAGENTA"; pad_right "$port" 5; printf '%s  %s' "$C_RESET" "$C_BRIGHT_MAGENTA"
-    printf '%s%s\n' "$(node_outbound_value "$socks" "$direct_ip")" "$C_RESET"
+    outbound="$(node_outbound_value "$socks" "$direct_ip")"
+    pad_right "${outbound%% · *}" 6
+    printf ' · %s%s\n' "${outbound#* · }" "$C_RESET"
   done <"$NODES_CONFIG"
 }
 
@@ -4165,7 +4215,7 @@ add_node_profile() {
   [[ "$WARP_ENABLED" != "1" || 10#$port -ne 10#$WARP_PROXY_PORT ]] ||
     die "本地端口冲突 · ${port} 被 WARP SOCKS5 占用"
   ! awk -F'|' -v port="$port" '$4 == port {found=1} END {exit !found}' "$NODES_CONFIG" || die "本地端口冲突 · ${port} 已被占用"
-  read_input "节点代理 [http:// 或 socks5://user:pass@host:port；留空为 direct]：" socks
+  read_input "节点代理 [http://user:pass@host:port  socks5://user:pass@host:port；留空为 direct]：" socks
   is_exit_input "$socks" && return 0
   is_direct_outbound "$socks" || valid_socks5 "$socks" || die "节点代理无效 · 使用 http://user:pass@host:port 或 socks5://user:pass@host:port，或留空使用 direct"
   if is_direct_outbound "$socks"; then
@@ -4300,8 +4350,7 @@ configure_warp_geosites() {
   brand "${PROJECT_NAME} · WARP geosite" back
   subsection "当前规则"
   key_value "geosite 规则" "${WARP_GEOSITES:-无}"
-  menu_hint "可添加的 geosite 规则可在以下网页查看："
-  link_value "geosite" "https://geosite-explorer.pages.dev/"
+  menu_hint_link "geosite url" "https://geosite-explorer.pages.dev/"
   section "规则操作"
   menu_item 1 "添加分类"
   menu_item 2 "删除分类"
@@ -4425,8 +4474,7 @@ configure_warp() {
         is_exit_input "$targets" && return 0
         targets="${targets:-$WARP_DOMAINS}"
         targets="$(normalize_warp_domains "$targets")"
-        menu_hint "可添加的 geosite 规则可在以下网页查看："
-        link_value "geosite" "https://geosite-explorer.pages.dev/"
+        menu_hint_link "geosite url" "https://geosite-explorer.pages.dev/"
         read_input "geosite 规则 [逗号分隔；${WARP_GEOSITES:-无}]：" geosites
         is_exit_input "$geosites" && return 0
         geosites="$(normalize_warp_geosites "${geosites:-$WARP_GEOSITES}")"
@@ -5450,7 +5498,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   case "${1:-}" in
     --traffic-collect) ;;
     -i) if [[ "${2:-}" == --github-refreshed ]]; then record_script_run get; else record_script_run; fi ;;
-    ""|-l|-n|-a|-c|-t|-x|-f|-v|-k|-b|-u) record_script_run ;;
+    ""|-l|-n|-a|-c|-t|-x|-f|-v|-k|-b) record_script_run ;;
     *) ;;
   esac
   trap 'cleanup_config_snapshot; printf "\n"' EXIT

@@ -90,7 +90,7 @@ for required in \
   'WARP 开关' '分流规则' '域名规则' 'geosite 规则' \
   '节点落地 IP' 'IPv4 直连出站' 'IPv6 直连出站' \
   '启用 h2mux' '停用 h2mux' '设置 Brutal 带宽' \
-  'Argo 回源' 'Token / 域名' '节点代理 [http:// 或 socks5://user:pass@host:port；留空为 direct]' \
+  'Argo 回源' 'Token / 域名' '节点代理 [http://user:pass@host:port  socks5://user:pass@host:port；留空为 direct]' \
   '配置检查' '诊断完成 · 0 个错误 · 0 个提醒' \
   '不可用 · 缺少 brutal 内核模块' '创建备份' '恢复配置' \
   '重启核心服务' '服务状态' '出站'; do

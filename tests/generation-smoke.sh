@@ -67,6 +67,9 @@ mkdir -p "$BIN_DIR"
 : >"${BIN_DIR}/sing-box"
 chmod 755 "${BIN_DIR}/sing-box"
 ensure_nodes_config
+grep -Fxq 'AGS-Vl|vless|/ags-vl|3011|' "$NODES_CONFIG"
+grep -Fxq 'AGS-Vm|vmess|/ags-vm|3012|' "$NODES_CONFIG"
+grep -Fxq 'AGS-Tr|trojan|/ags-tr|3013|' "$NODES_CONFIG"
 validate_nodes_config
 
 cp "$NODES_CONFIG" "${NODES_CONFIG}.valid"
@@ -375,8 +378,8 @@ PY
 fi
 
 cat >"$NODES_CONFIG" <<'EOF'
-HTTP|vless|/http|3011|http://test:secret@192.0.2.1:6305
-SOCKS|vmess|/socks|3012|socks5://test:secret@[2001:db8::1]:6305
+HTTP|vless|/http|3011|http://test:secret@192.0.2.1:6305/
+SOCKS|vmess|/socks|3012|socks5://test:secret@[2001:db8::1]:6305/
 Legacy|trojan|/legacy|3013|192.0.2.2:6305:test:secret
 Direct6|vless|/direct6|3014|direct:ipv6
 EOF
@@ -402,7 +405,13 @@ NODE
 else
   jq -e 'any(.outbounds[]; .tag == "socks-HTTP" and .type == "http" and (has("version") | not)) and any(.outbounds[]; .tag == "socks-SOCKS" and .type == "socks" and .version == "5") and .route.final == "direct"' "$SING_BOX_CONFIG" >/dev/null
 fi
-for invalid_proxy in 'https://test:secret@192.0.2.1:6305' 'http://test@192.0.2.1:6305' 'http://test:secret@999.0.0.1:6305' 'socks5://test:secret@host:65536' 'http://test:secret@host:6305/path' 'http://test:secret@host:6305|extra' 'http://test:secret@host:6305?query'; do
+for scheme in http socks5; do
+  for host in 192.0.2.1 proxy.example.com '[2001:db8::1]'; do
+    proxy="${scheme}://test:secret@${host}:6305"
+    [[ "$(parse_node_proxy "$proxy")" == "$(parse_node_proxy "${proxy}/")" ]]
+  done
+done
+for invalid_proxy in 'https://test:secret@192.0.2.1:6305' 'http://test@192.0.2.1:6305' 'http://test:secret@999.0.0.1:6305' 'socks5://test:secret@host:65536' 'http://test:secret@host:6305/path' 'http://test:secret@host:6305|extra' 'http://test:secret@host:6305?query' 'http://test:secret@host:6305//' 'socks5://test:secret@host:6305/path/'; do
   if valid_socks5 "$invalid_proxy"; then printf 'invalid proxy accepted\n' >&2; exit 1; fi
 done
 # CRUD switches the actual stored fifth field to HTTP, preserving other nodes.
