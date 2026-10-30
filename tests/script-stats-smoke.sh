@@ -74,6 +74,13 @@ set --
 eval "$dispatcher" >"${TEST_DIR}/output"
 grep -q '/hit/' "${TEST_DIR}/requests"
 grep -q 'Executed 42 times' "${TEST_DIR}/output"
+show_nodes() { brand '节点订阅'; }
+reset_stats
+set -- -n
+eval "$dispatcher" >"${TEST_DIR}/output"
+grep -q '/hit/' "${TEST_DIR}/requests"
+[[ "$SCRIPT_RUNS_TOTAL" == 42 ]]
+! grep -q '脚本统计\|Executed' "${TEST_DIR}/output"
 reset_stats
 command() { [[ "${2:-}" != curl ]] && builtin command "$@"; }
 record_script_run

@@ -1,6 +1,6 @@
-# Argo-Singbox v2026.10.11.05
+# Argo-Singbox v2026.10.30.01
 
-Argo-Singbox 是单内核项目，`AGS` 是管理命令和终端紧凑显示使用的简称。当前脚本版本 `2026.10.11.05`。默认使用中文，可通过 `ags -l` 或控制中心的语言设置切换为简体中文，选择保存后持续生效。运行时只安装和管理官方 Sing-box，保留节点、订阅、WARP、长期全局流量统计、诊断、备份恢复和安装更新能力。
+Argo-Singbox 是单内核项目，`AGS` 是管理命令和终端紧凑显示使用的简称。当前脚本版本 `2026.10.30.01`。默认使用中文，可通过 `ags -l` 或控制中心的语言设置切换为简体中文，选择保存后持续生效。运行时只安装和管理官方 Sing-box，保留节点、订阅、WARP、长期全局流量统计、诊断、备份恢复和安装更新能力。
 
 ## 项目结构
 
@@ -179,9 +179,9 @@ grep -n $'\r' argo-singbox.sh && exit 1 || true
 ## 2026.10.11 界面与节点代理
 
 - 默认中文；中文与英语共享菜单、颜色、危险确认和退出逻辑。语言保存在 `/etc/argo-singbox/config/language`（权限 600）。
-- 控制中心使用六行斜体 ASCII 字标，单行标题为 `Argo-Singbox  v2026.10.11.05 · Argo Tunnel · Sing-box Core`。系统环境单行显示，Kernel 仅显示数字版本，节点概览为紫色；运行状态内以组件版本字段显示 Sing-box / cloudflared，只有版本号为黄色，名称与分隔符为白色。
+- 控制中心使用六行斜体 ASCII 字标，单行标题为 `Argo-Singbox  v2026.10.30.01 · Argo Tunnel · Sing-box Core`。系统环境单行显示，Kernel 仅显示数字版本，节点概览为紫色；运行状态内以组件版本字段显示 Sing-box / cloudflared，只有版本号为黄色，名称与分隔符为白色。
 - 脚本统计保留原联网计数源及单次限时请求，中英文均显示 `Executed 6 times`；不显示“全局累计”。没有确认到 IPv6 时显示 `None`。
-- 第五字段支持 `http://user:pass@host:port`、`socks5://user:pass@host:port`，IPv6 主机使用方括号；兼容旧 `host:port:user:pass` 和逐节点 `direct:ipv4` / `direct:ipv6`。凭据继续限于字母、数字及 `._~-`，不支持 URL 编码或省略认证。概览仅显示类型和主机端口。
+- 第五字段支持 `http://user:pass@host:port`、`socks5://user:pass@host:port`，IPv6 主机使用方括号；兼容旧 `host:port:user:pass` 和逐节点 `direct:ipv4` / `direct:ipv6`。凭据继续限于字母、数字及 `._~-`，不支持 URL 编码或省略认证。节点列表仅显示类型和完整主机，不显示端口或认证信息。
 - 出站优先级为 `WARP → 节点 HTTP/SOCKS5 → direct`。HTTP 使用 Sing-box 的 HTTP CONNECT 出站。
 
 配置生成使用 1.13.18 的 `domain_resolver` 与本地 DNS，不依赖已停用的旧 `domain_strategy` 兼容开关。普通布局 64 列；品牌标题保持单行并位于 64 列布局内。
@@ -198,7 +198,7 @@ grep -n $'\r' argo-singbox.sh && exit 1 || true
 
 ## 2026.10.11 紧凑布局补充
 
-顶部标题为 `Argo-Singbox  v2026.10.11.05 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。
+顶部标题为 `Argo-Singbox  v2026.10.30.01 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。
 
 ### 订阅中心布局与显示修订
 
@@ -235,3 +235,12 @@ File 使用约 116px 的紧凑图标与名称组合，在列内整体居中；�
 安装结果的管理命令与订阅链接标题之间保留一行空行。所有运行内存值及管理命令 ags / AGS 的命令名统一使用紫色，分隔符继续为白色；非 TTY、TERM=dumb 和 NO_COLOR 不输出 ANSI。
 
 IPv4 与 IPv6 GeoJS 请求并行执行，强制对应地址族、排除环境代理并保留默认路由绑定；连接超时 2 秒、单次请求总超时 3 秒，不重试。本次脚本运行内缓存两个地址族的成功和失败结果，配置生成、运行概览和诊断复用，下一次启动重新探测，不保存跨运行缓存。GeoJS 信息通过单次 jq 解析，不改动优选入口或 direct 地址族选择合同。
+
+
+## 2026.10.30.01 本地测试版 UI 调整
+
+- 安装运行检查与诊断服务状态统一显示“✓ 端口检测： 本地端口监听正常。”，位于 Clash API 检查之后、公网 WS 检查之前。
+- `ags -n` 等管理短命令继续累计执行次数，但不显示脚本统计行；控制中心和安装页保留统计显示。
+- 优选入口输入文字（含端口）使用紫色；Linux-NetSpeed 项目链接加下划线。
+- 节点列表标签、传输路径与出站完整单行显示，不限制列宽；直连为 `Direct · IP`，代理为 `SOCKS5 · 主机` / `HTTP · 主机`，不回显认证信息。
+- WARP geosite 管理与启用提示提供 [GeoSite Explorer](https://geosite-explorer.pages.dev/) 链接，可查看可添加的规则名。

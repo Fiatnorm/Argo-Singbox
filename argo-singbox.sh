@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="2026.10.11.05"
+VERSION="2026.10.30.01"
 PROJECT_NAME="Argo-Singbox"
 PROJECT_CODE="AGS"
 SCRIPT_NAME="argo-singbox.sh"
@@ -788,7 +788,8 @@ declare -A UI_EN=(
   ['运行日志读取失败']='Failed to read runtime logs'
   ['近期日志包含错误']='Recent logs contain errors'
   ['监听正常。']='is listening normally.'
-  ['端口检测通过 · 全部本地端口监听正常。']='Port check passed · All local ports are listening normally.'
+  ['端口检测： 本地端口监听正常。']='Port check: All local ports are listening normally.'
+  ['可添加的 geosite 规则可在以下网页查看：']='Browse available geosite rules at:'
   ['端口检测失败 · 未监听：']='Port check failed · Not listening: '
   ['公网传输探测超时，未确认连通性；请用客户端实测。']='Public transport probe timed out; connectivity is unconfirmed. Please test with a client.'
   ['运行正常。']='It works fine.'
@@ -1313,7 +1314,16 @@ read_choice() {
   REPLY="${REPLY%$'\r'}"
   [[ -n "$REPLY" ]] || REPLY=0
 }
-read_input() { prompt "$1"; IFS= read -r "$2"; printf -v "$2" '%s' "${!2%$'\r'}"; [[ "${!2}" != 0 ]] || exit 0; }
+read_input() {
+  local input_status=0
+  prompt "$1"
+  [[ "$1" != 优选入口* ]] || printf '%s' "$C_BRIGHT_MAGENTA"
+  IFS= read -r "$2" || input_status=$?
+  [[ "$1" != 优选入口* ]] || printf '%s' "$C_RESET"
+  ((input_status == 0)) || return "$input_status"
+  printf -v "$2" '%s' "${!2%$'\r'}"
+  [[ "${!2}" != 0 ]] || exit 0
+}
 is_exit_input() {
   case "${1:-}" in
     0) exit 0 ;;
@@ -1955,13 +1965,20 @@ parse_socks5() {
 valid_socks5() { parse_node_proxy "$1" >/dev/null; }
 node_outbound_value() {
   local values type host port username password
-  case "$1" in direct:ipv4) printf 'IPv4 · direct'; return ;; direct:ipv6) printf 'IPv6 · direct'; return ;; esac
-  [[ -n "$1" ]] || { printf 'direct'; return; }
+  if [[ -z "$1" ]] || is_direct_outbound "$1"; then
+    case "$(direct_strategy "$1")" in
+      ipv4_only|prefer_ipv4) host="${PUBLIC_IPV4:-${PUBLIC_IPV6:-}}" ;;
+      ipv6_only|prefer_ipv6) host="${PUBLIC_IPV6:-${PUBLIC_IPV4:-}}" ;;
+    esac
+    [[ -n "$1" ]] || host="${2:-$host}"
+    printf 'Direct · %s' "${host:-$(ui_text 未知)}"
+    return
+  fi
   values="$(parse_node_proxy "$1")" || return 1
   IFS='|' read -r type host port username password <<<"$values"
   [[ "$type" == socks ]] && type=SOCKS5 || type=HTTP
   [[ "$host" != *:* ]] || host="[$host]"
-  printf '%s · %s:%s' "$type" "$host" "$port"
+  printf '%s · %s' "$type" "$host"
 }
 
 ensure_nodes_config() {
@@ -3584,9 +3601,9 @@ health_check() {
   done < <(printf '%s\n' "$ORIGIN_PORT" "$STATS_API_PORT"; cut -d'|' -f4 "$NODES_CONFIG")
   if [[ "$mode" == "ws" ]]; then
     if ((local_failed)); then state_value "本地端口" "未运行 · ${local_failed} 个未监听"; else state_value "本地端口" "已通过"; fi
-  elif [[ "$mode" == diagnostic ]]; then
+  else
     if ((local_failed)); then red "端口检测失败 · 未监听：${bad_ports}"
-    else green "端口检测通过 · 全部本地端口监听正常。"; fi
+    else green "端口检测： 本地端口监听正常。"; fi
   fi
 
   while IFS='|' read -r tag protocol path port socks; do
@@ -4112,14 +4129,10 @@ list_node_profiles() {
   printf '  '; pad_right "$(ui_text '端口')" 5; printf '  %s%s\n' "$(ui_text 出站)" "$C_RESET"
   printf '%s%s%s\n' "$C_DIM" '-------------  ------  --------------  -----  ------------------' "$C_RESET"
   while IFS='|' read -r tag protocol path port socks; do
-    printf '%s' "$C_BRIGHT_WHITE"; fit_text "$tag" 13; printf '%s  %s' "$C_RESET" "$C_BRIGHT_BLUE"
-    fit_text "$(protocol_label "$protocol")" 6; printf '%s  %s' "$C_RESET" "$C_BRIGHT_WHITE"; fit_text "$path" 14
-    printf '%s  %s' "$C_RESET" "$C_BRIGHT_MAGENTA"; fit_text "$port" 5; printf '%s  %s' "$C_RESET" "$C_BRIGHT_MAGENTA"
-    if [[ -n "$socks" ]]; then
-      fit_text "$(node_outbound_value "$socks")" 18; printf '%s\n' "$C_RESET"
-    else
-      fit_text "${direct_ip:-未知}" 18; printf '%s\n' "$C_RESET"
-    fi
+    printf '%s' "$C_BRIGHT_WHITE"; pad_right "$tag" 13; printf '%s  %s' "$C_RESET" "$C_BRIGHT_BLUE"
+    pad_right "$(protocol_label "$protocol")" 6; printf '%s  %s' "$C_RESET" "$C_BRIGHT_WHITE"; pad_right "$path" 14
+    printf '%s  %s' "$C_RESET" "$C_BRIGHT_MAGENTA"; pad_right "$port" 5; printf '%s  %s' "$C_RESET" "$C_BRIGHT_MAGENTA"
+    printf '%s%s\n' "$(node_outbound_value "$socks" "$direct_ip")" "$C_RESET"
   done <"$NODES_CONFIG"
 }
 
@@ -4287,6 +4300,8 @@ configure_warp_geosites() {
   brand "${PROJECT_NAME} · WARP geosite" back
   subsection "当前规则"
   key_value "geosite 规则" "${WARP_GEOSITES:-无}"
+  menu_hint "可添加的 geosite 规则可在以下网页查看："
+  link_value "geosite" "https://geosite-explorer.pages.dev/"
   section "规则操作"
   menu_item 1 "添加分类"
   menu_item 2 "删除分类"
@@ -4410,6 +4425,8 @@ configure_warp() {
         is_exit_input "$targets" && return 0
         targets="${targets:-$WARP_DOMAINS}"
         targets="$(normalize_warp_domains "$targets")"
+        menu_hint "可添加的 geosite 规则可在以下网页查看："
+        link_value "geosite" "https://geosite-explorer.pages.dev/"
         read_input "geosite 规则 [逗号分隔；${WARP_GEOSITES:-无}]：" geosites
         is_exit_input "$geosites" && return 0
         geosites="$(normalize_warp_geosites "${geosites:-$WARP_GEOSITES}")"
@@ -5209,7 +5226,7 @@ manage_bbr() {
   command -v curl >/dev/null 2>&1 || die "缺少 curl，无法启动 BBR/内核管理脚本。"
   brand "${PROJECT_NAME} · 系统工具" default
   section "第三方工具"
-  key_value "Linux-NetSpeed" "https://github.com/ylx2016/Linux-NetSpeed"
+  link_value "Linux-NetSpeed" "https://github.com/ylx2016/Linux-NetSpeed"
   section "风险提示"
   yellow "第三方脚本不属于 ${PROJECT_NAME}"
   yellow "可能修改 Linux 内核、网络参数或系统磁盘"
@@ -5369,6 +5386,7 @@ record_script_run() {
 }
 show_script_runs() {
   local UI_LABEL_WIDTH=12
+  [[ "${SHOW_SCRIPT_RUNS:-1}" == 1 ]] || return 0
   ((SCRIPT_RUNS_REQUESTED == 1 && SCRIPT_RUNS_SHOWN == 0)) || return 0
   SCRIPT_RUNS_SHOWN=1
   if [[ -n "$SCRIPT_RUNS_TOTAL" ]]; then
@@ -5427,6 +5445,8 @@ menu() {
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   load_language
+  SHOW_SCRIPT_RUNS=1
+  case "${1:-}" in -l|-n|-a|-c|-t|-x|-f|-v|-k|-b|-u) SHOW_SCRIPT_RUNS=0 ;; esac
   case "${1:-}" in
     --traffic-collect) ;;
     -i) if [[ "${2:-}" == --github-refreshed ]]; then record_script_run get; else record_script_run; fi ;;

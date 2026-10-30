@@ -1,6 +1,6 @@
 # Argo-Singbox Terminal UI Design
 
-> 设计基线：`Fiatnorm/Argo-Singbox` 当前行为，脚本版本 `2026.10.11.05`
+> 设计基线：`Fiatnorm/Argo-Singbox` 当前行为，脚本版本 `2026.10.30.01`
 >
 > 适用范围：`argo-singbox.sh` 及其全部交互式终端输出
 >
@@ -405,7 +405,7 @@ TERM=dumb
 推荐品牌区：
 
 ```text
-Argo-Singbox  v2026.10.11.05 · Argo Tunnel · Sing-box Core
+Argo-Singbox  v2026.10.30.01 · Argo Tunnel · Sing-box Core
 功能特性      WS/TLS · WARP · h2mux · TCP Brutal
 系统环境      Debian GNU/Linux 13 · amd64 · Kernel 6.12.101
 ----------------------------------------------------------------
@@ -2072,7 +2072,7 @@ Argo Tunnel 回源端口     → Argo 回源
 # # # #  ##  #      ##  ### # #  ## ##   #  # #
 # # # #  ##  #      ##  ### # #  ## ##   #  # #
 
-Argo-Singbox  v2026.10.11.05 · Argo Tunnel · Sing-box Core
+Argo-Singbox  v2026.10.30.01 · Argo Tunnel · Sing-box Core
 功能特性      WS/TLS · WARP · h2mux · TCP Brutal
 系统环境      Debian GNU/Linux 13 · amd64 · Kernel 6.12.101
 ----------------------------------------------------------------
@@ -2264,7 +2264,7 @@ Argo-Singbox Terminal UI 的目标不是“做得像图形界面”，而是成�
 
 ## 2026.10.11 紧凑布局补充
 
-顶部标题为 `Argo-Singbox  v2026.10.11.05 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。
+顶部标题为 `Argo-Singbox  v2026.10.30.01 · Argo Tunnel · Sing-box Core`。功能特性、系统环境和执行次数的值从第 15 列开始，与标题版本号对齐；运行状态和普通字段从第 21 列开始。系统名称使用 NAME 和 VERSION_ID，省略发行代号；执行次数仍为 API 实际返回的 `Executed N times`。组件版本仅显示 `Sing-box 1.13.18 · cloudflared 2026.7.3`，仅数字为黄色。菜单、Enter/0 提示和 64 列分隔线保持现有规范。
 
 ### 订阅中心布局与显示修订
 
@@ -2301,3 +2301,12 @@ File 使用约 116px 的紧凑图标与名称组合，在列内整体居中；�
 安装结果的管理命令与订阅链接标题之间保留一行空行。所有运行内存值及管理命令 ags / AGS 的命令名统一使用紫色，分隔符继续为白色；非 TTY、TERM=dumb 和 NO_COLOR 不输出 ANSI。
 
 IPv4 与 IPv6 GeoJS 请求并行执行，强制对应地址族、排除环境代理并保留默认路由绑定；连接超时 2 秒、单次请求总超时 3 秒，不重试。本次脚本运行内缓存两个地址族的成功和失败结果，配置生成、运行概览和诊断复用，下一次启动重新探测，不保存跨运行缓存。GeoJS 信息通过单次 jq 解析，不改动优选入口或 direct 地址族选择合同。
+
+
+## 2026.10.30.01 本地测试版 UI 调整
+
+- 安装运行检查与诊断服务状态统一显示“✓ 端口检测： 本地端口监听正常。”，位于 Clash API 检查之后、公网 WS 检查之前。
+- `ags -n` 等管理短命令继续累计执行次数，但不显示脚本统计行；控制中心和安装页保留统计显示。
+- 优选入口输入文字（含端口）使用紫色；Linux-NetSpeed 项目链接加下划线。
+- 节点列表标签、传输路径与出站完整单行显示，不限制列宽；直连为 `Direct · IP`，代理为 `SOCKS5 · 主机` / `HTTP · 主机`，不回显认证信息。
+- WARP geosite 管理与启用提示提供 [GeoSite Explorer](https://geosite-explorer.pages.dev/) 链接，可查看可添加的规则名。
